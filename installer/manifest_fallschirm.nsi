@@ -24,5 +24,7 @@ SectionEnd
 Section "Uninstall"
   Delete "$SMPROGRAMS\manifest_fallschirm\Uninstall manifest_fallschirm.lnk"
   RMDir "$SMPROGRAMS\manifest_fallschirm"
+  Delete "$INSTDIR\README.md"
+  Delete "$INSTDIR\uninstall.exe"
   RMDir /r "$INSTDIR"
 SectionEnd

@@ -29,3 +29,4 @@ jobs:
         with:
           name: manifest_fallschirm-installer
           path: dist/manifest_fallschirm-setup.exe
+          retention-days: 14
