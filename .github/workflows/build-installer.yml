@@ -1,14 +1,14 @@
 name: Build Manifest Installer
 
-permissions:
-  contents: write
-  
 on:
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
+
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -20,7 +20,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt pyinstaller
 
-      # ✅ Clean (PowerShell korrekt)
       - name: Clean build
         shell: powershell
         run: |
@@ -33,7 +32,6 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup -y
 
-      # ✅ StageDir vorbereiten + INHALT (WICHTIG!)
       - name: Prepare stage directory with files
         shell: powershell
         run: |
@@ -55,7 +53,15 @@ jobs:
             Copy-Item tools build\inno_stage\ -Recurse -Force
           }
 
-      # ✅ Richtiger Pfad zu deiner ISS
+          # Weitere wichtige Ordner optional mitnehmen
+          if (Test-Path runtime) {
+            Copy-Item runtime build\inno_stage\ -Recurse -Force
+          }
+
+          if (Test-Path templates) {
+            Copy-Item templates build\inno_stage\ -Recurse -Force
+          }
+
       - name: Build Installer
         shell: powershell
         run: |
@@ -68,7 +74,6 @@ jobs:
             exit 1
           }
 
-      # ✅ Version automatisch erkennen
       - name: Extract version
         id: version
         shell: powershell
@@ -93,7 +98,9 @@ jobs:
           $version = "$($numbers[-2]).$($numbers[-1]).0"
           echo "VERSION=$version" >> $env:GITHUB_ENV
 
-      # ✅ Release erstellen
+          Write-Host "Installer: $($file.Name)"
+          Write-Host "Version: $version"
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -104,7 +111,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ✅ Optional: Artifact
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
