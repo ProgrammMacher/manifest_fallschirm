@@ -17,7 +17,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt pyinstaller
 
-      # ✅ FIX: PowerShell-kompatibel
+      # ✅ Clean (PowerShell korrekt)
       - name: Clean build
         shell: powershell
         run: |
@@ -30,26 +30,34 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup -y
 
-      # ✅ FIX: PowerShell-kompatibel
+      # ✅ StageDir vorbereiten (wichtig für deine .iss!)
+      - name: Prepare stage directory
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force build\inno_stage
+
+      # ✅ KORRIGIERT: richtiger Pfad zu deiner ISS
       - name: Build Installer
         shell: powershell
         run: |
-          if (Test-Path installer.iss) {
-            & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+          $issPath = "installer/inno/manifest_offline_setup.iss"
+
+          if (Test-Path $issPath) {
+            & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" $issPath
           } else {
-            Write-Error "installer.iss fehlt"
+            Write-Error "ISS-Datei nicht gefunden: $issPath"
             exit 1
           }
 
-      # ✅ ROBUSTE VERSION (neueste Datei + flexible Erkennung)
-      - name: Extract version (robust)
+      # ✅ Version automatisch aus Dateiname
+      - name: Extract version
         id: version
         shell: powershell
         run: |
           $files = Get-ChildItem build\installer\*.exe
 
           if (-not $files) {
-            Write-Error "Kein Installer gefunden!"
+            Write-Error "Kein Installer erzeugt!"
             exit 1
           }
 
@@ -59,20 +67,14 @@ jobs:
           $numbers = $name -split '_' | Where-Object { $_ -match '^\d+$' }
 
           if ($numbers.Count -lt 2) {
-            Write-Error "Version im Dateinamen nicht erkannt"
+            Write-Error "Version nicht erkannt"
             exit 1
           }
 
-          $major = $numbers[-2]
-          $minor = $numbers[-1]
-          $version = "$major.$minor.0"
-
+          $version = "$($numbers[-2]).$($numbers[-1]).0"
           echo "VERSION=$version" >> $env:GITHUB_ENV
 
-          Write-Host "Installer: $($file.Name)"
-          Write-Host "Version: $version"
-
-      # ✅ Release
+      # ✅ Release erstellen
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -83,7 +85,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload installer (optional)
+      # ✅ Optional zusätzlich als Artefakt
+      - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
           name: manifest_installer
