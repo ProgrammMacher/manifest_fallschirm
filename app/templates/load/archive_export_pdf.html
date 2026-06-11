@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Load-Archiv Export</title>
+  <style>
+    @page { size: A4 landscape; margin: 12mm; }
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 10pt;
+      color: #212529;
+    }
+    h1 {
+      margin: 0 0 6px 0;
+      font-size: 18pt;
+    }
+    .meta {
+      margin-bottom: 10px;
+      color: #495057;
+      font-size: 9pt;
+    }
+    .summary {
+      margin-bottom: 10px;
+      font-weight: 700;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 12px;
+      page-break-inside: avoid;
+    }
+    th, td {
+      border: 1px solid #ced4da;
+      padding: 4px 6px;
+      vertical-align: top;
+    }
+    th {
+      background: #e9ecef;
+      text-align: left;
+      font-weight: 700;
+    }
+    .load-title {
+      margin-top: 10px;
+      margin-bottom: 4px;
+      font-size: 11pt;
+      font-weight: 700;
+    }
+    .muted {
+      color: #6c757d;
+    }
+    .text-right {
+      text-align: right;
+    }
+    .status-cell {
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <h1>Load-Archiv (Statusübersicht)</h1>
+  <div class="meta">
+    Zeitraum: {{ archive_period_label }}
+    {% if archive_period_label.startswith('Zeitraum') %}
+      ({{ archive_from or '...' }} bis {{ archive_to or '...' }})
+    {% endif %}
+    | Erstellt: {{ generated_at.strftime('%d.%m.%Y %H:%M') }}
+  </div>
+  <div class="summary">
+    Loads: {{ total_loads }} | Springer-Einträge: {{ total_entries }}
+  </div>
+
+  {% if loads %}
+    {% for l in loads %}
+      {% set dt = archive_effective_datetime(l) %}
+      <div class="load-title">
+        Load {{ l.load_number }} (ID {{ l.id }})
+        <span class="muted">
+          | {{ dt.strftime('%d.%m.%Y %H:%M') if dt else 'ohne Zeit' }}
+          | {{ l.airfield.name if l.airfield else '-' }}
+          | {{ (l.aircraft.type ~ ' ' ~ l.aircraft.registration) if l.aircraft else '-' }}
+        </span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 6%;">Sitz</th>
+            <th style="width: 26%;">Person</th>
+            <th style="width: 16%;">Status</th>
+            <th style="width: 10%;" class="text-right">Höhe (m)</th>
+            <th style="width: 10%;">Schirmmiete</th>
+            <th style="width: 10%;">Abgerechnet</th>
+            <th style="width: 10%;">Bezahlt</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for e in l.entries_sorted %}
+          {% set status_bg = e.archive_status_bg if e.archive_status_bg is defined else None %}
+          {% set status_border = e.archive_status_border if e.archive_status_border is defined else None %}
+          <tr>
+            <td>{{ e.seat if e.seat is not none else '-' }}</td>
+            <td {% if status_bg and status_border %}style="background: {{ status_bg }}; border-left: 6px solid {{ status_border }};"{% endif %}>{{ e.person.full_name if e.person else '-' }}</td>
+            <td class="status-cell" {% if status_bg and status_border %}style="background: {{ status_bg }}; border-left: 6px solid {{ status_border }};"{% endif %}>{{ e.status_code or '-' }}</td>
+            <td class="text-right">{{ e.height_m if e.height_m is not none else '-' }}</td>
+            <td>{{ 'Ja' if e.gear_rental else 'Nein' }}</td>
+            <td>{{ 'Ja' if e.billed else 'Nein' }}</td>
+            <td>{{ 'Ja' if e.paid else 'Nein' }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7" class="muted">Keine Springer-Einträge.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endfor %}
+  {% else %}
+    <p class="muted">Keine archivierten Loads im gewählten Zeitraum.</p>
+  {% endif %}
+</body>
+</html>

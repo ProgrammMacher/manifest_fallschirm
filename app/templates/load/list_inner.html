@@ -1,0 +1,1095 @@
+﻿<!-- ================= Ausgabeblock 1) ================= -->
+
+{% include "load/partials/editor_styles.html" %}
+<style>
+/* ========================================================= */
+/* ================= Layout ================================ */
+/* ========================================================= */
+.load-list-container {
+  max-height: 70vh;
+  overflow-y: auto;
+  overflow-x: auto; /* ✅ horizontales Scrollen für breite Tabellen */
+}
+
+/* Im Split-View soll die Liste die volle Höhe nutzen */
+#load-view-root[data-view="split"] .load-list-container {
+  max-height: none;
+  height: 100%;
+}
+
+/* ========================================================= */
+/* ================= Header ================================ */
+/* ========================================================= */
+.load-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap; /* ✅ verhindert Quetschen */
+}
+
+/* ✅ Split-View: Header sticky (Buttons bleiben sichtbar beim Scrollen) */
+#load-view-root[data-view="split"] .load-list-header{
+  position: sticky;
+  top: 0;
+  z-index: 2000;
+  background: rgba(255,255,255,0.95);
+  padding-top: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+
+/* ========================================================= */
+/* ================= Tabelle (OPTION B) ==================== */
+/* ========================================================= */
+/*
+ OPTION B = echtes Spalten-Resize + Persistenz
+ GOLDENE REGELN:
+ - table-layout: fixed IMMER
+ - KEIN width:max-content
+ - KEIN Umschalten auto/fixed
+ - Breiten kommen aus <colgroup> + JS
+*/
+table.load-table {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed; /* ✅ zwingend für stabiles Resize */
+}
+
+/* Zellen */
+table.load-table th,
+table.load-table td {
+  border-right: 1px solid #dee2e6;
+  padding: 6px 8px;
+  vertical-align: top;
+  white-space: nowrap; /* ✅ keine Umbüche */
+  overflow: hidden; /* ✅ verhindert Spalten-Explosion */
+  text-overflow: ellipsis; /* ✅ lesbar statt kaputt */
+}
+table.load-table th:last-child,
+table.load-table td:last-child {
+  border-right: none;
+}
+
+/* ================= Spalte: Flugplatz / Flugzeug ================= */
+/* ✅ echter Zeilenumbruch OHNE Abschneiden (Spezifität korrekt) */
+table.load-table th.col-place,
+table.load-table td.col-place {
+  white-space: normal; /* Umbruch erlauben */
+  overflow: visible; /* ✅ überschreibt overflow:hidden */
+  text-overflow: clip; /* ✅ kein Ellipsis */
+  line-height: 1.15;
+}
+
+/* ================= Aktionen-Spalte ================= */
+td.col-action {
+  white-space: normal; /* ✅ Umbruch erlauben */
+}
+td.col-action .action-row {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+/* ========================================================= */
+/* ================= Startbreiten (Fallback) =============== */
+/* ========================================================= */
+/*
+ Diese Werte sind NUR Startwerte.
+ Die echten Breiten kommen aus <colgroup> und localStorage.
+*/
+.col-load { width: 180px; }
+.col-time { width: 90px; text-align: center; }
+.col-height { width: 80px; text-align: center; }
+.col-weight { width: 90px; text-align: right; }
+.col-action { width: 190px; text-align: center; }
+
+/* ========================================================= */
+/* ================= Spalten-Resize UI ===================== */
+/* ========================================================= */
+th.resizable {
+  position: relative;
+  user-select: none;
+}
+
+/* breite, gut greifbare Resize-Hotzone */
+th.resizable::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 10px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 50;
+}
+th.resizable:hover::after {
+  background: rgba(13,110,253,0.18);
+}
+
+/* ========================================================= */
+/* ================= Personen ============================== */
+/* ========================================================= */
+.person-block {
+  padding: 2px 6px;
+  margin-bottom: 2px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+/* Blockfarbe neutral lassen, Marker trägt die Information */
+.person-paid { background: transparent; }
+.person-billed { background: transparent; }
+.person-name { white-space: nowrap; }
+.person-meta { font-size:0.75rem; opacity:0.8; white-space:nowrap; }
+.person-name.duplicate-person-name {
+  background: #fdecea;
+  color: #842029;
+  font-weight: 700;
+  padding: 0 6px;
+  border-radius: 4px;
+}
+.duplicate-person-badge {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #842029;
+  background: #fdecea;
+  border: 1px solid #f5c2c7;
+  border-radius: 999px;
+  padding: 1px 8px;
+  line-height: 1.2;
+}
+.toggle-link {
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: #0d6efd;
+  user-select: none;
+}
+.load-title { font-weight: 600; }
+
+/* ✅ Textmarker-Optik für Statusworte */
+.marker-billed{
+  font-weight: 800;
+  background: #d9f7d9;      /* hellgrün wie Textmarker */
+  padding: 0 6px;
+  border-radius: 4px;
+}
+.marker-paid{
+  font-weight: 800;
+  background: #16a34a;      /* sattes Grün */
+  color: #ffffff;
+  padding: 0 6px;
+  border-radius: 4px;
+}
+
+/* ========================================================= */
+/* ================= Block-Farben ========================== */
+/* ========================================================= */
+.tandem-seat {
+  --tandem-bg:#e8f1ff;
+  --tandem-color:#0d6efd;
+  background: var(--tandem-bg) !important;
+  border-left: 6px solid var(--tandem-color) !important;
+}
+.tandem-seat-1 { --tandem-bg:#e8f1ff; --tandem-color:#6aa8ff; }
+.tandem-seat-2 { --tandem-bg:#e9f9e9; --tandem-color:#7acb7a; }
+.tandem-seat-3 { --tandem-bg:#fff7e0; --tandem-color:#e6c463; }
+.tandem-seat-4 { --tandem-bg:#ffece5; --tandem-color:#e6a48c; }
+.tandem-seat-5 { --tandem-bg:#f3e8ff; --tandem-color:#b79ce6; }
+.tandem-seat-6 { --tandem-bg:#e7fbff; --tandem-color:#6fd3e6; }
+.tandem-seat-7 { --tandem-bg:#f0ffe8; --tandem-color:#9ad36f; }
+.tandem-seat-8 { --tandem-bg:#fff0f7; --tandem-color:#e6a1c4; }
+.tandem-seat-9 { --tandem-bg:#f7f7ff; --tandem-color:#9aa8ff; }
+.tandem-seat-10 { --tandem-bg:#fff6e8; --tandem-color:#e6b26f; }
+
+.instruction-seat {
+  --instr-bg:#fff7e0;
+  --instr-color:#e6c463;
+  background: var(--instr-bg) !important;
+  border-left: 6px solid var(--instr-color) !important;
+}
+.instruction-seat-1 { --instr-bg:#fff7e0; --instr-color:#e6c463; }
+.instruction-seat-2 { --instr-bg:#fff2c7; --instr-color:#e0b84e; }
+.instruction-seat-3 { --instr-bg:#fffbe8; --instr-color:#d6c86a; }
+.instruction-seat-4 { --instr-bg:#fff3d9; --instr-color:#d9a84e; }
+.instruction-seat-5 { --instr-bg:#fff8cc; --instr-color:#d1b100; }
+.instruction-seat-6 { --instr-bg:#f0f6ff; --instr-color:#6aa8ff; }
+.instruction-seat-7 { --instr-bg:#eef9f0; --instr-color:#6fbf8a; }
+.instruction-seat-8 { --instr-bg:#fdf1f7; --instr-color:#e6a1c4; }
+.instruction-seat-9 { --instr-bg:#f6f6f6; --instr-color:#9aa0a6; }
+.instruction-seat-10 { --instr-bg:#fef6e8; --instr-color:#e6b26f; }
+
+/* ========================================================= */
+/* ================= Mehrfachauswahl ======================= */
+/* ========================================================= */
+.person-select-mode .person-block {
+  cursor: pointer;
+}
+.person-selected {
+  outline: 2px solid rgba(13,110,253,0.90);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 2px rgba(13,110,253,0.15);
+}
+.person-selected::after {
+  content: "✓";
+  font-weight: 900;
+  font-size: 0.85rem;
+  color: rgba(13,110,253,0.95);
+  margin-left: 8px;
+}
+
+/* ========================================================= */
+/* ================= Split-View Layout ===================== */
+/* ========================================================= */
+#load-view-root[data-view="split"] {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: calc(100vh - 120px);
+  overflow: hidden;
+}
+
+/* Linke Seite: Liste */
+#load-view-root[data-view="split"] #list-pane {
+  flex: 0 0 auto;     /* wichtig: keine feste Basis erzwingen */
+  width: 60%;         /* Startbreite (statt flex-basis) */
+  min-width: 320px;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+
+/* Rechte Seite: Editor */
+#load-view-root[data-view="split"] #editor-pane {
+    flex: 1 0 0;          /* ✅ darf NICHT selbst zurückskalieren */
+    min-width: 600px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Trennlinie */
+#load-view-root[data-view="split"] #split-divider {
+  width: 6px;
+  background: #dee2e6;
+  cursor: col-resize;
+  flex: 0 0 6px;
+}
+
+/* ========================================================= */
+/* TEMP: harte Absicherung – Editor sichtbar machen */
+/* NUR ZUM TESTEN */
+/* ========================================================= */
+#editor-pane {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+</style>
+
+
+<!-- ================= Ausgabeblock 2) ================= -->
+
+<div class="container-fluid">
+
+{% set archive_period = archive_period|default(request.args.get('period', 'all')) %}
+{% set archive_from = archive_from|default(request.args.get('from', '')) %}
+{% set archive_to = archive_to|default(request.args.get('to', '')) %}
+{% set kw = date.today().isocalendar()[1] %}
+{% set year_now = date.today().year %}
+
+<!-- ================= HEADER MIT AKTION (inkl. Split-View) ================= -->
+<div class="load-list-header">
+  <!-- Linke Seite: Titel + Aktiv / Archiv -->
+  <div class="d-flex align-items-center gap-2">
+    <h4 class="mb-0">
+      <i class="bi bi-list-ul"></i> Loads
+    </h4>
+
+    <div class="btn-group ms-3" role="group" aria-label="Load Ansicht">
+
+      {% if is_split_view %}
+        <!-- ✅ Split-View: Aktiv / Archiv bleibt im Split-View
+             ✅ edit wird mitgenommen, damit der Editor rechts bestehen bleibt -->
+        <a href="{{ url_for('load.split_view', show='active', edit=edit) }}"
+           class="btn btn-sm {% if show != 'archive' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+          Aktiv
+        </a>
+        <a href="{{ url_for('load.split_view', show='archive', edit=edit, period=archive_period, from=archive_from, to=archive_to) }}"
+           class="btn btn-sm {% if show == 'archive' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+          Archiv
+        </a>
+      {% else %}
+        <!-- ✅ Listen-View: Aktiv / Archiv bleibt Liste -->
+        <a href="{{ url_for('load.list_loads', show='active') }}"
+           class="btn btn-sm {% if show != 'archive' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+          Aktiv
+        </a>
+        <a href="{{ url_for('load.list_loads', show='archive', period=archive_period, from=archive_from, to=archive_to) }}"
+           class="btn btn-sm {% if show == 'archive' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+          Archiv
+        </a>
+      {% endif %}
+
+    </div>
+  </div>
+
+  <!-- Rechte Seite: Split-View + Mehrfachauswahl + Neuer Load -->
+  <div class="d-flex align-items-center gap-2">
+
+    <!-- 🟦 Split-View ein-/ausblenden -->
+    {% if is_split_view %}
+      <a id="toggle-split-view"
+         href="{{ url_for('load.list_loads', show=show, period=archive_period, from=archive_from, to=archive_to) }}"
+         class="btn btn-outline-primary">
+        <<< Split‑View <<<
+      </a>
+    {% else %}
+      <a id="toggle-split-view"
+         href="{{ url_for('load.split_view', show=show, period=archive_period, from=archive_from, to=archive_to) }}"
+         class="btn btn-outline-primary">
+        >>> Split‑View >>>
+      </a>
+    {% endif %}
+
+	<!-- ✅ REPARATUR: Mehrfachauswahl ist jetzt immer aktiv
+	<button type="button"
+			id="toggle_select_mode"
+			class="btn btn-warning"
+			title="Mehrfachauswahl aktivieren/deaktivieren">
+	  <i class="bi bi-check2-square"></i> Mehrfachauswahl
+	</button>
+	-->
+
+    <!-- Markierung löschen -->
+    <button type="button"
+            id="clear_selection"
+            class="btn btn-outline-secondary"
+            title="Alle Markierungen entfernen">
+      <i class="bi bi-x-lg"></i>
+    </button>
+
+<!-- Neuer Load -->
+{% if is_split_view %}
+
+  {% if default_airfield_id and default_aircraft_id %}
+    <form method="POST"
+          action="{{ url_for('load.new_load') }}"
+          class="d-inline">
+
+      <input type="hidden" name="return_to" value="split">
+      <input type="hidden" name="show" value="active">
+
+      <!-- Pflicht-Defaults -->
+      <input type="hidden" name="airfield_id" value="{{ default_airfield_id }}">
+      <input type="hidden" name="aircraft_id" value="{{ default_aircraft_id }}">
+
+      <!-- sinnvolle Defaults (editierbar im Editor) -->
+      <input type="hidden" name="height_m" value="3000">
+
+      <button type="submit"
+              class="btn btn-success"
+              title="Neuen Load anlegen (alle Werte rechts editierbar)">
+        <i class="bi bi-plus-circle"></i> Neuer Load
+      </button>
+    </form>
+
+  {% else %}
+    <button class="btn btn-success" disabled
+            title="Kein Standard‑Flugplatz oder Flugzeug definiert">
+      <i class="bi bi-plus-circle"></i> Neuer Load
+    </button>
+  {% endif %}
+
+{% else %}
+  <a href="{{ url_for('load.list_loads', show=show, new=1) }}"
+     class="btn btn-success">
+    <i class="bi bi-plus-circle"></i> Neuer Load
+  </a>
+{% endif %}
+
+
+  </div>
+</div>
+
+{% if show == 'archive' %}
+<div class="card mb-2">
+  <div class="card-body py-2">
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+      <span class="small text-muted">Zeitraum:</span>
+
+      {% if is_split_view %}
+      <a class="btn btn-sm {% if archive_period == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+         href="{{ url_for('load.split_view', show='archive', edit=edit, period='all') }}">Alle</a>
+      <a class="btn btn-sm {% if archive_period == 'today' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+         href="{{ url_for('load.split_view', show='archive', edit=edit, period='today') }}">Heute</a>
+      <a class="btn btn-sm {% if archive_period == 'week' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+         href="{{ url_for('load.split_view', show='archive', edit=edit, period='week') }}">Woche (KW {{ '%02d'|format(kw) }})</a>
+      <a class="btn btn-sm {% if archive_period == 'month' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+         href="{{ url_for('load.split_view', show='archive', edit=edit, period='month') }}">Monat</a>
+      <a class="btn btn-sm {% if archive_period == 'year' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+         href="{{ url_for('load.split_view', show='archive', edit=edit, period='year') }}">Jahr {{ year_now }}</a>
+      {% else %}
+      <a class="btn btn-sm {% if archive_period == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+         href="{{ url_for('load.list_loads', show='archive', period='all') }}">Alle</a>
+      <a class="btn btn-sm {% if archive_period == 'today' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+         href="{{ url_for('load.list_loads', show='archive', period='today') }}">Heute</a>
+      <a class="btn btn-sm {% if archive_period == 'week' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+         href="{{ url_for('load.list_loads', show='archive', period='week') }}">Woche (KW {{ '%02d'|format(kw) }})</a>
+      <a class="btn btn-sm {% if archive_period == 'month' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+         href="{{ url_for('load.list_loads', show='archive', period='month') }}">Monat</a>
+      <a class="btn btn-sm {% if archive_period == 'year' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+         href="{{ url_for('load.list_loads', show='archive', period='year') }}">Jahr {{ year_now }}</a>
+      {% endif %}
+    </div>
+
+    <div class="d-flex flex-wrap align-items-end gap-2">
+      {% if is_split_view %}
+      <form method="get" action="{{ url_for('load.split_view') }}" class="d-flex flex-wrap align-items-end gap-2">
+        <input type="hidden" name="show" value="archive">
+        <input type="hidden" name="period" value="range">
+        {% if edit %}<input type="hidden" name="edit" value="{{ edit }}">{% endif %}
+      {% else %}
+      <form method="get" action="{{ url_for('load.list_loads') }}" class="d-flex flex-wrap align-items-end gap-2">
+        <input type="hidden" name="show" value="archive">
+        <input type="hidden" name="period" value="range">
+      {% endif %}
+        <div>
+          <label class="form-label mb-0 small text-muted">von</label>
+          <input type="date" class="form-control form-control-sm" name="from" value="{{ archive_from }}">
+        </div>
+        <div>
+          <label class="form-label mb-0 small text-muted">bis</label>
+          <input type="date" class="form-control form-control-sm" name="to" value="{{ archive_to }}">
+        </div>
+        <div>
+          <button type="submit" class="btn btn-sm btn-outline-secondary">Anwenden</button>
+        </div>
+      </form>
+
+      <div class="ms-auto d-flex flex-wrap gap-2">
+        <a class="btn btn-sm btn-outline-danger"
+           href="{{ url_for('load.archive_export_pdf', period=archive_period, from=archive_from, to=archive_to) }}"
+           target="_blank" rel="noopener">
+          <i class="bi bi-printer"></i> Druck / PDF
+        </a>
+        <a class="btn btn-sm btn-outline-success"
+           href="{{ url_for('load.archive_export_xlsx', period=archive_period, from=archive_from, to=archive_to) }}">
+          <i class="bi bi-file-earmark-excel"></i> Excel
+        </a>
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{{ url_for('load.archive_export_csv', period=archive_period, from=archive_from, to=archive_to) }}">
+          <i class="bi bi-filetype-csv"></i> CSV
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Hinweis Mehrfachauswahl -->
+<div id="multi_select_hint"
+     class="alert alert-info py-2 px-3 mt-2 d-none"
+     style="font-size:0.9rem;">
+  <strong>Mehrfachauswahl aktiv:</strong>
+  Personen anklicken (✓) → <em>Auswahl kopieren</em> oder als <em>Paket ziehen</em>.
+</div>
+
+
+<!-- ================= Ausgabeblock 3) ================= -->
+
+<!-- ================= LISTE ================= -->
+<div class="load-list-container">
+  <div class="table-responsive">
+    <table class="table table-striped table-hover align-middle load-table">
+      <thead>
+        <tr>
+          <th class="col-load resizable">Load / Datum</th>
+          <th class="col-time resizable">Zeit</th>
+          <th class="col-height resizable">Höhe</th>
+          <!-- ✅ Flugplatz / Flugzeug mit Zeilenumbruch -->
+          <th class="resizable col-place">
+            Flugplatz<br>Flugzeug
+          </th>
+          <th class="resizable">Springer</th>
+          <th class="col-weight resizable">kg</th>
+          <!-- ✅ Aktionen -->
+          <th class="col-action">Aktion</th>
+        </tr>
+      </thead>
+
+      <tbody>
+      {% for l in loads %}
+        {% set weekday_map = { 'Mon':'Mo','Tue':'Di','Wed':'Mi','Thu':'Do','Fri':'Fr','Sat':'Sa','Sun':'So' } %}
+        {% set weekday_de = weekday_map.get(l.created_at.strftime('%a')) %}
+        {% set blocks = l.blocks %}
+        {% set load_uid = 'load_' ~ l.id %}
+        {% set dup = namespace(pid_counts={}) %}
+        {% for de in l.entries %}
+          {% if de.person_id %}
+            {% set pid_key = de.person_id|string %}
+            {% set _ = dup.pid_counts.update({ pid_key: dup.pid_counts.get(pid_key, 0) + 1 }) %}
+          {% endif %}
+        {% endfor %}
+
+        <tr data-load-id="{{ l.id }}">
+          <!-- Load -->
+		  <td>
+			<strong>
+			  Load {{ l.load_number }}
+
+			  {# ================= DISPLAY-MODE (öffentliche Anzeige) ================= #}
+			  {% if display_mode and l.fuel_required %}
+				<!-- Desktop-Display: Icon neben Load-Nr, auf Mobile ausgeblendet -->
+				<i class="bi bi-fuel-pump-fill text-danger ms-1 fs-5 d-none d-sm-inline"></i>
+			  {% endif %}
+
+			  {# ================= LISTE / SPLIT-VIEW (Planung) ================= #}
+			  {% if not display_mode and l.fuel_required %}
+				<!-- Liste & Split-View: Icon immer sichtbar -->
+				<i class="bi bi-fuel-pump-fill text-danger ms-1 fs-5"></i>
+			  {% endif %}
+			</strong>
+			<br>
+
+		    {% set display_dt =
+			     l.actual_time
+			     or l.scheduled_time
+			     or l.created_at
+		    %}
+
+		    {{ weekday_map.get(display_dt.strftime('%a')) }},
+		    {{ display_dt.strftime("%d.%m.%Y") }}
+		  </td>
+
+          <!-- Zeit und Tanken -->
+		  <td>
+		    {% if l.actual_time %}
+			  {{ l.actual_time.strftime("%H:%M") }}
+		    {% elif l.scheduled_time %}
+			  {{ l.scheduled_time.strftime("%H:%M") }}
+		    {% else %}
+		  	  –
+		    {% endif %}
+
+		    {% if display_mode and l.fuel_required %}
+			  <!-- Mobile: Tankstelle unter der Uhrzeit -->
+			  <div class="d-block d-sm-none mt-1">
+			    <i class="bi bi-fuel-pump-fill text-danger fs-1"></i>
+			  </div>
+		    {% endif %}
+		  </td>
+
+          <!-- Höhe -->
+          <td>{{ l.height_m }} m</td>
+
+          <!-- ✅ Flugplatz / Flugzeug -->
+          <td class="col-place">
+            {{ l.airfield.name }}<br>
+            {{ l.aircraft.type }} –
+            <strong>{{ l.aircraft.registration }}</strong>
+          </td>
+
+          <!-- Springer -->
+          <td>
+            <div id="{{ load_uid }}_persons" data-block-scope="load">
+              {% for e in l.entries %}
+                {% set css_class = "" %}
+                {% for b in blocks %}
+                  {% if b.type == "block" and e.id in b.entry_ids %}
+                    {% if not css_class %}
+                      {% set css_class = b.css_class %}
+                    {% endif %}
+                  {% endif %}
+                {% endfor %}
+                {% if (not css_class) and e.status_code in ["Schüler", "Schüler Ek 1", "Schüler Ek 2", "Schüler GK 6", "SCHUELER-AFF-1", "SCHUELER-AFF-2", "Schueler-Aff-1", "Schueler-Aff-2"] %}
+                  {% set css_class = "instruction-seat instruction-seat-1" %}
+                {% endif %}
+
+                {% set payment_class = "" %}
+                {% if e.paid %}
+                  {% set payment_class = "person-paid" %}
+                {% elif e.billed %}
+                  {% set payment_class = "person-billed" %}
+                {% endif %}
+                {% set is_duplicate_person = e.person_id and dup.pid_counts.get(e.person_id|string, 0) > 1 %}
+
+				<div class="person-block {{ css_class }} {{ payment_class }}"
+					 data-block-entry="1"
+					 data-seat="{{ e.seat }}"
+					 data-status="{{ e.status_code }}"
+					 data-person-id="{{ e.person_id }}"
+					 data-person-name="{{ e.person.full_name }}"
+					 data-height="{{ e.height_m }}"
+					 data-gear-rental="{{ 1 if e.gear_rental else 0 }}"
+					 draggable="true">
+                  <div>
+                    <span class="person-name {% if is_duplicate_person %}duplicate-person-name{% endif %}">{{ e.person.full_name }}</span>
+                    {% if is_duplicate_person %}
+                      <div>
+                        <span class="duplicate-person-badge">Person mehrfach eingetragen</span>
+                      </div>
+                    {% endif %}
+                    {% if e.follow_load_warning %}
+                      <div class="follow-load-warning">Achtung Folgeload</div>
+                    {% endif %}
+                  </div>
+					<span class="person-meta text-end">
+					  <span class="person-status-mini d-block">{{ e.status_code }}</span>
+
+					  <span class="person-meta-line d-block">
+						{{ e.height_m }} m
+						{% if e.paid %}
+						 · <span class="marker-paid">bezahlt</span>
+						{% elif e.billed %}
+						 · <span class="marker-billed">abgerechnet</span>
+						{% endif %}
+					  </span>
+
+					  {% if e.gear_rental %}
+						<span class="person-meta-line d-block">
+						  Schirmmiete 🪂
+						</span>
+					  {% endif %}
+					</span>
+                </div>
+              {% endfor %}
+            </div>
+
+            {% if l.entries|length > 3 %}
+              <div class="toggle-link"
+                   onclick="togglePersons('{{ load_uid }}_persons', this)">
+                ▲ einklappen
+              </div>
+            {% endif %}
+          </td>
+
+          <!-- Gesamtgewicht -->
+          <td class="col-weight">
+            {{ "%.0f"|format(l.payload_sum_kg) }}
+          </td>
+
+          <!-- ✅ AKTION – GENAU EINE SPALTE -->
+          <td class="col-action text-center">
+            <!-- obere Aktionsreihe -->
+            <div class="action-row">
+              <a href="{{ url_for('load.edit_load', id=l.id) }}"
+                 class="btn btn-sm btn-outline-primary"
+                 title="Details anzeigen">
+                <i class="bi bi-eye"></i>
+              </a>
+
+				{% if (l.status != "completed") or session.get('is_admin') %}
+				  <form action="{{ url_for('load.time_now_action', id=l.id) }}"
+						method="POST"
+						class="d-inline">
+					{% if is_split_view %}
+					  <input type="hidden" name="return_to" value="split">
+					  <input type="hidden" name="show" value="{{ show }}">
+					  <input type="hidden" name="period" value="{{ archive_period }}">
+					  {% if archive_period == 'range' %}
+					  <input type="hidden" name="from" value="{{ archive_from }}">
+					  <input type="hidden" name="to" value="{{ archive_to }}">
+					  {% endif %}
+					{% endif %}
+					<button type="submit"
+							class="btn btn-sm btn-warning"
+							title="Zeit auf jetzt setzen (kein Abschluss)">
+					  <i class="bi bi-airplane"></i>
+					</button>
+				  </form>
+				{% endif %}
+
+              {% if is_split_view %}
+                <a href="{{ url_for('load.split_view', edit=l.id, show=show, period=archive_period, **({'from': archive_from, 'to': archive_to} if archive_period == 'range' else {})) }}"
+                   class="btn btn-sm btn-outline-secondary"
+                   title="Im Split-View bearbeiten">
+                  <i class="bi bi-pencil"></i>
+                </a>
+              {% else %}
+                <a href="{{ url_for('load.edit_load', id=l.id) }}"
+                   class="btn btn-sm btn-outline-secondary"
+                   title="Load bearbeiten">
+                  <i class="bi bi-pencil"></i>
+                </a>
+              {% endif %}
+            </div>
+
+            <!-- untere Aktionsreihe -->
+            <div class="action-row">
+              <button type="button"
+                      class="btn btn-sm btn-outline-secondary copy-load-btn"
+                      data-load-id="{{ l.id }}"
+                      title="Diesen Load ins Clipboard kopieren">
+                <i class="bi bi-clipboard"></i>
+              </button>
+
+              <button type="button"
+                      class="btn btn-sm btn-outline-secondary copy-selected-btn"
+                      data-load-id="{{ l.id }}"
+                      title="Markierte Personen ins Clipboard kopieren">
+                <i class="bi bi-clipboard-check"></i>
+              </button>
+
+              {% if (not l.has_paid_entries) and (not l.has_linked_invoice_items) and (session.get('is_admin') or (l.status != 'completed' and not l.has_billed_entries)) %}
+				<form action="{{ url_for('load.delete_load', id=l.id) }}"
+					  method="POST"
+					  class="d-inline"
+					  onsubmit="return confirm('Diesen Load wirklich löschen?');">
+				  {% if is_split_view %}
+					<input type="hidden" name="show" value="{{ show }}">
+					<input type="hidden" name="period" value="{{ archive_period }}">
+					{% if archive_period == 'range' %}
+					<input type="hidden" name="from" value="{{ archive_from }}">
+					<input type="hidden" name="to" value="{{ archive_to }}">
+					{% endif %}
+				  {% endif %}
+				  <button type="submit"
+						  class="btn btn-sm btn-outline-danger"
+						  title="Load löschen">
+					<i class="bi bi-trash"></i>
+				  </button>
+				</form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
+<!-- ================= Ausgabeblock 4) ================= -->
+
+<script>
+/* =========================================================
+ Spalten per Maus verschiebbar + Persistenz (Normal vs Split)
+ - Speichert Breiten getrennt je Modus
+ - Lädt passende Breiten beim Start und beim Umschalten
+========================================================= */
+(function () {
+  const root = document.getElementById("load-view-root");
+  const table = document.querySelector("table.load-table");
+  if (!root || !table) return;
+
+  // Nur resizable THs speichern (Aktion ist nicht resizable)
+  const getHeaders = () => Array.from(table.querySelectorAll("th.resizable"));
+
+  const KEY_NORMAL = "manifest_load_list_colwidths_normal_v1";
+  const KEY_SPLIT = "manifest_load_list_colwidths_split_v1";
+
+  function currentKey() {
+    return (root.dataset.view === "split") ? KEY_SPLIT : KEY_NORMAL;
+  }
+
+  function loadWidths() {
+    const ths = getHeaders();
+    if (!ths.length) return;
+
+    let saved = null;
+    try {
+      saved = JSON.parse(localStorage.getItem(currentKey()) || "null");
+    } catch (_) {
+      saved = null;
+    }
+    if (!saved || typeof saved !== "object") return;
+
+    ths.forEach((th, idx) => {
+      const w = saved[idx];
+      if (!w) return;
+      const px = (typeof w === "number") ? w : parseInt(String(w), 10);
+      if (!Number.isFinite(px) || px <= 0) return;
+      th.style.width = `${Math.round(px)}px`;
+    });
+  }
+
+  function saveWidths() {
+    const ths = getHeaders();
+    if (!ths.length) return;
+
+    const data = {};
+    ths.forEach((th, idx) => {
+      const px = Math.round(th.getBoundingClientRect().width);
+      data[idx] = px;
+    });
+    try {
+      localStorage.setItem(currentKey(), JSON.stringify(data));
+    } catch (_) {}
+  }
+
+  // --- Resize-Handler (wie vorher, aber mit Save am Ende) ---
+  getHeaders().forEach((th) => {
+    let startX = 0, startWidth = 0;
+
+    th.addEventListener("mousedown", (e) => {
+      // Nur am rechten Rand greifen (wie bisher)
+      if (e.offsetX < th.offsetWidth - 5) return;
+
+      startX = e.pageX;
+      startWidth = th.offsetWidth;
+
+      function onMove(ev) {
+        th.style.width = (startWidth + (ev.pageX - startX)) + "px";
+      }
+
+      function onUp() {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        saveWidths(); // ✅ Persistenz je Modus
+      }
+
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+  });
+
+  // --- Beim Laden: passende Breiten anwenden ---
+  loadWidths();
+
+  // --- Beim Umschalten Split-View: passende Breiten laden ---
+  const splitBtn = document.getElementById("toggle-split-view");
+  if (splitBtn) {
+    splitBtn.addEventListener("click", () => {
+      requestAnimationFrame(() => loadWidths());
+    });
+  }
+})();
+
+/* Personen ein-/ausklappen */
+function togglePersons(id, el) {
+  const box = document.getElementById(id);
+  const collapsed = box.style.display === "none";
+  box.style.display = collapsed ? "" : "none";
+  el.textContent = collapsed ? "▲ einklappen" : "▼ ausklappen";
+}
+
+<!-- ================= Ausgabeblock 5) ================= -->
+
+/* Clipboard Copy + Drag Payload */
+const CLIPBOARD_KEY = "manifest_load_clipboard_v1";
+
+function saveClipboard(payload) {
+  try {
+    localStorage.setItem(CLIPBOARD_KEY, JSON.stringify(payload));
+    return true;
+  } catch (e) {
+    console.warn("Clipboard speichern fehlgeschlagen:", e);
+    return false;
+  }
+}
+
+function collectLoadEntriesFromDom(loadId) {
+  const scope = document.querySelector(`.copy-load-btn[data-load-id="${loadId}"]`)?.closest("tr");
+  if (!scope) return [];
+  const persons = scope.querySelectorAll("[data-block-entry='1']");
+  const entries = [];
+  persons.forEach((el) => {
+    const personId = el.dataset.personId;
+    const status = el.dataset.status;
+    const height = parseInt(el.dataset.height || "0", 10);
+    const gearRental = __readGearRentalFromEl(el);
+    if (!personId || !status) return;
+    entries.push({
+      personId,
+      status,
+      height,
+      gear_rental: gearRental,
+      gearRental: gearRental,
+      personName: el.dataset.personName || ""
+    });
+  });
+  return entries;
+}
+
+function setDragPayload(ev, obj) {
+  const json = JSON.stringify(obj);
+  try { ev.dataTransfer.effectAllowed = "copy"; } catch (e) {}
+  try { ev.dataTransfer.setData("application/json", json); } catch (e) {}
+  try { ev.dataTransfer.setData("text/plain", json); } catch (e) {}
+}
+
+/* Copy kompletter Load */
+document.querySelectorAll(".copy-load-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const loadId = btn.dataset.loadId;
+    const entries = collectLoadEntriesFromDom(loadId);
+    if (!entries.length) {
+      alert("Keine Einträge gefunden.");
+      return;
+    }
+    const ok = saveClipboard({ source: "list", loadId, entries });
+    if (ok) {
+      alert("Load ins Clipboard kopiert. Jetzt im Editor „Aus Clipboard einfügen“ nutzen.");
+    } else {
+      alert("Clipboard konnte nicht beschrieben werden (Browser/Storage blockiert).");
+    }
+  });
+});
+
+/* ========================================================= */
+/* Mehrfachauswahl + Copy Auswahl + Paket-Drag */
+/* ========================================================= */
+// ✅ REPARATUR: Mehrfachauswahl immer aktiv
+let __multiSelectEnabled = true;
+document.body.classList.add("person-select-mode");
+
+function __readGearRentalFromEl(el) {
+  // dataset.gearRental kommt von data-gear-rental="0|1"
+  // robust: akzeptiere auch gear_rental (falls jemand so benannt hat)
+  const raw =
+    (el && el.dataset && (el.dataset.gearRental ?? el.dataset.gear_rental ?? el.dataset.gearRentalInitial)) ?? "0";
+  return String(raw) === "1" || String(raw).toLowerCase() === "true";
+}
+
+const __btnToggleSelect = document.getElementById("toggle_select_mode");
+if (__btnToggleSelect) {
+  __btnToggleSelect.addEventListener("click", () => {
+    __multiSelectEnabled = !__multiSelectEnabled;
+    document.body.classList.toggle("person-select-mode", __multiSelectEnabled);
+
+    if (!__multiSelectEnabled) {
+      document.querySelectorAll(".person-selected")
+        .forEach(x => x.classList.remove("person-selected"));
+    }
+
+    __updateMultiSelectHint();
+  });
+}
+
+const __btnClearSel = document.getElementById("clear_selection");
+if (__btnClearSel) {
+  __btnClearSel.addEventListener("click", () => {
+    document.querySelectorAll(".person-selected")
+      .forEach(x => x.classList.remove("person-selected"));
+  });
+}
+
+/* Auswahl per Klick (load-uebergreifend im MultiSelect) */
+document.querySelectorAll(".person-block").forEach((el) => {
+  el.addEventListener("click", (ev) => {
+    if (!__multiSelectEnabled) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+
+    el.classList.toggle("person-selected");
+  });
+});
+
+/* Copy Auswahl (markierte Personen) */
+document.querySelectorAll(".copy-selected-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const selected = document.querySelectorAll(".person-block.person-selected[data-block-entry='1']");
+    if (!selected.length) {
+      alert("Keine Personen markiert. Mehrfachauswahl aktivieren und Personen anklicken.");
+      return;
+    }
+
+    const entries = [];
+    selected.forEach((el) => {
+      const personId = el.dataset.personId;
+      const status = el.dataset.status;
+      const height = parseInt(el.dataset.height || "0", 10);
+      if (!personId || !status) return;
+
+      const gearRental = __readGearRentalFromEl(el);
+
+      entries.push({
+        personId,
+        status,
+        height,
+        gear_rental: gearRental,
+        gearRental: gearRental,
+        personName: el.dataset.personName || ""
+      });
+    });
+
+    if (!entries.length) {
+      alert("Markierte Personen konnten nicht gelesen werden.");
+      return;
+    }
+
+    const ok = saveClipboard({ source: "list-selected", entries });
+    if (ok) {
+      alert("Auswahl ins Clipboard kopiert. Jetzt im Editor „Aus Clipboard einfügen“ nutzen.");
+    } else {
+      alert("Clipboard konnte nicht beschrieben werden (Browser/Storage blockiert).");
+    }
+  });
+});
+
+/* EINZIGER Dragstart-Handler: Single ODER load-uebergreifendes Paket */
+document.querySelectorAll(".person-block[draggable='true']").forEach((el) => {
+  el.addEventListener("dragstart", (ev) => {
+    // Paket wenn MultiSelect aktiv und es markierte Eintraege gibt.
+    if (__multiSelectEnabled) {
+      const selected = document.querySelectorAll(".person-block.person-selected[data-block-entry='1']");
+      if (selected.length) {
+        const entries = [];
+        selected.forEach((s) => {
+          const personId = s.dataset.personId;
+          const status = s.dataset.status;
+          const height = parseInt(s.dataset.height || "0", 10);
+          if (!personId || !status) return;
+
+          const gearRental = __readGearRentalFromEl(s);
+
+          entries.push({
+            personId,
+            status,
+            height,
+            gear_rental: gearRental,
+            gearRental: gearRental,
+            personName: s.dataset.personName || ""
+          });
+        });
+
+        if (entries.length) {
+          setDragPayload(ev, { source: "list-selected", entries });
+          return;
+        }
+      }
+    }
+
+    // Single
+    const gearRental = __readGearRentalFromEl(el);
+
+    const payload = {
+      personId: el.dataset.personId,
+      status: el.dataset.status,
+      height: parseInt(el.dataset.height || "0", 10),
+      gear_rental: gearRental,
+      gearRental: gearRental,
+      personName: el.dataset.personName || ""
+    };
+
+    setDragPayload(ev, payload);
+  });
+});
+
+/* Hinweis für Mehrfachauswahl */
+function __updateMultiSelectHint() {
+  const hint = document.getElementById("multi_select_hint");
+  if (!hint) return;
+  const active = document.body.classList.contains("person-select-mode");
+  hint.classList.toggle("d-none", !active);
+}
+
+(function () {
+  const toggleBtn = document.getElementById("toggle_select_mode");
+  if (!toggleBtn) return;
+  __updateMultiSelectHint();
+  toggleBtn.addEventListener("click", __updateMultiSelectHint);
+})();
+</script>
+
+<!-- READ-ONLY Block-Färbung für Liste -->
+<script src="{{ url_for('static', filename='load/load_blocks_view.js') }}" defer></script>
+
+</div> <!-- /container-fluid -->

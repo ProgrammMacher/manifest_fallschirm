@@ -1,0 +1,251 @@
+/* ============================================================
+   GLOBAL BASIS
+   ============================================================ */
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    /* WICHTIG:
+       KEIN display:flex
+       KEIN height:100vh
+       -> sonst werden Bootstrap Grid & PWA-Kacheln zerstört
+    */
+}
+
+/* ============================================================
+   LEGACY SIDEBAR / CONTENT LAYOUT
+   (nur für alte / spezielle Seiten gedacht)
+   ============================================================ */
+
+.sidebar {
+    width: 220px;
+    background: #2c3e50;
+    color: white;
+    height: 100%;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.sidebar h2 {
+    margin-top: 0;
+}
+
+.sidebar ul {
+    list-style: none;
+    padding: 0;
+}
+
+.sidebar li {
+    padding: 10px 0;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.sidebar li:hover {
+    color: #1abc9c;
+}
+
+.content {
+    padding: 20px;
+    flex-grow: 1;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+/* ============================================================
+   HINWEIS
+   ============================================================ */
+/*
+Diese Datei darf KEINE Layout-Grundannahmen mehr treffen
+(z.B. body als Flex-Container).
+
+PWA-Kacheln + Bootstrap-Grid funktionieren nur,
+wenn body normal fließt.
+
+Kachel-Styles (ios-icon, tile-*, app-tile)
+gehören NICHT hier hinein, sondern in:
+  static/css/pwa_tiles.css
+*/
+
+/* ============================================================
+   FORCE PWA TILE LAYOUT (OVERRIDE)
+   ============================================================ */
+
+/* Body darf niemals Flex sein */
+body {
+    display: block !important;
+    height: auto !important;
+}
+
+/* Kachel-Link darf kein normaler Textlink sein */
+a.app-tile {
+    display: block !important;
+    text-decoration: none !important;
+    color: inherit !important;
+}
+
+/* Icon-Container MUSS Größe behalten */
+.app-icon,
+.ios-icon {
+    width: 72px !important;
+    height: 72px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+/* Icons dürfen NICHT blau sein */
+.ios-icon i,
+.pwa-parachute-icon svg path {
+    color: #fff !important;
+    fill: #fff !important;
+    stroke: #fff !important;
+}
+
+/* Sicherstellen, dass PWA-Kacheln IMMER korrekt gerendert werden */
+.app-grid a.app-tile {
+    display: block;
+}
+
+.app-grid .app-icon {
+    width: 72px;
+    height: 72px;
+}
+
+/* ============================================================
+   PWA TILE COLORS (aus home_alt.html)
+   ============================================================ */
+
+.tile-blue {
+    background: linear-gradient(145deg, #4da3ff, #1c7dff);
+}
+
+.tile-green {
+    background: linear-gradient(145deg, #5ed18a, #2fb96a);
+}
+
+.tile-orange {
+    background: linear-gradient(145deg, #ffb066, #ff8a33);
+}
+
+.tile-purple {
+    background: linear-gradient(145deg, #c38bff, #a05bff);
+}
+
+.tile-red {
+    background: linear-gradient(145deg, #ff7b7b, #ff4c4c);
+}
+
+.tile-teal {
+    background: linear-gradient(145deg, #5cd4d4, #2fbcbc);
+}
+
+.tile-yellow {
+    background: linear-gradient(145deg, #ffe27a, #ffcf3a);
+}
+
+/* ============================================================
+   PWA TILE COLORS – FORCE OVERRIDE
+   ============================================================ */
+
+.app-icon.tile-blue    { background: linear-gradient(145deg, #4da3ff, #1c7dff) !important; }
+.app-icon.tile-green   { background: linear-gradient(145deg, #5ed18a, #2fb96a) !important; }
+.app-icon.tile-orange  { background: linear-gradient(145deg, #ffb066, #ff8a33) !important; }
+.app-icon.tile-purple  { background: linear-gradient(145deg, #c38bff, #a05bff) !important; }
+.app-icon.tile-red     { background: linear-gradient(145deg, #ff7b7b, #ff4c4c) !important; }
+.app-icon.tile-teal    { background: linear-gradient(145deg, #5cd4d4, #2fbcbc) !important; }
+.app-icon.tile-yellow  { background: linear-gradient(145deg, #ffe27a, #ffcf3a) !important; }
+
+/* Icons IMMER groß und weiß */
+.app-icon i {
+    font-size: 2rem !important;
+    color: #ffffff !important;
+}
+
+/* ============================================================
+   PWA TILE FEINSCHLIFF
+   ============================================================ */
+
+/* Kachel-Link immer vertikal (Icon oben, Text unten) */
+a.app-tile {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 6px;
+}
+
+/* Kachelform: iOS-Style, nicht eckig */
+.ios-icon {
+    border-radius: 22px !important;
+}
+
+/* Text IMMER unter der Kachel */
+.app-label {
+    display: block;
+    text-align: center;
+    margin-top: 4px;
+}
+
+/* ----------------------------
+   Farb-Feintuning
+   ---------------------------- */
+
+/* Datenbank: neutral grau */
+.app-icon.tile-db {
+    background: linear-gradient(145deg, #9aa0a6, #6b7280) !important;
+}
+
+/* Datensicherung: orange */
+.app-icon.tile-backup {
+    background: linear-gradient(145deg, #ffb066, #ff8a33) !important;
+}
+
+/* Logout: kräftig rot */
+.app-icon.tile-logout {
+    background: linear-gradient(145deg, #ff7b7b, #ff4c4c) !important;
+}
+
+/* ============================================================
+   PWA – Loads Icon (Fallschirm)
+   Nur für die Kachel, nicht Sidebar
+   ============================================================ */
+
+.pwa-parachute-icon {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ✅ SVG bewusst größer, damit es die Kachel optisch füllt */
+.pwa-parachute-icon svg {
+  width: 68px;          /* vorher 65px → minimal größer */
+  height: 68px;
+  margin: 0 !important;
+  display: block;
+}
+
+/* ✅ Pfade sauber weiß */
+.pwa-parachute-icon svg path {
+  fill: white;
+}
+
+/* ✅ Leinen explizit erzwingen */
+.pwa-parachute-icon svg path[stroke] {
+  stroke: white;
+}
+
+/* ✅ Sicherstellen, dass der Kachel-Container NICHT verschiebt */
+.app-icon .pwa-parachute-icon {
+  margin: 0 auto;
+}
+/* ============================================================
+   PWA – Fallschirm: Leinen dünner machen
+   ============================================================ */
+
+/* Nur Linien (paths mit stroke) betreffen */
+.pwa-parachute-icon svg path[stroke] {
+  stroke-width: 1px;   /* vorher ~1.4 → sichtbar dünner */
+}

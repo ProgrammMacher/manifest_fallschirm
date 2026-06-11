@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Import – Vorschau{% endblock %}
+{% block header %}Import – Vorschau{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="fw-bold">Import‑Vorschau</h4>
+
+    <div class="btn-group">
+        <a href="{{ url_for('import_preview.preview', filter='all') }}" 
+           class="btn btn-outline-secondary btn-sm {% if filter_mode == 'all' %}active{% endif %}">
+            Alle
+        </a>
+
+        <a href="{{ url_for('import_preview.preview', filter='errors') }}" 
+           class="btn btn-outline-danger btn-sm {% if filter_mode == 'errors' %}active{% endif %}">
+            Fehler
+        </a>
+
+        <a href="{{ url_for('import_preview.preview', filter='duplicates') }}" 
+           class="btn btn-outline-warning btn-sm {% if filter_mode == 'duplicates' %}active{% endif %}">
+            Doubletten
+        </a>
+
+        <a href="{{ url_for('import_preview.preview', filter='valid') }}" 
+           class="btn btn-outline-success btn-sm {% if filter_mode == 'valid' %}active{% endif %}">
+            Gültige
+        </a>
+    </div>
+</div>
+
+{% if rows|length == 0 %}
+
+<div class="alert alert-info">
+    Keine Daten vorhanden. Bitte eine Datei hochladen.
+</div>
+
+<a href="{{ url_for('import_preview.index') }}" class="btn btn-primary">
+    Neue Datei wählen
+</a>
+
+{% else %}
+
+<form method="post" action="{{ url_for('import_execute.execute') }}">
+
+<div class="table-responsive">
+<table class="table table-hover table-bordered table-sm align-middle">
+    <thead class="table-light">
+        <tr>
+            <th>Excel</th>
+            <th>Vorname</th>
+            <th>Nachname</th>
+            <th>Telefon</th>
+            <th>E‑Mail</th>
+            <th>Gewicht</th>
+            <th>Größe</th>
+            <th>Geburtstag</th>
+            <th>Tandem</th>
+            <th>Mitglied</th>
+            <th>Adresse</th>
+            <th>Kommentar</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        {% for row in rows %}
+        <tr class="
+            {% if row.is_duplicate %}table-warning
+            {% elif not row.is_valid %}table-danger
+            {% endif %}
+        ">
+
+            <!-- Excel-Spalte -->
+            <td>
+                <span class="badge bg-secondary">Spalte {{ row.column }}</span>
+            </td>
+
+            <!-- Basisdaten -->
+            <td>{{ row.data.first_name or "–" }}</td>
+            <td>{{ row.data.last_name or "–" }}</td>
+            <td>{{ row.data.phone or "–" }}</td>
+            <td>{{ row.data.email or "–" }}</td>
+
+            <!-- Gewicht / Größe -->
+            <td>{{ row.data.weight_kg or "–" }}</td>
+            <td>{{ row.data.height_cm or "–" }}</td>
+
+            <!-- Geburtstag -->
+            <td>
+                {% if row.data.birthdate %}
+                    {% if row.data.birthdate.__class__.__name__ == "date" %}
+                        {{ row.data.birthdate.strftime('%d.%m.%Y') }}
+                    {% else %}
+                        {{ row.data.birthdate }}
+                    {% endif %}
+                {% else %}
+                    –
+                {% endif %}
+            </td>
+
+            <!-- Tandem -->
+            <td>
+                {% if row.data.is_tandem_guest %}
+                    <span class="badge bg-primary">Ja</span>
+                {% else %}
+                    <span class="badge bg-secondary">Nein</span>
+                {% endif %}
+            </td>
+
+            <!-- Mitglied -->
+            <td>
+                {% if row.data.is_member %}
+                    <span class="badge bg-success">Ja</span>
+                {% else %}
+                    <span class="badge bg-secondary">Nein</span>
+                {% endif %}
+            </td>
+
+            <!-- Adresse -->
+            <td>
+                {% if row.data.street_and_number %}
+                    {{ row.data.street_and_number }}<br>
+                    {{ row.data.zip_code }} {{ row.data.city }}
+                {% else %}
+                    –
+                {% endif %}
+            </td>
+
+            <!-- Kommentar -->
+            <td>
+                {% if row.data.comment %}
+                    <span class="badge bg-info text-dark">{{ row.data.comment }}</span>
+                {% else %}
+                    –
+                {% endif %}
+            </td>
+
+            <!-- Status -->
+            <td>
+                {% if not row.is_valid %}
+                    <span class="badge bg-danger">
+                        Fehler: {{ row.error_reason }}
+                    </span>
+
+                {% elif row.is_duplicate %}
+                    <span class="badge bg-warning text-dark">
+                        Doublette – bestehende Person wird ergänzt
+                    </span>
+
+                {% else %}
+                    <span class="badge bg-success">OK</span>
+                {% endif %}
+            </td>
+
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+<!-- ACTIONS -->
+<div class="mt-3 d-flex justify-content-between">
+
+    <a href="{{ url_for('import_preview.index') }}" class="btn btn-secondary">
+        <i class="bi bi-arrow-left"></i> Neue Datei wählen
+    </a>
+
+    <button type="submit" class="btn btn-primary">
+        <i class="bi bi-check2-circle"></i> Import ausführen
+    </button>
+
+</div>
+
+</form>
+
+{% endif %}
+
+{% endblock %}

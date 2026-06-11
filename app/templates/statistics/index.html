@@ -1,0 +1,1019 @@
+{% extends "base.html" %}
+{% block title %}Statistik{% endblock %}
+{% block header %}<i class="bi bi-bar-chart-line-fill"></i> Statistik{% endblock %}
+
+{% block content %}
+
+<style>
+.stats-status-color-cell {
+  font-weight: 600;
+}
+</style>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <h5 class="fw-bold mb-3">Filter (nur durchgeführte Loads)</h5>
+
+    <form method="GET" class="row g-3 align-items-end">
+
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Von</label>
+        <input type="date" name="from" class="form-control" value="{{ request.args.get('from','') }}">
+      </div>
+
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Bis</label>
+        <input type="date" name="to" class="form-control" value="{{ request.args.get('to','') }}">
+      </div>
+
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Flugplatz</label>
+        <select name="airfield_id" class="form-select">
+          <option value="">– alle –</option>
+          {% for af in airfields %}
+            <option value="{{ af.id }}" {% if request.args.get('airfield_id','')|string == af.id|string %}selected{% endif %}>
+              {{ af.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Flugzeug</label>
+        <select name="aircraft_id" class="form-select">
+          <option value="">– alle –</option>
+          {% for ac in aircrafts %}
+            <option value="{{ ac.id }}" {% if request.args.get('aircraft_id','')|string == ac.id|string %}selected{% endif %}>
+              {{ ac.type }} – {{ ac.registration }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+		<div class="col-md-3">
+		  <label class="form-label fw-bold">Person</label>
+
+		  <!-- ✅ Autocomplete -->
+		  <input
+			type="text"
+			id="personAutocomplete"
+			class="form-control mb-1"
+			placeholder="Name eingeben…"
+			autocomplete="off"
+		  >
+
+		  <!-- ✅ Bestehendes Dropdown (bleibt Datenquelle) -->
+		  <select name="person_id" id="personSelect" class="form-select">
+			<option value="">– alle –</option>
+			{% for p in persons %}
+			  <option
+				value="{{ p.id }}"
+				data-name="{{ p.full_name|lower }}"
+				{% if request.args.get('person_id','')|string == p.id|string %}selected{% endif %}
+			  >
+				{{ p.full_name }}
+			  </option>
+			{% endfor %}
+		  </select>
+		</div>
+
+
+		<div class="col-md-3">
+		  <label class="form-label fw-bold">Status (Mehrfachauswahl)</label>
+
+		  <select name="status_code"
+				  class="form-select"
+				  multiple
+				  size="6">
+			{% for s in statuses %}
+			  <option value="{{ s.code }}"
+				{% if s.code in request.args.getlist('status_code') %}selected{% endif %}>
+				{{ s.code }}
+			  </option>
+			{% endfor %}
+		  </select>
+
+		  <small class="text-muted">
+			Mehrfachauswahl mit <kbd>Strg</kbd> / <kbd>Shift</kbd>
+		  </small>
+		</div>
+
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Tanken</label>
+        <select name="tanken" class="form-select">
+          <option value="">– egal –</option>
+          <option value="1" {% if request.args.get('tanken') == '1' %}selected{% endif %}>Ja</option>
+          <option value="0" {% if request.args.get('tanken') == '0' %}selected{% endif %}>Nein</option>
+        </select>
+      </div>
+
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Schirmmiete</label>
+        <select name="gear_rental" class="form-select">
+          <option value="">– egal –</option>
+          <option value="1" {% if request.args.get('gear_rental') == '1' %}selected{% endif %}>Ja</option>
+          <option value="0" {% if request.args.get('gear_rental') == '0' %}selected{% endif %}>Nein</option>
+        </select>
+      </div>
+
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Orga</label>
+        <select name="orga" class="form-select">
+          <option value="">– egal –</option>
+          <option value="1" {% if request.args.get('orga') == '1' %}selected{% endif %}>Ja</option>
+        </select>
+      </div>
+
+      <div class="col-md-4 d-flex gap-2">
+        <button class="btn btn-primary w-100" type="submit">
+          <i class="bi bi-funnel-fill"></i> Anwenden
+        </button>
+        <a class="btn btn-outline-secondary w-100" href="{{ url_for('load.statistics_view') }}">
+          <i class="bi bi-x-circle"></i> Reset
+        </a>
+      </div>
+
+      <!-- ✅ Spalten-Sichtbarkeit: bei Formular-Submit mitübertragen -->
+      <input type="hidden" name="show_net" id="h_show_net" value="{{ '1' if show_col_net else '' }}">
+      <input type="hidden" name="show_vat" id="h_show_vat" value="{{ '1' if show_col_vat else '' }}">
+      <input type="hidden" name="show_vatrate" id="h_show_vatrate" value="{{ '1' if show_col_vatrate else '' }}">
+      <input type="hidden" name="show_payment" id="h_show_payment" value="{{ '1' if show_col_payment else '' }}">
+      <input type="hidden" name="show_invoice_number" id="h_show_invoice_number" value="{{ '1' if show_col_invoice_number else '' }}">
+      <input type="hidden" name="show_gross" id="h_show_gross" value="{{ '1' if show_col_gross else '' }}">
+
+    </form>
+
+    <!-- ✅ Schnellfilter Zeitraum -->
+    <div class="mt-3 d-flex gap-2 flex-wrap align-items-center">
+      <span class="text-muted small fw-semibold">Schnellfilter:</span>
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setDatePreset('all')">Alles</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setDatePreset('today')">Heute</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setDatePreset('week')">Diese Woche</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setDatePreset('month')">Dieser Monat</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setDatePreset('year')">Dieses Jahr</button>
+    </div>
+
+	<div class="mt-3 d-flex gap-2 flex-wrap">
+	  <a class="btn btn-outline-success"
+		 href="{{ url_for('load.statistics_export_csv') }}{% if query_string %}?{{ query_string }}{% endif %}">
+		<i class="bi bi-filetype-csv"></i> CSV Export
+	  </a>
+
+	  <a class="btn btn-outline-success"
+		 href="{{ url_for('load.statistics_export_xlsx') }}{% if query_string %}?{{ query_string }}{% endif %}">
+		<i class="bi bi-file-earmark-excel"></i> Excel Export (Pivot)
+	  </a>
+
+    <a class="btn btn-primary" id="statsPdfButton"
+     href="{{ url_for('load.statistics_report_pdf') }}{% if query_string %}?{{ query_string }}&compact=1{% else %}?compact=1{% endif %}"
+     target="_blank" rel="noopener">
+    <i class="bi bi-file-earmark-pdf"></i> Bericht PDF
+    </a>
+	</div>
+
+  </div>
+</div>
+
+<!-- KPI Kacheln -->
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="card"><div class="card-body">
+      <div class="text-muted">Durchgeführte Loads</div>
+      <div class="fs-3 fw-bold">{{ total_loads }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card"><div class="card-body">
+      <div class="text-muted">Sprünge</div>
+      <div class="fs-3 fw-bold">{{ total_entries }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card"><div class="card-body">
+      <div class="text-muted">Tank‑Loads</div>
+      <div class="fs-3 fw-bold">{{ tank_loads }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card"><div class="card-body">
+      <div class="text-muted">Schirmmiete-Positionen</div>
+      <div class="fs-3 fw-bold">{{ gear_entries }}</div>
+    </div></div>
+  </div>
+
+  <div class="col-12">
+    <div class="card border-warning" style="border-width:2px!important">
+      <div class="card-body py-2">
+        <div class="row g-2 align-items-center">
+          <div class="col-12 col-md-auto">
+            <span class="fw-bold text-warning-emphasis fs-6">Gesamtsumme (Brutto)</span>
+          </div>
+          <div class="col-12 col-md">
+            <div class="d-flex flex-wrap gap-3">
+              <div>
+                <div class="text-muted small">Sprünge</div>
+                <div class="fw-semibold">{{ "{:,.2f}".format(gross_sum_jumps).replace(',','X').replace('.',',').replace('X','.') }} €</div>
+              </div>
+              {% if extra_rental_sum_gross %}
+              <div>
+                <div class="text-muted small">+ Schirmmiete</div>
+                <div class="fw-semibold">{{ "{:,.2f}".format(extra_rental_sum_gross).replace(',','X').replace('.',',').replace('X','.') }} €</div>
+              </div>
+              {% endif %}
+              {% if extra_orga_sum_gross %}
+              <div>
+                <div class="text-muted small">+ Orga</div>
+                <div class="fw-semibold">{{ "{:,.2f}".format(extra_orga_sum_gross).replace(',','X').replace('.',',').replace('X','.') }} €</div>
+              </div>
+              {% endif %}
+              {% if manual_sum_gross %}
+              <div>
+                <div class="text-muted small">+ Manuelle Rechnungen</div>
+                <div class="fw-semibold">{{ "{:,.2f}".format(manual_sum_gross).replace(',','X').replace('.',',').replace('X','.') }} €</div>
+              </div>
+              {% endif %}
+              <div class="border-start ps-3">
+                <div class="text-muted small">= Brutto gesamt</div>
+                <div class="fs-5 fw-bold text-warning-emphasis">{{ "{:,.2f}".format(gross_sum_total).replace(',','X').replace('.',',').replace('X','.') }} €</div>
+              </div>
+              <div class="border-start ps-3">
+                <div class="text-muted small">Netto gesamt</div>
+                <div class="fw-semibold">{{ "{:,.2f}".format(net_sum_total).replace(',','X').replace('.',',').replace('X','.') }} €</div>
+              </div>
+              <div>
+                <div class="text-muted small">MwSt gesamt</div>
+                <div class="fw-semibold">{{ "{:,.2f}".format(vat_sum_total).replace(',','X').replace('.',',').replace('X','.') }} €</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Einfache Charts (CSS-Balken) -->
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="card"><div class="card-body">
+      <h6 class="fw-bold mb-2">Loads pro Tag</h6>
+      {% if day_series %}
+        {% for d, c in day_series %}
+          {% set pct = (100 * c / max_day) if max_day else 0 %}
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <div style="min-width:110px;" class="text-muted small">{{ d }}</div>
+            <div class="progress flex-grow-1" style="height:14px;">
+              <div class="progress-bar bg-danger" style="width: {{ pct|round(0) }}%"></div>
+            </div>
+            <div style="min-width:30px;" class="text-end small fw-bold">{{ c }}</div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="text-muted">Keine Daten im Filter.</div>
+      {% endif %}
+    </div></div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card"><div class="card-body">
+      <h6 class="fw-bold mb-2">Status-Verteilung</h6>
+      {% if status_series %}
+        {% for s, c in status_series[:12] %}
+          {% set pct = (100 * c / max_status) if max_status else 0 %}
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <div style="min-width:110px;" class="text-muted small">{{ s }}</div>
+            <div class="progress flex-grow-1" style="height:14px;">
+              <div class="progress-bar bg-secondary" style="width: {{ pct|round(0) }}%"></div>
+            </div>
+            <div style="min-width:30px;" class="text-end small fw-bold">{{ c }}</div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="text-muted">Keine Daten im Filter.</div>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+
+<!-- Detailtabelle (Load-zentriert) -->
+<div class="card">
+  <div class="card-body">
+    <h5 class="fw-bold mb-3">Durchgeführte Loads (Detail)</h5>
+
+    <div class="mb-2">
+      <input id="tableSearch" class="form-control" placeholder="Suchen (Load, Flugplatz, Flugzeug …)">
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-striped table-hover align-middle" id="statsTable">
+        <thead class="table-light">
+          <tr>
+            <th>Datum</th>
+            <th>Uhrzeit</th>
+            <th>Load</th>
+            <th>Flugplatz</th>
+            <th>Flugzeug</th>
+            <th>Höhe</th>
+            <th>Tanken</th>
+            <th>Sprünge</th>
+            <th>Payload</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in loads %}
+            {% set dt = (l.actual_time or l.created_at) %}
+            <tr>
+              <td>{{ dt.strftime("%d.%m.%Y") if dt else "–" }}</td>
+              <td>{{ dt.strftime("%H:%M") if dt else "–" }}</td>
+              
+			  <td>
+			    <a href="{{ url_for('load.statistics_load_detail', load_id=l.id) }}"
+				   class="fw-bold text-decoration-none">
+				  Load {{ l.load_number }}
+			    </a>
+			  </td>
+			  			  			  
+              <td>{{ l.airfield.name if l.airfield else "" }}</td>
+              <td>{{ (l.aircraft.type if l.aircraft else "") }} {{ (l.aircraft.registration if l.aircraft else "") }}</td>
+              <td>{{ l.height_m }} m</td>
+              <td>
+                {% if l.fuel_required %}
+                  <span class="text-danger fw-bold"><i class="bi bi-fuel-pump-fill"></i> ja</span>
+                {% else %}
+                  <span class="text-muted">nein</span>
+                {% endif %}
+              </td>
+              <td>{{ l.entries|length }}</td>
+              <td>{{ "%.0f"|format(l.payload_sum_kg) }} kg</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<!-- ========================================================= -->
+<!-- ✅ SPRINGER-RANKING                                         -->
+<!-- ========================================================= -->
+<div class="card mt-4">
+  <div class="card-body">
+    <h5 class="fw-bold mb-1">Springer-Ranking</h5>
+    <p class="text-muted small mb-3">
+      Alle Personen mit Sprüngen im aktuellen Filterzeitraum, sortierbar nach Anzahl oder Name.
+      Statusfilter und Zeitraum aus dem Formular oben werden berücksichtigt.
+    </p>
+
+    {% if jumper_ranking %}
+
+    <!-- Steuerleiste -->
+    <div class="d-flex flex-wrap gap-2 mb-3 align-items-center screen-only">
+      <span class="text-muted small fw-semibold">Sortierung:</span>
+      <button type="button" class="btn btn-sm btn-outline-primary active" id="rank-sort-desc"
+              onclick="rankSort('desc')">
+        <i class="bi bi-sort-numeric-down-alt"></i> Meiste zuerst
+      </button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="rank-sort-asc"
+              onclick="rankSort('asc')">
+        <i class="bi bi-sort-numeric-up"></i> Wenigste zuerst
+      </button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="rank-sort-name-az"
+              onclick="rankSort('name-az')">
+        <i class="bi bi-sort-alpha-down"></i> Name A–Z
+      </button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="rank-sort-name-za"
+              onclick="rankSort('name-za')">
+        <i class="bi bi-sort-alpha-up-alt"></i> Name Z–A
+      </button>
+      <span class="ms-3 text-muted small fw-semibold">Suche:</span>
+      <input type="text" id="rankSearch" class="form-control form-control-sm"
+             style="max-width:220px;" placeholder="Name suchen…" autocomplete="off">
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle" id="rankingTable">
+        <thead class="table-light">
+          <tr>
+            <th style="width:3.5rem;">#</th>
+            <th>Name</th>
+            <th class="text-end fw-bold">Sprünge gesamt</th>
+            <th>Aufschlüsselung nach Status</th>
+          </tr>
+        </thead>
+        <tbody id="rankingTbody">
+          {% for row in jumper_ranking %}
+          <tr
+            data-total="{{ row.total }}"
+            data-name="{{ row.person_name | lower }}"
+            data-display-name="{{ row.person_name }}"
+          >
+            <td class="text-muted rank-nr"></td>
+            <td class="fw-semibold">{{ row.person_name }}</td>
+            <td class="text-end fw-bold">{{ row.total }}</td>
+            <td class="text-muted small">
+              {% set parts = [] %}
+              {% for sc, cnt in row.by_status.items() | sort(attribute='1', reverse=True) %}
+                {% set _ = parts.append(cnt ~ ' ' ~ sc) %}
+              {% endfor %}
+              {{ parts | join(', ') }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% else %}
+      <div class="text-muted">Keine Personen mit Sprüngen im aktuellen Filter.</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ========================================================= -->
+<!-- ✅ DETAILANSICHT DER ABFRAGE: gefilterte Einträge (druckbar) -->
+<!-- ========================================================= -->
+<div class="card mt-4">
+  <div class="card-body">
+
+	<div class="d-flex justify-content-between align-items-center mb-2">
+	  <h5 class="fw-bold mb-0">
+    Gefilterte Positionen ({{ matched_entries|length }})
+	  </h5>
+	</div>
+
+    <!-- ✅ Preis-Anzeige-Optionen -->
+    <div class="mb-3 p-2 border rounded bg-light screen-only">
+      <div class="fw-bold mb-1">Preis anzeigen:</div>
+
+      <label class="me-3">
+        <input type="checkbox" class="price-toggle" data-target="col-net" data-pdf-param="show_net" {% if show_col_net %}checked{% endif %}>
+        Netto
+      </label>
+      <label class="me-3">
+        <input type="checkbox" class="price-toggle" data-target="col-vat" data-pdf-param="show_vat" {% if show_col_vat %}checked{% endif %}>
+        MwSt
+      </label>
+      <label class="me-3">
+        <input type="checkbox" class="price-toggle" data-target="col-vatrate" data-pdf-param="show_vatrate" {% if show_col_vatrate %}checked{% endif %}>
+        MwSt‑Satz
+      </label>
+      <label class="me-3">
+        <input type="checkbox" class="price-toggle" data-target="col-payment" data-pdf-param="show_payment" {% if show_col_payment %}checked{% endif %}>
+        Zahlart
+      </label>
+      <label class="me-3">
+        <input type="checkbox" class="price-toggle" data-target="col-invoice-number" data-pdf-param="show_invoice_number" {% if show_col_invoice_number %}checked{% endif %}>
+        Rechnungsnummer
+      </label>
+      <label class="me-3">
+        <input type="checkbox" class="price-toggle" data-target="col-gross" data-pdf-param="show_gross" {% if show_col_gross %}checked{% endif %}>
+        Brutto
+      </label>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle sortable-table">
+        <thead class="table-light">
+          <tr>
+            <th class="sortable" data-type="date">Datum</th>
+            <th class="sortable" data-type="time">Uhrzeit</th>
+            <th class="sortable" data-type="text">Load</th>
+            <th class="sortable" data-type="text">Flugplatz</th>
+            <th class="sortable" data-type="text">Flugzeug</th>
+            <th class="sortable" data-type="text">Person</th>
+            <th class="sortable" data-type="text">Status</th>
+            <th class="sortable" data-type="number">Höhe</th>
+
+            <th class="sortable text-end col-net{% if not show_col_net %} d-none{% endif %}" data-type="price">Netto</th>
+            <th class="sortable text-end col-vat{% if not show_col_vat %} d-none{% endif %}" data-type="price">MwSt</th>
+            <th class="sortable text-end col-vatrate{% if not show_col_vatrate %} d-none{% endif %}" data-type="number">MwSt‑Satz</th>
+            <th class="sortable col-payment{% if not show_col_payment %} d-none{% endif %}" data-type="text">Zahlart</th>
+            <th class="sortable col-invoice-number{% if not show_col_invoice_number %} d-none{% endif %}" data-type="text">Rechnungsnummer</th>
+            <th class="sortable text-end col-gross{% if not show_col_gross %} d-none{% endif %}" data-type="price">Brutto</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for r in matched_entries %}
+          <tr>
+            <td>{{ r.date.strftime("%d.%m.%Y") if r.date else "–" }}</td>
+            <td>{{ r.time if r.time else "–" }}</td>
+            <td>{{ r.load_label if r.load_label else ('Load ' ~ r.load_number) }}</td>
+            <td>{{ r.airfield }}</td>
+            <td>{{ r.aircraft }}</td>
+            <td class="stats-status-color-cell" {% if r.status_bg and r.status_border %}style="background: {{ r.status_bg }}; border-left: 6px solid {{ r.status_border }};"{% endif %}>{{ r.person }}</td>
+            <td class="stats-status-color-cell" {% if r.status_bg and r.status_border %}style="background: {{ r.status_bg }}; border-left: 6px solid {{ r.status_border }};"{% endif %}>{{ r.status }}</td>
+            <td>{{ (r.height_m ~ ' m') if r.height_m is not none else '–' }}</td>
+
+            <td class="text-end col-net{% if not show_col_net %} d-none{% endif %}">
+              {{ "{:,.2f}".format(r.price_net).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+            </td>
+            <td class="text-end col-vat{% if not show_col_vat %} d-none{% endif %}">
+              {{ "{:,.2f}".format(r.price_vat).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+            </td>
+            <td class="text-end col-vatrate{% if not show_col_vatrate %} d-none{% endif %}">
+              {{ "{:,.2f}".format(r.vat_rate).replace(',', 'X').replace('.', ',').replace('X', '.') }} %
+            </td>
+            <td class="col-payment{% if not show_col_payment %} d-none{% endif %}">
+              {{ r.payment_method if r.payment_method else "–" }}
+            </td>
+            <td class="col-invoice-number{% if not show_col_invoice_number %} d-none{% endif %}">
+              {{ r.invoice_number if r.invoice_number else "–" }}
+            </td>
+            <td class="text-end col-gross{% if not show_col_gross %} d-none{% endif %}">
+              {{ "{:,.2f}".format(r.price_gross).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+
+        <tfoot>
+          <tr class="table-light fw-bold">
+            <td colspan="8" class="text-end">Summe</td>
+
+            <td class="text-end col-net{% if not show_col_net %} d-none{% endif %}">
+              {{ "{:,.2f}".format(matched_entries | sum(attribute='price_net')).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+            </td>
+            <td class="text-end col-vat{% if not show_col_vat %} d-none{% endif %}">
+              {{ "{:,.2f}".format(matched_entries | sum(attribute='price_vat')).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+            </td>
+            <td class="text-end col-vatrate{% if not show_col_vatrate %} d-none{% endif %}">–</td>
+            <td class="col-payment{% if not show_col_payment %} d-none{% endif %}">–</td>
+            <td class="col-invoice-number{% if not show_col_invoice_number %} d-none{% endif %}">–</td>
+            <td class="text-end col-gross{% if not show_col_gross %} d-none{% endif %}">
+              {{ "{:,.2f}".format(matched_entries | sum(attribute='price_gross')).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================= -->
+<!-- ✅ ZUSATZPOSITIONEN — SCHIRMMIETE -->
+<!-- ========================================================= -->
+<div class="card mt-4">
+  <div class="card-body">
+    <h5 class="fw-bold mb-3">Zusatzpositionen – Schirmmiete</h5>
+
+    {% if extra_rental_items and extra_rental_items|length > 0 %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle sortable-table">
+        <thead class="table-light">
+          <tr>
+            <th>Datum</th>
+            <th>Uhrzeit</th>
+            <th>Load</th>
+            <th>Flugplatz</th>
+            <th>Person</th>
+            <th>Beschreibung</th>
+
+            <th class="text-end col-net d-none">Netto</th>
+            <th class="text-end col-vat d-none">MwSt</th>
+            <th class="text-end col-vatrate d-none">MwSt‑Satz</th>
+            <th class="text-end col-gross">Brutto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in extra_rental_items %}
+          <tr>
+            <td>{{ r.date.strftime("%d.%m.%Y") if r.date else "–" }}</td>
+            <td>{{ r.time }}</td>
+            <td>Load {{ r.load_number }}</td>
+            <td>{{ r.airfield }}</td>
+            <td>{{ r.person_name or "–" }}</td>
+            <td>{{ r.desc }}</td>
+
+            <td class="text-end col-net d-none">{{ "{:,.2f}".format(r.net).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</td>
+            <td class="text-end col-vat d-none">{{ "{:,.2f}".format(r.vat).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</td>
+            <td class="text-end col-vatrate d-none">{{ "{:,.2f}".format(r.vat_rate).replace(',', 'X').replace('.', ',').replace('X', '.') }} %</td>
+            <td class="text-end col-gross">{{ "{:,.2f}".format(r.gross).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="table-light fw-bold">
+            <td colspan="6" class="text-end">Summe</td>
+            <td class="text-end col-net d-none">{{ "{:,.2f}".format(extra_rental_sum_net).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</td>
+            <td class="text-end col-vat d-none">{{ "{:,.2f}".format(extra_rental_sum_vat).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</td>
+            <td class="text-end col-vatrate d-none">–</td>
+            <td class="text-end col-gross">{{ "{:,.2f}".format(extra_rental_sum_gross).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    {% else %}
+      <div class="text-muted">Keine Schirmmiete-Zusatzpositionen im aktuellen Filter.</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ========================================================= -->
+<!-- ✅ ZUSATZPOSITIONEN — ORGANISATIONSPAUSCHALE -->
+<!-- ========================================================= -->
+<div class="card mt-4">
+  <div class="card-body">
+    <h5 class="fw-bold mb-3">Zusatzpositionen – Organisationspauschale</h5>
+
+    {% if extra_orga_items and extra_orga_items|length > 0 %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle sortable-table">
+        <thead class="table-light">
+          <tr>
+            <th>Datum</th>
+            <th>Uhrzeit</th>
+            <th>Load</th>
+            <th>Flugplatz</th>
+            <th>Person</th>
+            <th>Beschreibung</th>
+
+            <th class="text-end col-net d-none">Netto</th>
+            <th class="text-end col-vat d-none">MwSt</th>
+            <th class="text-end col-vatrate d-none">MwSt‑Satz</th>
+            <th class="text-end col-gross">Brutto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in extra_orga_items %}
+          <tr>
+            <td>{{ r.date.strftime("%d.%m.%Y") if r.date else "–" }}</td>
+            <td>{{ r.time }}</td>
+            <td>Load {{ r.load_number }}</td>
+            <td>{{ r.airfield }}</td>
+            <td>{{ r.person_name or "–" }}</td>
+            <td>{{ r.desc }}</td>
+
+            <td class="text-end col-net d-none">{{ "{:,.2f}".format(r.net).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</td>
+            <td class="text-end col-vat d-none">{{ "{:,.2f}".format(r.vat).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</td>
+            <td class="text-end col-vatrate d-none">{{ "{:,.2f}".format(r.vat_rate).replace(',', 'X').replace('.', ',').replace('X', '.') }} %</td>
+            <td class="text-end col-gross">{{ "{:,.2f}".format(r.gross).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="table-light fw-bold">
+            <td colspan="6" class="text-end">Summe</td>
+            <td class="text-end col-net d-none">{{ "{:,.2f}".format(extra_orga_sum_net).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</td>
+            <td class="text-end col-vat d-none">{{ "{:,.2f}".format(extra_orga_sum_vat).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</td>
+            <td class="text-end col-vatrate d-none">–</td>
+            <td class="text-end col-gross">{{ "{:,.2f}".format(extra_orga_sum_gross).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    {% else %}
+      <div class="text-muted">Keine Orga-Zusatzpositionen im aktuellen Filter.</div>
+    {% endif %}
+  </div>
+</div>
+
+
+
+<!-- ========================================================= -->
+<!-- ✅ Autocomplete Personen
+<!-- ========================================================= -->
+
+<script>
+(function () {
+  const input = document.getElementById("personAutocomplete");
+  const select = document.getElementById("personSelect");
+
+  if (!input || !select) return;
+
+  const options = Array.from(select.options)
+    .filter(o => o.value !== "")
+    .map(o => ({
+      id: o.value,
+      name: o.textContent.trim(),
+      name_lc: (o.dataset.name || "").toLowerCase()
+    }));
+
+  // Vorausfüllen, wenn Person bereits gewählt ist
+  const selected = select.options[select.selectedIndex];
+  if (selected && selected.value) {
+    input.value = selected.textContent.trim();
+  }
+
+  input.addEventListener("input", () => {
+    const q = input.value.toLowerCase().trim();
+
+    // Reset
+    select.selectedIndex = 0;
+
+    if (!q) return;
+
+    const match = options.find(p => p.name_lc.includes(q));
+    if (match) {
+      select.value = match.id;
+    }
+  });
+
+  // Wenn Dropdown manuell geändert wird → Input synchronisieren
+  select.addEventListener("change", () => {
+    const opt = select.options[select.selectedIndex];
+    input.value = opt && opt.value ? opt.textContent.trim() : "";
+  });
+})();
+</script>
+
+
+{% endblock %}  {# ✅ ENDE block content #}
+
+<!-- ✅ Sortierlogik -->
+{% block scripts %}
+
+<script>
+/* -------------------------
+   Tabellen-Suche (bestehend)
+------------------------- */
+(function(){
+  const input = document.getElementById("tableSearch");
+  const table = document.getElementById("statsTable");
+  if (!input || !table) return;
+
+  const rows = Array.from(table.querySelectorAll("tbody tr"));
+  input.addEventListener("input", () => {
+    const q = (input.value || "").toLowerCase().trim();
+    rows.forEach(r => {
+      r.style.display = (!q || r.textContent.toLowerCase().includes(q)) ? "" : "none";
+    });
+  });
+})();
+</script>
+
+<script>
+/* -------------------------
+   Tabellen-Sortierung
+------------------------- */
+(function () {
+
+  function parseValue(text, type) {
+    text = (text || "").trim();
+
+    if (type === "number") {
+      return parseFloat(text.replace(",", ".").replace(/[^\d.-]/g, "")) || 0;
+    }
+    if (type === "price") {
+      return parseFloat(
+        text.replace("€", "")
+            .replace("%", "")
+            .replace(/\./g, "")
+            .replace(",", ".")
+            .trim()
+      ) || 0;
+    }
+    if (type === "date") {
+      const p = text.split(".");
+      return p.length === 3 ? new Date(p[2], p[1]-1, p[0]).getTime() : 0;
+    }
+    if (type === "time") {
+      const p = text.split(":");
+      return p.length === 2 ? (parseInt(p[0])*60 + parseInt(p[1])) : 0;
+    }
+    return text.toLowerCase();
+  }
+
+  document.querySelectorAll(".sortable-table th.sortable").forEach((th, idx) => {
+    let asc = true;
+
+    th.addEventListener("click", () => {
+      const table = th.closest("table");
+      const tbody = table.querySelector("tbody");
+      const rows = Array.from(tbody.querySelectorAll("tr"));
+      const type = th.dataset.type || "text";
+
+      rows.sort((a, b) => {
+        const A = parseValue(a.children[idx].innerText, type);
+        const B = parseValue(b.children[idx].innerText, type);
+        return asc ? (A > B ? 1 : -1) : (A < B ? 1 : -1);
+      });
+
+      asc = !asc;
+      tbody.innerHTML = "";
+      rows.forEach(r => tbody.appendChild(r));
+
+      table.querySelectorAll("th").forEach(h => h.classList.remove("asc", "desc"));
+      th.classList.add(asc ? "desc" : "asc");
+    });
+  });
+})();
+</script>
+
+<style>
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+th.sortable::after {
+  content: " ⇅";
+  font-size: 0.75em;
+  color: #888;
+}
+th.sortable.asc::after { content: " ▲"; }
+th.sortable.desc::after { content: " ▼"; }
+</style>
+
+<!-- ✅ Preis-Spalten ein/aus -->
+<script>
+(function () {
+  const toggles = document.querySelectorAll(".price-toggle");
+  const pdfButton = document.getElementById("statsPdfButton");
+  if (!toggles.length) return;
+
+  // Zuordnung: PDF-Param → Hidden-Input-ID
+  const hiddenInputIds = {
+    "show_net":            "h_show_net",
+    "show_vat":            "h_show_vat",
+    "show_vatrate":        "h_show_vatrate",
+    "show_payment":        "h_show_payment",
+    "show_invoice_number": "h_show_invoice_number",
+    "show_gross":          "h_show_gross",
+  };
+
+  function apply(cb) {
+    document
+      .querySelectorAll("." + cb.dataset.target)
+      .forEach(el => el.classList.toggle("d-none", !cb.checked));
+  }
+
+  // Hidden-Inputs im Filterformular synchronisieren (damit bei Submit erhalten)
+  function syncHiddenInputs() {
+    toggles.forEach(cb => {
+      const param = cb.dataset.pdfParam;
+      if (!param) return;
+      const id = hiddenInputIds[param];
+      if (!id) return;
+      const inp = document.getElementById(id);
+      if (inp) inp.value = cb.checked ? "1" : "";
+    });
+  }
+
+  // PDF-URL immer zum Klick-Zeitpunkt aus aktuellem Haken-Stand aufbauen
+  function buildPdfParams() {
+    const params = new URLSearchParams(window.location.search);
+    // veraltete show_-Werte aus der URL entfernen
+    Object.keys(hiddenInputIds).forEach(k => params.delete(k));
+    params.set("compact", "1");
+    toggles.forEach(cb => {
+      const param = cb.dataset.pdfParam;
+      if (!param) return;
+      if (cb.checked) params.set(param, "1");
+    });
+    return params;
+  }
+
+  // ✅ Initialzustand anwenden
+  toggles.forEach(cb => apply(cb));
+  syncHiddenInputs();
+
+  // ✅ PDF-Button: URL wird zum Klick-Zeitpunkt gebaut (immer aktuell)
+  if (pdfButton) {
+    pdfButton.addEventListener("click", function (e) {
+      e.preventDefault();
+      const url = "{{ url_for('load.statistics_report_pdf') }}" + "?" + buildPdfParams().toString();
+      window.open(url, "_blank", "noopener");
+    });
+  }
+
+  // ✅ Umschalten bei Klick
+  toggles.forEach(cb => {
+    cb.addEventListener("change", () => {
+      apply(cb);
+      syncHiddenInputs();
+    });
+  });
+})();
+</script>
+
+<style>
+/* Dedizierte PDF-Ansicht vorhanden: Screen-Template bleibt bewusst bildschirmorientiert. */
+</style>
+
+<!-- =========================================================
+     ✅ Schnellfilter: Zeitraum-Buttons füllen Formular
+     ========================================================= -->
+<script>
+function setDatePreset(preset) {
+  const fromInput = document.querySelector('input[name="from"]');
+  const toInput   = document.querySelector('input[name="to"]');
+  if (!fromInput || !toInput) return;
+
+  const today = new Date();
+  // toISOString() liefert UTC – bei CEST (UTC+2) nach Mitternacht das falsche Datum.
+  // Stattdessen lokale Datumsteile verwenden.
+  const fmt = d => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  if (preset === 'all') {
+    fromInput.value = '';
+    toInput.value   = '';
+  } else if (preset === 'today') {
+    fromInput.value = fmt(today);
+    toInput.value   = fmt(today);
+  } else if (preset === 'week') {
+    const dow = today.getDay() === 0 ? 6 : today.getDay() - 1; // Mo = 0
+    const mon = new Date(today); mon.setDate(today.getDate() - dow);
+    const sun = new Date(mon);  sun.setDate(mon.getDate() + 6);
+    fromInput.value = fmt(mon);
+    toInput.value   = fmt(sun);
+  } else if (preset === 'month') {
+    fromInput.value = fmt(new Date(today.getFullYear(), today.getMonth(), 1));
+    toInput.value   = fmt(new Date(today.getFullYear(), today.getMonth() + 1, 0));
+  } else if (preset === 'year') {
+    fromInput.value = fmt(new Date(today.getFullYear(), 0, 1));
+    toInput.value   = fmt(new Date(today.getFullYear(), 11, 31));
+  }
+
+  // Formular abschicken
+  fromInput.closest('form').submit();
+}
+</script>
+
+<!-- =========================================================
+     ✅ Springer-Ranking: Sortierung + Namenssuche
+     ========================================================= -->
+<script>
+(function () {
+  const tbody = document.getElementById('rankingTbody');
+  if (!tbody) return;
+
+  let currentSort = 'desc'; // Standard: meiste zuerst
+
+  function getRows() {
+    return Array.from(tbody.querySelectorAll('tr'));
+  }
+
+  function applyRankNrs(rows) {
+    rows.forEach((r, i) => {
+      const cell = r.querySelector('.rank-nr');
+      if (cell) cell.textContent = (i + 1) + '.';
+    });
+  }
+
+  function sortAndRender(mode) {
+    currentSort = mode;
+
+    const rows = getRows();
+    rows.sort((a, b) => {
+      if (mode === 'desc') {
+        return parseInt(b.dataset.total) - parseInt(a.dataset.total);
+      } else if (mode === 'asc') {
+        return parseInt(a.dataset.total) - parseInt(b.dataset.total);
+      } else if (mode === 'name-az') {
+        return a.dataset.name.localeCompare(b.dataset.name, 'de');
+      } else if (mode === 'name-za') {
+        return b.dataset.name.localeCompare(a.dataset.name, 'de');
+      }
+      return 0;
+    });
+
+    tbody.innerHTML = '';
+    rows.forEach(r => tbody.appendChild(r));
+    applyRankNrs(rows);
+
+    // Button-Highlighting
+    ['rank-sort-desc','rank-sort-asc','rank-sort-name-az','rank-sort-name-za'].forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) btn.classList.remove('active', 'btn-outline-primary');
+      if (btn) btn.classList.add('btn-outline-secondary');
+    });
+    const activeId = 'rank-sort-' + mode;
+    const activeBtn = document.getElementById(activeId);
+    if (activeBtn) {
+      activeBtn.classList.remove('btn-outline-secondary');
+      activeBtn.classList.add('btn-outline-primary', 'active');
+    }
+  }
+
+  // Namenssuche
+  const searchInput = document.getElementById('rankSearch');
+  if (searchInput) {
+    searchInput.addEventListener('input', function () {
+      const q = this.value.toLowerCase().trim();
+      getRows().forEach(r => {
+        r.style.display = (!q || r.dataset.name.includes(q)) ? '' : 'none';
+      });
+      // Ränge nur bei sichtbaren Zeilen neu vergeben
+      const visible = getRows().filter(r => r.style.display !== 'none');
+      visible.forEach((r, i) => {
+        const cell = r.querySelector('.rank-nr');
+        if (cell) cell.textContent = (i + 1) + '.';
+      });
+    });
+  }
+
+  // Initialer Aufbau
+  sortAndRender('desc');
+
+  // Global verfügbar machen für onclick-Buttons
+  window.rankSort = sortAndRender;
+})();
+</script>
+
+{% endblock %}

@@ -1,0 +1,604 @@
+{% extends "base.html" %}
+
+{% block title %}Personen{% endblock %}
+{% block header %}Personen{% endblock %}
+
+{% block content %}
+
+<style>
+    /* Griff rechts an jeder Spalte */
+    th {
+        position: relative;
+    }
+
+    th .resize-handle {
+        position: absolute;
+        right: 0;
+        top: 0;
+        width: 6px;
+        height: 100%;
+        cursor: col-resize;
+        user-select: none;
+    }
+
+    /* Beim Ziehen */
+    th.resizing {
+        border-right: 2px solid var(--brand-red-base);
+    }
+</style>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+
+        <!-- SEARCH + ACTIONS -->
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+
+            <!-- SEARCH -->
+            <form method="get" class="d-flex gap-2 flex-grow-1" style="max-width: 450px;">
+                <input type="text"
+                       name="search"
+                       value="{{ search }}"
+                       class="form-control"
+                       placeholder="Suche nach Name, Telefon, E-Mail…">
+
+                {% if filter %}<input type="hidden" name="filter" value="{{ filter }}">{% endif %}
+                {% if sort %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
+                {% if direction %}<input type="hidden" name="direction" value="{{ direction }}">{% endif %}
+
+                <button class="btn btn-primary" type="submit">
+                    <i class="bi bi-search"></i>
+                </button>
+            </form>
+
+            <!-- ACTION BUTTONS -->
+            <div class="d-flex flex-wrap gap-2">
+
+                <a href="{{ url_for('person.new_person') }}" class="btn btn-success">
+                    <i class="bi bi-plus-circle"></i> Neu
+                </a>
+
+                <a href="{{ url_for('export_person.export_persons_excel',
+                                     search=search,
+                                     filters=filters_str,
+                                     sort=sort,
+                                     direction=direction) }}"
+                   class="btn btn-outline-primary">
+                    <i class="bi bi-file-earmark-spreadsheet"></i> Export
+                </a>
+
+                <a href="{{ url_for('export_person.export_import_template') }}"
+                   class="btn btn-outline-secondary">
+                    <i class="bi bi-filetype-xlsx"></i> Vorlage
+                </a>
+
+                <a href="{{ url_for('import_preview.index') }}" class="btn btn-warning">
+                    <i class="bi bi-upload"></i> Import
+                </a>
+
+                <form method="post"
+                      action="{{ url_for('import_preview.preview') }}"
+                      enctype="multipart/form-data"
+                      class="d-inline">
+                    <input type="hidden" name="import_mode" value="vertical">
+                    <input id="verticalImportFileInput"
+                           type="file"
+                           name="file"
+                           accept=".xlsx"
+                           class="d-none"
+                           onchange="if(this.files && this.files.length){ this.form.submit(); }">
+
+                    <button type="button"
+                            class="btn btn-outline-warning"
+                            onclick="document.getElementById('verticalImportFileInput').click();">
+                        <i class="bi bi-lightning-charge-fill"></i> Vertikal-Import direkt
+                    </button>
+                </form>
+
+            </div>
+        </div>
+
+        <div class="alert alert-light border small mb-3">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <span class="badge bg-primary">Export</span>
+                <span>liefert eine horizontale Sicherungsdatei (eine Person pro Zeile).</span>
+                <span class="badge bg-success">Passender Import</span>
+                <span>Import HORIZONTAL unter „Import“.</span>
+                <span class="badge bg-secondary">Vorlagen-Import</span>
+                <span>für manuelle Erfassung weiterhin Import VERTIKAL nutzen.</span>
+            </div>
+        </div>
+
+        <!-- FILTERS -->
+        <div class="mb-3">
+            <form method="get" id="filterForm" class="d-flex flex-wrap gap-3 align-items-start">
+                <!-- Hidden inputs für search/sort/direction -->
+                <input type="hidden" name="search" value="{{ search }}">
+                <input type="hidden" name="sort" value="{{ sort }}">
+                <input type="hidden" name="direction" value="{{ direction }}">
+                
+                <!-- Filters Container -->
+                <div id="filtersContainer" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+                    <!-- Dynamisch gefüllt durch JavaScript -->
+                </div>
+            </form>
+        </div>
+
+        <script>
+            // Filter-Definitionen (ohne archived – das wird separat behandelt)
+            const PERSON_FILTERS = [
+                { code: 'members', label: 'Mitglieder' },
+                { code: 'partner', label: 'Partner-Verein' },
+                { code: 'tandem', label: 'Tandemgäste' },
+                { code: 'student', label: 'Schüler' },
+                { code: 'video', label: 'Video' },
+                { code: 'aff_student', label: 'AFF-Schüler' },
+                { code: 'tandemmaster', label: 'Tandemmaster' },
+                { code: 'teacher', label: 'Lehrer' },
+                { code: 'aff_teacher', label: 'AFF-Lehrer' },
+                { code: 'guest', label: 'Gäste' },
+                { code: 'liability_ok', label: 'Enthaftung gültig' },
+                { code: 'liability_bad', label: 'Enthaftung ungültig' },
+                { code: 'weight_bad', label: 'Gewicht außerhalb Norm' },
+            ];
+            
+            const CURRENT_FILTERS = "{{ filters_str }}".split(',').filter(f => f.trim());
+            const IS_ARCHIVED = CURRENT_FILTERS.includes('archived');
+            
+            function rebuildFilters() {
+                const container = document.getElementById('filtersContainer');
+                container.innerHTML = '';
+                
+                // ── Modus-Gruppe: Aktive | Archiv (gegenseitig exklusiv) ──
+                const modeGroup = document.createElement('div');
+                modeGroup.className = 'd-flex gap-1 me-2';
+
+                const activeBtn = document.createElement('button');
+                activeBtn.type = 'button';
+                activeBtn.className = `btn btn-sm ${!IS_ARCHIVED ? 'btn-primary' : 'btn-outline-secondary'}`;
+                activeBtn.textContent = 'Aktive';
+                activeBtn.title = 'Aktive Personen anzeigen';
+                activeBtn.onclick = (e) => {
+                    e.preventDefault();
+                    // Entfernt 'archived', behält alle anderen Filter
+                    applyFilters(CURRENT_FILTERS.filter(f => f !== 'archived'));
+                };
+
+                const archiveBtn = document.createElement('button');
+                archiveBtn.type = 'button';
+                archiveBtn.className = `btn btn-sm ${IS_ARCHIVED ? 'btn-warning' : 'btn-outline-secondary'}`;
+                archiveBtn.textContent = 'Archiv';
+                archiveBtn.title = 'Archivierte Personen anzeigen';
+                archiveBtn.onclick = (e) => {
+                    e.preventDefault();
+                    // Fügt 'archived' hinzu, entfernt es wenn schon aktiv
+                    if (IS_ARCHIVED) {
+                        applyFilters(CURRENT_FILTERS.filter(f => f !== 'archived'));
+                    } else {
+                        applyFilters([...CURRENT_FILTERS.filter(f => f !== 'archived'), 'archived']);
+                    }
+                };
+
+                modeGroup.appendChild(activeBtn);
+                modeGroup.appendChild(archiveBtn);
+                container.appendChild(modeGroup);
+
+                // Trennstrich
+                const sep = document.createElement('div');
+                sep.style.cssText = 'width:1px; background:#dee2e6; align-self:stretch; margin: 0 4px;';
+                container.appendChild(sep);
+                
+                // ── Person-Filter als Checkboxes ──
+                PERSON_FILTERS.forEach(f => {
+                    const wrapper = document.createElement('div');
+                    wrapper.style.display = 'flex';
+                    wrapper.style.alignItems = 'center';
+                    wrapper.style.gap = '5px';
+                    
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.className = 'form-check-input mt-0';
+                    checkbox.id = `filter_${f.code}`;
+                    checkbox.value = f.code;
+                    checkbox.checked = CURRENT_FILTERS.includes(f.code);
+                    checkbox.onchange = () => applyFilters(getSelectedFilters());
+                    
+                    const label = document.createElement('label');
+                    label.htmlFor = `filter_${f.code}`;
+                    label.className = 'form-check-label mb-0';
+                    label.textContent = f.label;
+                    label.style.cursor = 'pointer';
+                    
+                    wrapper.appendChild(checkbox);
+                    wrapper.appendChild(label);
+                    container.appendChild(wrapper);
+                });
+            }
+            
+            function getSelectedFilters() {
+                const selected = [];
+                // Archiv-Modus beibehalten
+                if (IS_ARCHIVED) selected.push('archived');
+                PERSON_FILTERS.forEach(f => {
+                    const checkbox = document.getElementById(`filter_${f.code}`);
+                    if (checkbox && checkbox.checked) {
+                        selected.push(f.code);
+                    }
+                });
+                return selected;
+            }
+            
+            function applyFilters(filterCodes) {
+                const form = document.getElementById('filterForm');
+                
+                let filtersInput = form.querySelector('input[name="filters"]');
+                if (!filtersInput) {
+                    filtersInput = document.createElement('input');
+                    filtersInput.type = 'hidden';
+                    filtersInput.name = 'filters';
+                    form.appendChild(filtersInput);
+                }
+                filtersInput.value = filterCodes.join(',');
+                form.submit();
+            }
+            
+            document.addEventListener('DOMContentLoaded', rebuildFilters);
+        </script>
+
+        <!-- TABLE -->
+        <div class="table-responsive">
+            <table id="personTable" class="table table-hover table-sm align-middle">
+
+                <thead class="table-light">
+                    <tr>
+
+                        <!-- NAME -->
+                        {% set next_dir = 'asc' if not (sort=='last_name' and direction=='asc') else 'desc' %}
+                        <th data-col="name">
+                            <a class="text-decoration-none"
+                               href="{{ url_for('person.list_persons',
+                                                sort='last_name',
+                                                direction=next_dir,
+                                                search=search,
+                                                filters=filters_str) }}">
+                                Name
+                                {% if sort=='last_name' %}
+                                    <i class="bi bi-caret-{{ 'up' if direction=='asc' else 'down' }}-fill text-primary"></i>
+                                {% endif %}
+                            </a>
+                            <div class="resize-handle"></div>
+                        </th>
+
+                        <!-- MITGLIED -->
+                        {% set next_dir = 'asc' if not (sort=='is_member' and direction=='asc') else 'desc' %}
+                        <th data-col="member">
+                            <a class="text-decoration-none"
+                               href="{{ url_for('person.list_persons',
+                                                sort='is_member',
+                                                direction=next_dir,
+                                                search=search,
+                                                filters=filters_str) }}">
+                                Mitglied
+                                {% if sort=='is_member' %}
+                                    <i class="bi bi-caret-{{ 'up' if direction=='asc' else 'down' }}-fill text-primary"></i>
+                                {% endif %}
+                            </a>
+                            <div class="resize-handle"></div>
+                        </th>
+
+                        <!-- TANDEM -->
+                        {% set next_dir = 'asc' if not (sort=='is_tandem_guest' and direction=='asc') else 'desc' %}
+                        <th data-col="tandem">
+                            <a class="text-decoration-none"
+                               href="{{ url_for('person.list_persons',
+                                                sort='is_tandem_guest',
+                                                direction=next_dir,
+                                                search=search,
+                                                filters=filters_str) }}">
+                                Tandem
+                                {% if sort=='is_tandem_guest' %}
+                                    <i class="bi bi-caret-{{ 'up' if direction=='asc' else 'down' }}-fill text-primary"></i>
+                                {% endif %}
+                            </a>
+                            <div class="resize-handle"></div>
+                        </th>
+
+                        <!-- PARTNER-VEREIN -->
+                        {% set next_dir = 'asc' if not (sort=='is_partner_verein' and direction=='asc') else 'desc' %}
+                        <th data-col="partner">
+                            <a class="text-decoration-none"
+                               href="{{ url_for('person.list_persons',
+                                                sort='is_partner_verein',
+                                                direction=next_dir,
+                                                search=search,
+                                                filters=filters_str) }}">
+                                Partner-Verein
+                                {% if sort=='is_partner_verein' %}
+                                    <i class="bi bi-caret-{{ 'up' if direction=='asc' else 'down' }}-fill text-primary"></i>
+                                {% endif %}
+                            </a>
+                            <div class="resize-handle"></div>
+                        </th>
+
+                        <!-- LEHRER -->
+                        {% set next_dir = 'asc' if not (sort=='teacher' and direction=='asc') else 'desc' %}
+                        <th data-col="teacher">
+                            <a class="text-decoration-none"
+                               href="{{ url_for('person.list_persons',
+                                                sort='teacher',
+                                                direction=next_dir,
+                                                search=search,
+                                                filters=filters_str) }}">
+                                Lehrer
+                                {% if sort=='teacher' %}
+                                    <i class="bi bi-caret-{{ 'up' if direction=='asc' else 'down' }}-fill text-primary"></i>
+                                {% endif %}
+                            </a>
+                            <div class="resize-handle"></div>
+                        </th>
+
+                        <!-- GAST -->
+                        {% set next_dir = 'asc' if not (sort=='guest' and direction=='asc') else 'desc' %}
+                        <th data-col="guest">
+                            <a class="text-decoration-none"
+                               href="{{ url_for('person.list_persons',
+                                                sort='guest',
+                                                direction=next_dir,
+                                                search=search,
+                                                filters=filters_str) }}">
+                                Gast
+                                {% if sort=='guest' %}
+                                    <i class="bi bi-caret-{{ 'up' if direction=='asc' else 'down' }}-fill text-primary"></i>
+                                {% endif %}
+                            </a>
+                            <div class="resize-handle"></div>
+                        </th>
+
+                        <!-- ENTHAFTUNG -->
+                        {% set next_dir = 'asc' if not (sort=='liability_waiver_valid' and direction=='asc') else 'desc' %}
+                        <th data-col="liability">
+                            <a class="text-decoration-none"
+                               href="{{ url_for('person.list_persons',
+                                                sort='liability_waiver_valid',
+                                                direction=next_dir,
+                                                search=search,
+                                                filters=filters_str) }}">
+                                Enthaftung
+                                {% if sort=='liability_waiver_valid' %}
+                                    <i class="bi bi-caret-{{ 'up' if direction=='asc' else 'down' }}-fill text-primary"></i>
+                                {% endif %}
+                            </a>
+                            <div class="resize-handle"></div>
+                        </th>
+
+                        <!-- GEWICHT -->
+                        {% set next_dir = 'asc' if not (sort=='weight_kg' and direction=='asc') else 'desc' %}
+                        <th data-col="weight">
+                            <a class="text-decoration-none"
+                               href="{{ url_for('person.list_persons',
+                                                sort='weight_kg',
+                                                direction=next_dir,
+                                                search=search,
+                                                filters=filters_str) }}">
+                                Gewicht
+                                {% if sort=='weight_kg' %}
+                                    <i class="bi bi-caret-{{ 'up' if direction=='asc' else 'down' }}-fill text-primary"></i>
+                                {% endif %}
+                            </a>
+                            <div class="resize-handle"></div>
+                        </th>
+
+                        <th data-col="actions" class="text-end">
+                            Aktionen
+                            <div class="resize-handle"></div>
+                        </th>
+
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for p in persons %}
+                    <tr>
+
+                        <!-- NAME -->
+                        <td>
+                            {{ p.full_name }}
+                            {% if p.is_archived %}
+                                <span class="badge bg-secondary ms-1">Archiviert</span>
+                            {% endif %}
+                            {% if p.newsletter_opt_out %}
+                                <i class="bi bi-bell-slash text-secondary ms-1"
+                                   title="Newsletter abbestellt"></i>
+                            {% endif %}
+                        </td>
+
+                        <!-- MITGLIED -->
+                        <td>{{ 'Ja' if p.is_member else 'Nein' }}</td>
+
+                        <!-- TANDEM -->
+                        <td>{{ 'Ja' if p.is_tandem_guest else 'Nein' }}</td>
+
+                        <!-- PARTNER-VEREIN -->
+                        <td>{{ 'Ja' if p.is_partner_verein else 'Nein' }}</td>
+
+                        <!-- LEHRERSTATUS MIT FARBLOGIK -->
+                        <td>
+                            {% if not p.is_teacher %}
+                                –
+                            {% else %}
+                                {% set exp = p.teacher_license_expires %}
+                                {% if not exp %}
+                                    <span class="badge bg-danger">–</span>
+                                {% else %}
+                                    {% set days = (exp - date.today()).days %}
+                                    {% if days < 0 %}
+                                        <span class="badge bg-danger">{{ exp.strftime('%d.%m.%Y') }}</span>
+                                    {% elif days < 120 %}
+                                        <span class="badge bg-warning text-dark">{{ exp.strftime('%d.%m.%Y') }}</span>
+                                    {% else %}
+                                        <span class="badge bg-success">{{ exp.strftime('%d.%m.%Y') }}</span>
+                                    {% endif %}
+                                {% endif %}
+                            {% endif %}
+                        </td>
+
+                        <!-- GAST -->
+                        <td>{{ 'Ja' if (not p.is_member and not p.is_tandem_guest and not p.is_partner_verein) else 'Nein' }}</td>
+
+                        <!-- ENTHAFTUNG MIT DATUM UND FARBEN -->
+                        <td>
+                            {% if p.is_tandem_guest %}
+                                <span class="badge bg-secondary">–</span>
+                            {% else %}
+                                {% if p.liability_waiver_date and p.liability_waiver_valid %}
+                                    <span class="badge bg-success">
+                                        {{ p.liability_waiver_date.strftime('%d.%m.%Y') }}
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-danger">
+                                        {{ p.liability_waiver_date.strftime('%d.%m.%Y') if p.liability_waiver_date else '–' }}
+                                    </span>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+
+                        <!-- GEWICHT MIT LOGIK -->
+                        <td>
+                            {% set w = p.weight_kg %}
+                            {% if p.is_tandem_guest %}
+                                {% if w < 40 or w > 90 %}
+                                    <span class="badge bg-danger">{{ w }}</span>
+                                {% else %}
+                                    <span class="badge bg-success">{{ w }}</span>
+                                {% endif %}
+                            {% else %}
+                                {% if w < 50 or w > 100 %}
+                                    <span class="badge bg-danger">{{ w }}</span>
+                                {% else %}
+                                    <span class="badge bg-success">{{ w }}</span>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+
+                        <!-- AKTIONEN -->
+                        <td class="text-end d-flex justify-content-end gap-1">
+
+                            <!-- EDIT -->
+                            <a href="{{ url_for('person.edit_person', id=p.id) }}"
+                               class="btn btn-sm btn-outline-primary"
+                               title="Bearbeiten">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+
+                            <!-- ARCHIVE -->
+                            {% if p.is_active %}
+                            <form method="post"
+                                  action="{{ url_for('person.archive_person', id=p.id) }}"
+                                  onsubmit="return confirm('Person wirklich archivieren?');">
+                                <button class="btn btn-sm btn-warning" type="submit"
+                                        title="Archivieren">
+                                    <i class="bi bi-archive"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+
+                            <!-- RESTORE -->
+                            {% if p.is_archived %}
+                            <form method="post"
+                                  action="{{ url_for('person.restore_person', id=p.id) }}"
+                                  onsubmit="return confirm('Person wiederherstellen?');">
+                                <button class="btn btn-sm btn-info" type="submit"
+                                        title="Wiederherstellen">
+                                    <i class="bi bi-arrow-counterclockwise"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+
+                            <!-- HARD DELETE (ADMIN ONLY + allowed) -->
+                            {% if is_admin() and p.can_hard_delete() %}
+                            <form method="post"
+                                  action="{{ url_for('person.hard_delete_person', id=p.id) }}"
+                                  onsubmit="return confirm('ENDGÜLTIG löschen? Dieser Vorgang kann NICHT rückgängig gemacht werden.');">
+                                <button class="btn btn-sm btn-danger" type="submit"
+                                        title="Endgültig löschen">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+
+                            <!-- INFO-ICON wenn Harddelete NICHT möglich -->
+                            {% if is_admin() and not p.can_hard_delete() %}
+                                <span class="text-muted ms-1"
+                                      title="Harddelete nicht möglich: Person war in Loads oder hat Rechnungen.">
+                                    <i class="bi bi-info-circle"></i>
+                                </span>
+                            {% endif %}
+
+                        </td>
+
+                    </tr>
+                    {% endfor %}
+                </tbody>
+
+            </table>
+        </div>
+
+    </div>
+</div>
+
+<!-- ============================= -->
+<!-- JS: Spaltenbreite-Resizer     -->
+<!-- ============================= -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const table = document.getElementById("personTable");
+    const ths = table.querySelectorAll("th");
+
+    // gespeicherte Breiten laden
+    ths.forEach(th => {
+        const key = "colwidth_" + th.dataset.col;
+        const saved = localStorage.getItem(key);
+        if (saved) th.style.width = saved + "px";
+    });
+
+    let currentTh = null;
+    let startX = 0;
+    let startWidth = 0;
+
+    function startResize(e) {
+        currentTh = e.target.parentElement;
+        startX = e.pageX;
+        startWidth = currentTh.offsetWidth;
+        currentTh.classList.add("resizing");
+        document.addEventListener("mousemove", resize);
+        document.addEventListener("mouseup", stopResize);
+    }
+
+    function resize(e) {
+        if (!currentTh) return;
+        const newWidth = startWidth + (e.pageX - startX);
+        if (newWidth > 50) {
+            currentTh.style.width = newWidth + "px";
+        }
+    }
+
+    function stopResize() {
+        if (!currentTh) return;
+
+        const key = "colwidth_" + currentTh.dataset.col;
+        localStorage.setItem(key, currentTh.offsetWidth);
+
+        currentTh.classList.remove("resizing");
+        currentTh = null;
+
+        document.removeEventListener("mousemove", resize);
+        document.removeEventListener("mouseup", stopResize);
+    }
+
+    // Griff aktivieren
+    table.querySelectorAll(".resize-handle").forEach(handle => {
+        handle.addEventListener("mousedown", startResize);
+    });
+});
+</script>
+
+{% endblock %}

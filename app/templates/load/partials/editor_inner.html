@@ -1,0 +1,438 @@
+<!-- C:\manifest_fallschirm\app\templates\load\partials\editor_inner.html -->
+<div class="container-fluid mt-4">
+  {% include "load/partials/editor_styles.html" %}
+
+  <!-- ================= LOAD HEADER ================= -->
+  <div class="mb-4 d-flex justify-content-between align-items-baseline">
+    <div>
+      <h1 class="fw-bold display-5 mb-0">Load {{ load.load_number }}</h1>
+      <div class="text-muted small">
+        {{ (load.actual_time or load.created_at).strftime("%d.%m.%Y – %H:%M Uhr") }}
+      </div>
+    </div>
+
+    <div class="d-flex align-items-center gap-2">
+      {% if load.actual_time %}
+        <span class="badge bg-success">{{ load.actual_time.strftime("%H:%M") }}</span>
+      {% else %}
+        <span class="text-muted small">noch nicht gestartet</span>
+      {% endif %}
+
+      {% if session.get('is_admin') or load.status != "completed" %}
+        <!-- ✈️ Zeit = jetzt (POST wie in der Liste, damit es überall funktioniert) -->
+        <form action="{{ url_for('load.time_now_action', id=load.id) }}"
+              method="POST"
+              class="d-inline m-0">
+          {% if is_split_view %}
+            <input type="hidden" name="return_to" value="split">
+            <input type="hidden" name="show" value="{{ show }}">
+            <input type="hidden" name="period" value="{{ archive_period | default('all') }}">
+            <input type="hidden" name="from" value="{{ archive_from | default('') }}">
+            <input type="hidden" name="to" value="{{ archive_to | default('') }}">
+          {% endif %}
+          <button type="submit"
+                  class="btn btn-sm btn-warning"
+                  title="Zeit auf jetzt setzen (kein Abschluss)">
+            <i class="bi bi-airplane"></i> Start
+          </button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+
+  {% set load_locked = (load.status == "completed" and not session.get('is_admin')) %}
+
+  <!-- ================= FORM (SAVE) ================= -->
+  <form id="load-save-form"
+        method="POST"
+        action="{{ url_for('load.save_load', id=load.id) }}">
+    {# ✅ NUR IM SPLIT-VIEW: Redirect-Steuerung #}
+    {% if is_split_view %}
+      <input type="hidden" name="return_to" value="split">
+      <input type="hidden" name="show" value="{{ show }}">
+      <input type="hidden" name="period" value="{{ archive_period | default('all') }}">
+      <input type="hidden" name="from" value="{{ archive_from | default('') }}">
+      <input type="hidden" name="to" value="{{ archive_to | default('') }}">
+    {% endif %}
+
+	<!-- ================= ZEIT & LOAD-HÖHE ================= -->
+	{% if session.get('is_admin') or load.status != "completed" %}
+	  <div class="card mb-3">
+		<div class="card-body">
+		  <h5 class="fw-bold mb-3">
+			<i class="bi bi-clock"></i> Zeit &amp; Absprunghöhe
+		  </h5>
+
+		  <div class="row g-3 align-items-end">
+
+			<!-- Datum -->
+			<div class="col-md-3">
+			  <label class="form-label fw-bold">Datum</label>
+			  <input type="date"
+					 name="actual_date"
+					 class="form-control"
+					 value="{{ (load.actual_time or load.created_at).strftime('%Y-%m-%d') }}"
+					 {% if load_locked %}disabled{% endif %}>
+			</div>
+
+			<!-- Uhrzeit -->
+			<div class="col-md-3">
+			  <label class="form-label fw-bold">Uhrzeit</label>
+			  <input type="time"
+					 name="actual_time_hm"
+					 class="form-control"
+					 value="{% if load.actual_time %}{{ load.actual_time.strftime('%H:%M') }}{% endif %}"
+					 {% if load_locked %}disabled{% endif %}>
+			</div>
+
+			<!-- Load-Höhe + Tanken -->
+			<div class="col-md-3">
+			  <label class="form-label fw-bold">Load‑Höhe</label>
+
+			  <div class="d-flex align-items-center gap-2">
+				<select id="load_height_m"
+						name="height_m"
+						class="form-select"
+						{% if load_locked %}disabled{% endif %}>
+				  {% for h in [1500,3000,4000] %}
+					<option value="{{ h }}" {% if load.height_m == h %}selected{% endif %}>
+					  {{ h }} m
+					</option>
+				  {% endfor %}
+				</select>
+
+				<!-- ================= TANKEN (reine Information) ================= -->
+				<!-- grau = Tanken nein / rot = Tanken ja -->
+				<button type="button"
+						class="btn btn-sm border-0 p-0 ms-4"
+						title="Tanken erforderlich"
+						{% if load_locked %}disabled{% endif %}
+						onclick="
+						  const f = document.getElementById('fuel_required');
+						  const i = this.querySelector('i');
+						  if (f.value === '1') {
+							f.value = '0';
+							i.classList.remove('text-danger');
+							i.classList.add('text-secondary');
+						  } else {
+							f.value = '1';
+							i.classList.remove('text-secondary');
+							i.classList.add('text-danger');
+						  }
+						">
+				  <i class="bi bi-fuel-pump-fill
+					 {% if load.fuel_required %}text-danger{% else %}text-secondary{% endif %}
+					 fs-4"></i>
+				</button>
+
+				<!-- verstecktes Feld für Save -->
+				<input type="hidden"
+					   id="fuel_required"
+					   name="fuel_required"
+					   value="{{ 1 if load.fuel_required else 0 }}">
+			  </div>
+			</div>
+
+		  </div>
+		</div>
+	  </div>
+	{% endif %}
+
+    <!-- ================= GRUNDDATEN ================= -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="fw-bold mb-3">
+          <i class="bi bi-sliders"></i> Load‑Grunddaten
+        </h5>
+			
+		<!-- ================= PREISMODELL (READ-ONLY) ================= -->
+		{% if load.pricing_model %}
+		<div class="row mb-3">
+		  <div class="col-md-12">
+			<label class="form-label fw-bold">
+			  <i class="bi bi-currency-euro"></i> Preismodell
+			</label>
+
+			<div class="form-control-plaintext border rounded px-3 py-2 bg-light">
+			  <div class="fw-semibold">
+				{{ load.pricing_model.name }}
+			  </div>
+
+			  {% if load.pricing_model.valid_from or load.pricing_model.valid_to %}
+			  <div class="text-muted small">
+				vorgesehen:
+				{% if load.pricing_model.valid_from %}
+				  ab {{ load.pricing_model.valid_from.strftime('%d.%m.%Y') }}
+				{% endif %}
+				{% if load.pricing_model.valid_to %}
+				  bis {{ load.pricing_model.valid_to.strftime('%d.%m.%Y') }}
+				{% endif %}
+			  </div>
+			  {% endif %}
+			</div>
+
+			<div class="form-text">
+			  Dieses Preismodell wurde beim Erstellen des Loads festgelegt
+			  und kann hier nicht geändert werden.
+			</div>
+		  </div>
+		</div>
+		{% else %}
+		<div class="row mb-3">
+		  <div class="col-md-12">
+			<div class="alert alert-warning mb-0">
+			  <strong>Achtung:</strong>
+			  Für diesen Load ist kein Preismodell hinterlegt.
+			  Eine Abrechnung ist so nicht möglich.
+			</div>
+		  </div>
+		</div>
+		{% endif %}		
+		
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Flugplatz</label>
+            <select name="airfield_id" class="form-select" {% if load_locked %}disabled{% endif %}>
+              {% for af in airfields %}
+                <option value="{{ af.id }}" {% if af.id == load.airfield_id %}selected{% endif %}>
+                  {{ af.name }}{% if af.is_home_airfield %} (Heimat){% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Flugzeug</label>
+            <select name="aircraft_id" class="form-select" {% if load_locked %}disabled{% endif %}>
+              {% for ac in aircrafts %}
+                <option value="{{ ac.id }}"
+                        {% if ac.id == load.aircraft_id %}selected{% endif %}
+                        {% if not ac.active and ac.id == load.aircraft_id %}disabled{% endif %}>
+                  {{ ac.registration }} – {{ ac.type }} ({{ ac.seats }} Sitze)
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= SITZTABELLE ================= -->
+    {% set entries_map = {} %}
+    {% for e in load.entries %}
+      {% if e.seat is not none %}
+        {% set _ = entries_map.update({ e.seat: e }) %}
+      {% endif %}
+    {% endfor %}
+
+    {% set base_seat_count = load.aircraft.seats %}
+    {% set effective_seat_count = base_seat_count + 2 %}
+
+    <input type="hidden" id="extra_seats_ui" name="extra_seats_ui" value="0">
+    <button type="button"
+            id="add_extra_seat"
+            class="btn btn-sm btn-outline-secondary mb-2"
+            {% if load_locked %}disabled{% endif %}>
+      + Extrasitz hinzufügen
+    </button>
+
+    <div id="load_warnings" class="alert alert-warning d-none" role="alert" aria-live="polite"></div>
+
+    <table class="table table-bordered table-sm align-middle resizable-table" id="load-editor-table">
+      <thead class="table-light">
+        <tr>
+          <th style="width:60px;">Sitz</th>
+          <th>Person</th>
+          <th style="width:180px;">Status</th>
+          <th style="width:120px;">Höhe</th>
+          <th style="width:40px;"></th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for seat in range(1, effective_seat_count + 1) %}
+          {% set entry = entries_map.get(seat) %}
+          <tr class="seat-row"
+              data-seat="{{ seat }}"
+              data-gear-rental="{{ 1 if (entry and entry.gear_rental) else 0 }}"
+              {% if seat > base_seat_count %}hidden{% endif %}>
+            <td class="fw-bold text-center">{{ seat }}</td>
+
+            <td>
+              <div class="autocomplete-container">
+                <input type="text"
+                       class="form-control person-input"
+                       data-seat="{{ seat }}"
+                       name="seat_{{ seat }}_person_name"
+                       value="{{ entry.person.full_name if entry else '' }}"
+                       autocomplete="off"
+                       spellcheck="false"
+                       {% if load_locked %}disabled{% endif %}>
+                <input type="hidden"
+                       id="seat_{{ seat }}_person"
+                       name="seat_{{ seat }}_person"
+                       value="{{ entry.person_id if entry else '' }}">
+                <div class="autocomplete-arrow" {% if load_locked %}style="display:none"{% endif %}>▼</div>
+              </div>
+
+              <!-- ✅ NEU (Schritt 4): Platzhalter für Ampel/Hint (JS füllt das) -->
+              <div class="seat-validity-hints mt-1"
+                   id="seat_{{ seat }}_validity_hints"
+                   data-seat="{{ seat }}"></div>
+            </td>
+
+            <td>
+              <select id="seat_{{ seat }}_status_code"
+                      name="seat_{{ seat }}_status_code"
+                      class="form-select status-select"
+                      data-initial="{{ entry.status_code if entry else '' }}"
+                      data-gear-rental-initial="{{ 1 if (entry and entry.gear_rental) else 0 }}"
+                      {% if load_locked %}disabled{% endif %}>
+              </select>
+            </td>
+
+            <td>
+              <select id="seat_{{ seat }}_height_m"
+                      name="seat_{{ seat }}_height_m"
+                      class="form-select seat-height"
+                      {% if load_locked %}disabled{% endif %}>
+                {% for h in [1500,3000,4000] %}
+                  <option value="{{ h }}" {% if entry and entry.height_m == h %}selected{% endif %}>
+                    {{ h }} m
+                  </option>
+                {% endfor %}
+              </select>
+            </td>
+
+            <td class="text-center">
+              <button type="button"
+                      class="btn btn-sm btn-outline-danger clear-seat"
+                      data-seat="{{ seat }}"
+                      {% if load_locked %}disabled{% endif %}>
+                ✕
+              </button>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- ================= CLIPBOARD ================= -->
+    <div class="d-flex justify-content-end gap-2 mb-3">
+      <button type="button" id="paste_from_clipboard" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-clipboard-plus"></i> Aus Clipboard einfügen
+      </button>
+      <button type="button" id="clear_clipboard" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-clipboard-x"></i> Clipboard leeren
+      </button>
+    </div>
+
+  </form>
+
+  <!-- ================= SPEICHERN + LOAD DURCHGEFÜHRT ================= -->
+  <div class="d-flex justify-content-between align-items-center gap-3">
+
+    {% if (session.get('is_admin') or load.status != 'completed') and load.status != 'completed' %}
+      <div class="position-relative complete-form-wrapper">
+        <form method="POST"
+              action="{{ url_for('load.complete_load', id=load.id) }}"
+              class="m-0">
+          {% if is_split_view %}
+            <input type="hidden" name="return_to" value="split">
+            <input type="hidden" name="show" value="{{ show }}">
+            <input type="hidden" name="period" value="{{ archive_period | default('all') }}">
+            <input type="hidden" name="from" value="{{ archive_from | default('') }}">
+            <input type="hidden" name="to" value="{{ archive_to | default('') }}">
+          {% endif %}
+
+          <button type="button"
+                  class="btn btn-success btn-lg"
+                  onclick="toggleCompleteConfirm(this)">
+            <i class="bi bi-check2-circle"></i> Load durchgeführt
+          </button>
+
+          <div class="complete-confirm-box shadow border rounded bg-white p-3"
+               style="display:none; position:absolute; bottom:100%; left:0; margin-bottom:8px; z-index:1000; min-width:320px;">
+            <div class="mb-2 fw-semibold text-danger">
+              Load wirklich durchgeführt?<br>
+              Ab jetzt sind keine Änderungen mehr möglich.
+            </div>
+            <div class="form-check mb-3">
+              <input class="form-check-input complete-confirm-checkbox"
+                     type="checkbox"
+                     id="complete_confirm_{{ load.id }}"
+                     onchange="syncCompleteOkState(this)">
+              <label class="form-check-label" for="complete_confirm_{{ load.id }}">
+                Ich bestätige den Abschluss dieses Loads.
+              </label>
+            </div>
+            <div class="d-flex justify-content-end gap-2">
+              <button type="submit" class="btn btn-sm btn-success complete-ok-btn" disabled>
+                OK
+              </button>
+              <button type="button"
+                      class="btn btn-sm btn-outline-secondary"
+                      onclick="toggleCompleteConfirm(this)">
+                Abbrechen
+              </button>
+            </div>
+          </div>
+
+          <noscript>
+            <div class="mt-2 text-muted small">
+              JavaScript ist deaktiviert – Abschluss erfolgt mit Browser-Bestätigung.
+            </div>
+            <button type="submit"
+                    class="btn btn-success btn-lg mt-2"
+                    onclick="return confirm('Load wirklich durchgeführt? Danach sind keine Änderungen mehr möglich.');">
+              <i class="bi bi-check2-circle"></i> Load durchgeführt (ohne JS)
+            </button>
+          </noscript>
+        </form>
+      </div>
+    {% endif %}
+
+    <div class="d-flex justify-content-end gap-2">
+      <button type="submit"
+              form="load-save-form"
+              class="btn btn-primary"
+              {% if load_locked %}disabled{% endif %}>
+        <i class="bi bi-save"></i> Speichern
+      </button>
+
+      <a href="{{ url_for('load.edit_load', id=load.id) }}" class="btn btn-outline-secondary">
+        Zurück
+      </a>
+    </div>
+  </div>
+
+  {% include "load/partials/editor_scripts.html" %}
+
+  <script>
+    function toggleCompleteConfirm(el) {
+      const form = el.closest('form');
+      if (!form) return;
+      const box = form.querySelector('.complete-confirm-box');
+      if (!box) return;
+      const isOpen = box.style.display === 'block';
+      box.style.display = isOpen ? 'none' : 'block';
+      if (!isOpen) {
+        const cb = form.querySelector('.complete-confirm-checkbox');
+        const ok = form.querySelector('.complete-ok-btn');
+        if (cb && ok) {
+          ok.disabled = !cb.checked;
+          cb.focus();
+        }
+      }
+    }
+    function syncCompleteOkState(checkboxEl) {
+      const form = checkboxEl.closest('form');
+      if (!form) return;
+      const ok = form.querySelector('.complete-ok-btn');
+      if (!ok) return;
+      ok.disabled = !checkboxEl.checked;
+    }
+    if (typeof window.initLoadEditor === "function") {
+      window.initLoadEditor();
+    }
+  </script>
+</div>

@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+{% block title %}Manuelle Rechnung erstellen{% endblock %}
+{% block header %}Manuelle Rechnung erstellen{% endblock %}
+
+{% block content %}
+<div class="container" id="manualInvoiceRoot">
+  <div class="d-flex align-items-center gap-2 mb-3">
+    <a href="{{ url_for('billing.overview') }}" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> Zur Abrechnungsübersicht
+    </a>
+    <a href="{{ url_for('billing.invoice_list') }}" class="btn btn-outline-secondary">
+      <i class="bi bi-receipt"></i> Zur Rechnungsübersicht
+    </a>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <form method="post" id="manualInvoiceForm">
+        {% set form_data = form_data or {} %}
+        {% set form_lines = form_data.get('lines', []) %}
+        {% set is_edit_mode = form_data.get('draft_invoice_id') is not none %}
+        {% if is_edit_mode %}
+          <input type="hidden" name="draft_invoice_id" value="{{ form_data.draft_invoice_id }}">
+          <div class="alert alert-info d-flex align-items-center mb-3" role="alert">
+            <strong class="me-2">Entwurf geladen:</strong>
+            <span>#{{ form_data.draft_invoice_id }}{% if selected_person and selected_person.full_name %} für {{ selected_person.full_name }}{% endif %}. Änderungen können gespeichert und erneut als Vorschau geprüft werden.</span>
+          </div>
+        {% endif %}
+        <h5 class="fw-bold mb-3">Empfänger und Leistungsdatum</h5>
+
+        <div class="row g-2 mb-3">
+          <div class="col-md-6 position-relative">
+                 <label class="form-label">Person (optional)</label>
+            <input type="text"
+                   class="form-control"
+                   id="manualPersonInput"
+                   placeholder="Person suchen…"
+                   autocomplete="off"
+                   value="{{ selected_person.full_name if selected_person else '' }}">
+                 <input type="hidden" id="manualPersonId" name="person_id" value="{{ selected_person.id if selected_person else '' }}">
+            <div id="manualPersonList" class="list-group position-absolute w-100" style="z-index:1000; display:none; max-height:260px; overflow:auto;"></div>
+                 <div class="form-text">Optional. Ohne Person wird der Rechnungsempfänger unten als eigene Rechnungsbasis verwendet.</div>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label">Leistungsdatum</label>
+            <input type="date"
+                   class="form-control"
+                   name="service_date"
+                   value="{{ form_data.service_date if form_data and form_data.service_date else (today or date.today()).strftime('%Y-%m-%d') }}"
+                   required>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label">Vorkasse / Gutschein (Brutto)</label>
+            <input type="text" class="form-control" name="prepaid_voucher_amount" value="{{ form_data.prepaid_voucher_amount if form_data else '' }}" placeholder="z. B. 100,00">
+            <div class="form-text">Auch bei manuellen Rechnungen möglich.</div>
+          </div>
+        </div>
+
+        <h5 class="fw-bold mt-4 mb-2">Manuelle Positionen</h5>
+        <div class="row g-2 mb-2">
+          <div class="col-md-8">
+            <label class="form-label">Überschrift für Rechnung und Verwendungszweck</label>
+            <input type="text"
+                   class="form-control"
+                   name="manual_title"
+                   maxlength="120"
+                   value="{{ form_data.manual_title if form_data and form_data.manual_title else 'Manuelle Positionen' }}"
+                   placeholder="z. B. Ausrüstungspaket">
+            <div class="form-text">Voreinstellung: Manuelle Positionen. Dieser Text wird im Verwendungszweck verwendet.</div>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-bordered align-middle" id="manualLinesTable">
+            <thead class="table-light">
+              <tr>
+                <th style="width:38%">Beschreibung</th>
+                <th class="text-end" style="width:10%">Menge</th>
+                <th style="width:14%">Einheit</th>
+                <th class="text-end" style="width:14%">Einzelpreis (Brutto) €</th>
+                <th class="text-end" style="width:10%">MwSt %</th>
+                <th style="width:14%"></th>
+              </tr>
+            </thead>
+            <tbody id="manualLinesBody">
+              {% for line in form_lines %}
+              <tr>
+                <td>
+                  <textarea class="form-control" name="line_description[]" placeholder="z. B. Packservice" rows="2" required>{{ line.description if line and line.description else '' }}</textarea>
+                </td>
+                <td><input type="text" class="form-control text-end" name="line_quantity[]" inputmode="decimal" value="{{ line.quantity if line and line.quantity else '1,00' }}" placeholder="z. B. 1,50" required></td>
+                <td><input type="text" class="form-control" name="line_unit[]" value="{{ line.unit if line and line.unit else '' }}" placeholder="z. B. Stück"></td>
+                <td><input type="text" class="form-control text-end" name="line_unit_price_gross[]" inputmode="decimal" value="{{ line.unit_price_gross if line and line.unit_price_gross else '0,00' }}" placeholder="z. B. 1.500,25" required></td>
+                <td><input type="text" class="form-control text-end" name="line_vat_rate[]" inputmode="decimal" value="{{ line.vat_rate if line and line.vat_rate else '19,00' }}" placeholder="z. B. 19,00" required></td>
+                <td class="text-end">
+                  <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeManualLine(this)">Entfernen</button>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="form-text mb-2">Zahlenformat: Komma für Dezimalstellen, Punkt für Tausender (z. B. 1.234,56).</div>
+
+        <div class="d-flex justify-content-between mb-3">
+          <button type="button" class="btn btn-outline-primary" id="addManualLineBtn">
+            <i class="bi bi-plus-circle"></i> Position hinzufügen
+          </button>
+          <div class="text-muted small align-self-center">Mindestens eine Position ist erforderlich.</div>
+        </div>
+
+        <h5 class="fw-bold mt-4 mb-2">Abweichende Rechnungsanschrift (optional)</h5>
+        <div class="row g-2 mb-4">
+          <div class="col-md-6">
+            <label class="form-label">Empfänger (Name/Firma)</label>
+            <input type="text" class="form-control" name="billing_address_name" value="{{ form_data.billing_address_name if form_data else '' }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">E-Mail-Adresse</label>
+            <input type="email" class="form-control" name="billing_address_email" value="{{ form_data.billing_address_email if form_data else '' }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Straße und Hausnummer</label>
+            <input type="text" class="form-control" name="billing_address_street" value="{{ form_data.billing_address_street if form_data else '' }}">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">PLZ</label>
+            <input type="text" class="form-control" name="billing_address_zip" value="{{ form_data.billing_address_zip if form_data else '' }}">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Ort</label>
+            <input type="text" class="form-control" name="billing_address_city" value="{{ form_data.billing_address_city if form_data else '' }}">
+          </div>
+        </div>
+
+        <div class="d-flex gap-2">
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-file-earmark-plus"></i> {% if is_edit_mode %}Entwurf aktualisieren{% else %}Entwurf erstellen{% endif %}
+          </button>
+          <a href="{{ url_for('billing.overview') }}" class="btn btn-outline-secondary">Abbrechen</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const personInput = document.getElementById("manualPersonInput");
+  const personIdInput = document.getElementById("manualPersonId");
+  const personList = document.getElementById("manualPersonList");
+  const addLineBtn = document.getElementById("addManualLineBtn");
+  const linesBody = document.getElementById("manualLinesBody");
+
+  async function searchPersons(q) {
+    try {
+      const res = await fetch(`/loads/api/person/search?q=${encodeURIComponent(q || "")}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
+  }
+
+  let searchTimer = null;
+
+  function renderPersonList(persons) {
+    personList.innerHTML = "";
+    if (!persons.length) {
+      personList.style.display = "none";
+      return;
+    }
+
+    persons.slice(0, 12).forEach((p) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "list-group-item list-group-item-action";
+      btn.textContent = p.name || "";
+      btn.addEventListener("click", () => {
+        personInput.value = p.name || "";
+        personIdInput.value = String(p.id || "");
+        personList.style.display = "none";
+      });
+      personList.appendChild(btn);
+    });
+
+    personList.style.display = "block";
+  }
+
+  personInput.addEventListener("input", () => {
+    personIdInput.value = "";
+    const q = personInput.value.trim();
+    if (searchTimer) clearTimeout(searchTimer);
+
+    if (!q) {
+      personList.style.display = "none";
+      personList.innerHTML = "";
+      return;
+    }
+
+    searchTimer = setTimeout(async () => {
+      const persons = await searchPersons(q);
+      renderPersonList(persons);
+    }, 120);
+  });
+
+  document.addEventListener("click", (ev) => {
+    if (ev.target === personInput) return;
+    if (personList.contains(ev.target)) return;
+    personList.style.display = "none";
+  });
+
+  function buildLineRow() {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>
+        <textarea class="form-control" name="line_description[]" placeholder="z. B. Packservice" rows="2" required></textarea>
+      </td>
+      <td><input type="text" class="form-control text-end" name="line_quantity[]" inputmode="decimal" value="1,00" placeholder="z. B. 1,50" required></td>
+      <td><input type="text" class="form-control" name="line_unit[]" placeholder="z. B. Stück"></td>
+      <td><input type="text" class="form-control text-end" name="line_unit_price_gross[]" inputmode="decimal" value="0,00" placeholder="z. B. 1.500,25" required></td>
+      <td><input type="text" class="form-control text-end" name="line_vat_rate[]" inputmode="decimal" value="19,00" placeholder="z. B. 19,00" required></td>
+      <td class="text-end">
+        <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeManualLine(this)">Entfernen</button>
+      </td>
+    `;
+    return tr;
+  }
+
+  addLineBtn.addEventListener("click", () => {
+    linesBody.appendChild(buildLineRow());
+  });
+})();
+
+function removeManualLine(btn) {
+  const tbody = document.getElementById("manualLinesBody");
+  if (!tbody) return;
+  if (tbody.querySelectorAll("tr").length <= 1) {
+    return;
+  }
+  const row = btn.closest("tr");
+  if (row) row.remove();
+}
+</script>
+{% endblock %}

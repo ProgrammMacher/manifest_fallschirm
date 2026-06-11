@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block title %}Diagnose – Loads{% endblock %}
+{% block header %}Diagnose – Loads{% endblock %}
+
+{% block content %}
+
+<style>
+.debug-card { border-left: 4px solid #0d6efd; }
+.debug-ok { color: #0a0; font-weight: bold; }
+.debug-fail { color: #c00; font-weight: bold; }
+.debug-warn { color: #c90; font-weight: bold; }
+pre {
+    background: #f8f9fa;
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+</style>
+
+<div class="container">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="fw-bold mb-0">
+            <i class="bi bi-bug"></i> Diagnose‑Übersicht
+        </h3>
+        <a href="{{ url_for('load.debug_export') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-download"></i> Fehler als TXT exportieren
+        </a>
+    </div>
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-3" id="debugTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="errors-tab" data-bs-toggle="tab"
+                    data-bs-target="#errors" type="button" role="tab">
+                Fehler
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="details-tab" data-bs-toggle="tab"
+                    data-bs-target="#details" type="button" role="tab">
+                Details
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="debugTabsContent">
+
+        <!-- ===================================================== -->
+        <!-- TAB 1 — FEHLER                                        -->
+        <!-- ===================================================== -->
+        <div class="tab-pane fade show active" id="errors" role="tabpanel">
+
+            <div class="card shadow-sm mb-4 debug-card">
+                <div class="card-body">
+                    <h5 class="fw-bold mb-3">Personen‑Fehler</h5>
+                    <ul class="small mb-0">
+                        {% set any_person_error = false %}
+                        {% for p in persons %}
+                            {% if not p.weight_kg %}
+                                {% set any_person_error = true %}
+                                <li><span class="debug-warn">⚠</span> {{ p.full_name }} – kein Gewicht</li>
+                            {% endif %}
+                            {% if not p.liability_waiver_valid %}
+                                {% set any_person_error = true %}
+                                <li><span class="debug-warn">⚠</span> {{ p.full_name }} – Haftungserklärung ungültig oder fehlt</li>
+                            {% endif %}
+                        {% endfor %}
+                        {% if not any_person_error %}
+                            <li><span class="debug-ok">✔</span> Keine Personen‑Fehler gefunden.</li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4 debug-card">
+                <div class="card-body">
+                    <h5 class="fw-bold mb-3">Load‑Fehler</h5>
+
+                    {% set any_load_error = false %}
+
+                    {% for load in loads %}
+                        {% set load_errors = [] %}
+
+                        {% if load.max_payload_kg and load.payload_sum_kg > load.max_payload_kg %}
+                            {% set _ = load_errors.append("Gewicht überschreitet Maximalgewicht") %}
+                        {% elif load.max_payload_kg and load.payload_sum_kg > load.max_payload_kg * 0.9 %}
+                            {% set _ = load_errors.append("Gewicht über 90% des Maximalgewichts") %}
+                        {% endif %}
+
+                        {% set seats = load.entries|map(attribute='seat')|list %}
+                        {% if seats|length != seats|unique|length %}
+                            {% set _ = load_errors.append("Doppelte Sitzbelegung") %}
+                        {% endif %}
+
+                        {% set td = load.entries|selectattr("status_code", "in", ["TD","TD-Vereins-Schirm"])|list %}
+                        {% set gtd = load.entries|selectattr("status_code", "in", ["G-TD","G-TD-Video"])|list %}
+                        {% if td|length > 0 and gtd|length == 0 %}
+                            {% set _ = load_errors.append("TD ohne Tandemgast") %}
+                        {% endif %}
+
+                        {% set has_teacher = load.entries|selectattr("status_code","equalto","Lehrer")|list %}
+                        {% set has_student = load.entries|selectattr("status_code","in",["Schüler","Schüler Ek 1","Schüler Ek 2","Schüler GK 6"])|list %}
+                        {% if has_teacher and not has_student %}
+                            {% set _ = load_errors.append("Lehrer ohne Schüler") %}
+                        {% endif %}
+
+                        {% for e in load.entries %}
+                            {% if e.height_m and load.height_m and e.height_m > load.height_m %}
+                                {% set _ = load_errors.append("Sitz " ~ e.seat ~ ": Höhe " ~ e.height_m ~ " m > Loadhöhe " ~ load.height_m ~ " m") %}
+                            {% endif %}
+                        {% endfor %}
+
+                        {% if load_errors %}
+                            {% set any_load_error = true %}
+                            <div class="mb-3">
+                                <strong>Load {{ load.load_number }}</strong>
+                                <ul class="small mb-1">
+                                    {% for err in load_errors|unique %}
+                                        <li><span class="debug-fail">✘</span> {{ err }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if not any_load_error %}
+                        <p class="small mb-0">
+                            <span class="debug-ok">✔</span> Keine Load‑Fehler gefunden.
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ===================================================== -->
+        <!-- TAB 2 — DETAILS                                       -->
+        <!-- ===================================================== -->
+        <div class="tab-pane fade" id="details" role="tabpanel">
+
+            <!-- Live-Checks -->
+            <div class="card shadow-sm mb-4 debug-card">
+                <div class="card-body">
+                    <h5 class="fw-bold mb-3">Live‑Systemchecks</h5>
+                    <ul id="liveChecks" class="small mb-0"></ul>
+                </div>
+            </div>
+
+            <!-- API-Checks -->
+            <div class="card shadow-sm mb-4 debug-card">
+                <div class="card-body">
+                    <h5 class="fw-bold mb-3">API‑Status</h5>
+                    <ul class="small mb-0">
+                        <li>/loads/api/status/list → <span id="apiStatusList">…</span></li>
+                        <li>/loads/api/person/search?q=* → <span id="apiPersonSearch">…</span></li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Datenbank-Übersicht -->
+            <div class="card shadow-sm mb-4 debug-card">
+                <div class="card-body">
+                    <h5 class="fw-bold mb-3">Datenbank‑Übersicht</h5>
+
+                    <p class="fw-bold">Personen ({{ persons|length }})</p>
+                    <pre>{{ persons|map(attribute="full_name")|list }}</pre>
+
+                    <p class="fw-bold mt-3">Flugzeuge ({{ aircrafts|length }})</p>
+                    <pre>{{ aircrafts|map(attribute="registration")|list }}</pre>
+
+                    <p class="fw-bold mt-3">Flugplätze ({{ airfields|length }})</p>
+                    <pre>{{ airfields|map(attribute="name")|list }}</pre>
+
+                    <p class="fw-bold mt-3">Statusdefinitionen ({{ status_defs|length }})</p>
+                    <pre>{{ status_defs|map(attribute="code")|list }}</pre>
+                </div>
+            </div>
+
+            <!-- Load-Details -->
+            <div class="card shadow-sm mb-4 debug-card">
+                <div class="card-body">
+                    <h5 class="fw-bold mb-3">Loads ({{ loads|length }})</h5>
+
+                    {% for load in loads %}
+                    <div class="mb-4 p-3 border rounded">
+                        <strong>Load {{ load.load_number }}</strong><br>
+                        Flugzeug: {{ load.aircraft.registration }}<br>
+                        Höhe: {{ load.height_m }} m<br>
+                        Gesamtgewicht: {{ "%.0f"|format(load.payload_sum_kg) }} kg<br>
+                        Status: {{ load.status }}
+
+                        <details class="mt-2">
+                            <summary>Sitze & Einträge</summary>
+                            <pre class="mt-2">
+{% for e in load.entries %}
+Sitz {{ e.seat }} – {{ e.person.full_name }} – {{ e.status_code }} – {{ e.height_m }} m – {{ e.payload_kg }} kg
+{% endfor %}
+                            </pre>
+                        </details>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+async function runDiagnostics() {
+    const live = document.getElementById("liveChecks");
+    if (!live) return;
+
+    function add(msg, ok=true) {
+        const li = document.createElement("li");
+        li.innerHTML = ok
+            ? `<span class="debug-ok">✔</span> ${msg}`
+            : `<span class="debug-fail">✘</span> ${msg}`;
+        live.appendChild(li);
+    }
+
+    try {
+        const r = await fetch("/loads/api/status/list");
+        add("Statusliste erreichbar", r.ok);
+        const el = document.getElementById("apiStatusList");
+        if (el) el.textContent = r.ok ? "OK" : "Fehler";
+    } catch {
+        add("Statusliste NICHT erreichbar", false);
+        const el = document.getElementById("apiStatusList");
+        if (el) el.textContent = "Fehler";
+    }
+
+    try {
+        const r = await fetch("/loads/api/person/search?q=*");
+        add("Personensuche erreichbar", r.ok);
+        const el = document.getElementById("apiPersonSearch");
+        if (el) el.textContent = r.ok ? "OK" : "Fehler";
+    } catch {
+        add("Personensuche NICHT erreichbar", false);
+        const el = document.getElementById("apiPersonSearch");
+        if (el) el.textContent = "Fehler";
+    }
+
+    add("Editor‑JS geladen", typeof initEditor === "function");
+    add("DOM geladen", document.readyState === "complete" || document.readyState === "interactive");
+}
+
+document.addEventListener("DOMContentLoaded", runDiagnostics);
+</script>
+
+{% endblock %}

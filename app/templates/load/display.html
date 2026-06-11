@@ -1,0 +1,646 @@
+{# C:\manifest_fallschirm\app\templates\load\display.html #}
+{% extends "base_display.html" %}
+{% block title %}Load-Display{% endblock %}
+{% block header %}<i class="bi bi-display"></i> Load-Übersicht{% endblock %}
+
+{% block extra_head %}
+<style>
+/* ============================================================
+   ✅ TOPBAR / LAYOUT
+   ============================================================ */
+.display-topbar{
+  display:flex;
+  align-items:flex-start;
+  gap:32px;
+  padding:10px 14px;
+  border-radius:10px;
+  background: rgba(255,255,255,0.85);
+  border: 1px solid rgba(0,0,0,0.06);
+  margin-bottom:6px; /* etwas weniger, da mobile Logo-Zeile folgt */
+}
+
+[data-theme="dark"] .display-topbar{
+  background: rgba(30,30,30,0.80);
+  border-color: rgba(255,255,255,0.10);
+}
+
+.display-now{ min-width: 320px; }
+
+.display-countdown{
+  font-weight: 800;
+  font-size: 1.6rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.display-list-wrap .load-list-container{
+  max-height: calc(100vh - 240px);
+  height: auto;
+}
+
+.display-status-strip{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin: 2px 0 10px 0;
+}
+
+.display-status-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 12px;
+  border-radius:999px;
+  font-size:0.82rem;
+  font-weight:800;
+  letter-spacing:0.02em;
+  line-height:1.2;
+  border:1px solid transparent;
+}
+
+.display-status-pill .status-label{
+  text-transform:uppercase;
+}
+
+.display-status-pill .status-value{
+  font-weight:700;
+}
+
+.display-status-pill.is-current{
+  color:#ffffff;
+  background:rgba(13,110,253,0.96);
+  border-color:rgba(13,110,253,1);
+  box-shadow:0 2px 10px rgba(13,110,253,0.35);
+}
+
+.display-status-pill.is-next{
+  color:#ffffff;
+  background:rgba(214,0,0,0.94);
+  border-color:rgba(214,0,0,1);
+  box-shadow:0 2px 10px rgba(214,0,0,0.32);
+}
+
+.display-status-pill.is-muted{
+  color:#334155;
+  background:rgba(148,163,184,0.16);
+  border-color:rgba(148,163,184,0.35);
+}
+
+[data-theme="dark"] .display-status-pill.is-muted{
+  color:#e5e7eb;
+  background:rgba(148,163,184,0.22);
+  border-color:rgba(148,163,184,0.40);
+}
+
+/* ============================================================
+   ✅ DISPLAY-ONLY: READ-ONLY (konsolidiert)
+   ============================================================ */
+#load-view-root[data-view="display"] .col-action,
+#load-view-root[data-view="display"] td.col-action,
+#load-view-root[data-view="display"] th.col-action{
+  display:none !important;
+}
+
+/* Interaktive Elemente komplett ausblenden */
+#load-view-root[data-view="display"] button,
+#load-view-root[data-view="display"] .btn,
+#load-view-root[data-view="display"] .btn-group,
+#load-view-root[data-view="display"] .action-buttons,
+#load-view-root[data-view="display"] form,
+#load-view-root[data-view="display"] .collapse,
+#load-view-root[data-view="display"] .accordion,
+#load-view-root[data-view="display"] .toggle,
+#load-view-root[data-view="display"] .person-toggle{
+  display:none !important;
+}
+
+/* Links als Text */
+#load-view-root[data-view="display"] a{
+  pointer-events:none !important;
+  cursor:default !important;
+  color:inherit !important;
+  text-decoration:none !important;
+}
+
+/* Cursor neutral */
+#load-view-root[data-view="display"] *{
+  cursor: default !important;
+}
+
+/* ============================================================
+   ✅ TABELLE: Stabiler Normal-Hintergrund (Zebra)
+   ============================================================ */
+#load-view-root[data-view="display"] .load-table{
+  --bs-table-hover-bg: transparent;
+  --bs-table-hover-color: inherit;
+}
+
+#load-view-root[data-view="display"] .load-table tbody tr:nth-child(odd) > td{
+  background-color: #ffffff !important;
+}
+#load-view-root[data-view="display"] .load-table tbody tr:nth-child(even) > td{
+  background-color: rgba(0,0,0,0.012) !important;
+}
+
+[data-theme="dark"] #load-view-root[data-view="display"] .load-table tbody tr:nth-child(odd) > td{
+  background-color: rgba(255,255,255,0.015) !important;
+}
+[data-theme="dark"] #load-view-root[data-view="display"] .load-table tbody tr:nth-child(even) > td{
+  background-color: rgba(255,255,255,0.03) !important;
+}
+
+/* ============================================================
+   ✅ CURRENT / NEXT – DISPLAY (DESKTOP): Spalten 1–4 farbig
+   ============================================================ */
+#load-view-root[data-view="display"] .load-table tbody tr.is-current > td:nth-child(1),
+#load-view-root[data-view="display"] .load-table tbody tr.is-current > td:nth-child(2),
+#load-view-root[data-view="display"] .load-table tbody tr.is-current > td:nth-child(3),
+#load-view-root[data-view="display"] .load-table tbody tr.is-current > td:nth-child(4){
+  background-color: rgba(13,110,253,0.20) !important;
+}
+
+#load-view-root[data-view="display"] .load-table tbody tr.is-next > td:nth-child(1),
+#load-view-root[data-view="display"] .load-table tbody tr.is-next > td:nth-child(2),
+#load-view-root[data-view="display"] .load-table tbody tr.is-next > td:nth-child(3),
+#load-view-root[data-view="display"] .load-table tbody tr.is-next > td:nth-child(4){
+  background-color: rgba(214,0,0,0.17) !important;
+}
+
+#load-view-root[data-view="display"] .load-table tbody tr.is-current > td:first-child{
+  border-left: 5px solid rgba(13,110,253,0.95) !important;
+}
+
+#load-view-root[data-view="display"] .load-table tbody tr.is-next > td:first-child{
+  border-left: 5px solid rgba(214,0,0,0.92) !important;
+}
+
+/* ============================================================
+   ✅ BADGES (AKTUELL / NÄCHSTER)
+   ============================================================ */
+.load-badge-wrap{
+  margin-top:4px;
+  display:flex;
+  justify-content:flex-start;
+}
+.load-badge{
+  display:inline-flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+
+  white-space:pre-line;
+  line-height:1.2;
+  font-size:0.7rem;
+  font-weight:700;
+  letter-spacing:0.04em;
+
+  padding:4px 8px;
+  border-radius:8px;
+
+  min-width:82px;
+  max-width:104px;
+
+  text-align:center;
+  box-sizing:border-box;
+  overflow:hidden;
+
+  user-select:none;
+}
+.load-badge-current{
+  color:#ffffff;
+  background:rgba(13,110,253,0.96);
+  border:1px solid rgba(13,110,253,1);
+  box-shadow: 0 2px 8px rgba(13,110,253,0.35);
+}
+.load-badge-next{
+  color:#ffffff;
+  background:rgba(214,0,0,0.94);
+  border:1px solid rgba(214,0,0,1);
+  box-shadow: 0 2px 8px rgba(214,0,0,0.32);
+  font-weight:700;
+}
+
+/* Spalte Flugplatz / Flugzeug */
+.col-place{
+  width:220px;
+  max-width:220px;
+  white-space:normal;
+}
+.col-place strong{ display:block; }
+
+/* ============================================================
+   ✅ BLOCK-FARBLOGIK (nur Springer) – kontrastreicher, pastell
+   ============================================================ */
+#load-view-root[data-view="display"] .person-block.tandem-seat,
+#load-view-root[data-view="display"] .person-block.instruction-seat{
+  border-left: 4px solid rgba(var(--block-rgb, 0,0,0), 0.75);
+  padding-left: 6px;
+  border-radius: 4px;
+  background-color: rgba(var(--block-rgb, 0,0,0), 0.10);
+}
+
+/* Paletten */
+#load-view-root[data-view="display"] .tandem-seat-1{ --block-rgb: 106,168,255; }
+#load-view-root[data-view="display"] .tandem-seat-2{ --block-rgb: 122,203,122; }
+#load-view-root[data-view="display"] .tandem-seat-3{ --block-rgb: 230,196,99; }
+#load-view-root[data-view="display"] .tandem-seat-4{ --block-rgb: 230,164,140; }
+#load-view-root[data-view="display"] .tandem-seat-5{ --block-rgb: 183,156,230; }
+#load-view-root[data-view="display"] .tandem-seat-6{ --block-rgb: 111,211,230; }
+#load-view-root[data-view="display"] .tandem-seat-7{ --block-rgb: 154,211,111; }
+#load-view-root[data-view="display"] .tandem-seat-8{ --block-rgb: 230,161,196; }
+#load-view-root[data-view="display"] .tandem-seat-9{ --block-rgb: 154,168,255; }
+#load-view-root[data-view="display"] .tandem-seat-10{ --block-rgb: 230,178,111; }
+
+#load-view-root[data-view="display"] .instruction-seat-1{ --block-rgb: 230,196,99; }
+#load-view-root[data-view="display"] .instruction-seat-2{ --block-rgb: 224,184,78; }
+#load-view-root[data-view="display"] .instruction-seat-3{ --block-rgb: 214,200,106; }
+#load-view-root[data-view="display"] .instruction-seat-4{ --block-rgb: 217,168,78; }
+#load-view-root[data-view="display"] .instruction-seat-5{ --block-rgb: 209,177,0; }
+
+[data-theme="dark"] #load-view-root[data-view="display"] .person-block.tandem-seat,
+[data-theme="dark"] #load-view-root[data-view="display"] .person-block.instruction-seat{
+  background-color: rgba(var(--block-rgb, 255,255,255), 0.10);
+  border-left-color: rgba(var(--block-rgb, 255,255,255), 0.65);
+}
+
+
+/* ============================================================
+   MOBILE: Logos korrigiert
+   - HU_Bleistift um ~2 Buchstaben nach links
+   - Zeile ~30 % flacher
+   - Desktop bleibt unverändert
+   ============================================================ */
+
+.mobile-logos-row{ 
+  display:none; 
+}
+
+@media (max-width:576px){
+
+  .mobile-logos-row{
+    --col-load: 96px;
+    --col-time: 44px;
+    display:flex;
+    align-items:center;
+    height:30px;              /* ~30 % flacher */
+    margin:3px 0 5px 0;
+    overflow:hidden;          /* verhindert Hochdrücken */
+  }
+
+  .mobile-logos-spacer{
+    flex:0 0 calc(var(--col-load) + var(--col-time));
+  }
+
+  .mobile-logos-content{
+    flex:1 1 auto;
+    display:inline-flex;
+    justify-content:flex-end;
+    align-items:center;
+    gap:6px;
+    opacity:0.55;
+    white-space:nowrap;
+    pointer-events:none;
+    padding-right:4px;
+  }
+
+  .mobile-logos-content img{
+    height:28px;              /* echte Verkleinerung */
+    width:auto;
+    object-fit:contain;
+    vertical-align:middle;
+    transform:none;           /* Skalierung entfernt → Zeile bleibt flach */
+  }
+
+  /* HU_Bleistift gezielt nach links verschieben */
+  .mobile-logos-content img.hu-logo{
+    margin-right:2ch;         /* ≈ zwei Buchstabenbreiten */
+  }
+
+  .mobile-logos-text{
+    font-size:0.7rem;
+    line-height:1.1;
+    white-space:nowrap;
+    margin-left:-3.4ch;
+  }
+}
+
+
+
+/* ============================================================
+   ✅ MOBILE – OVERRIDES
+   - Current/Next nur Spalten 1–2
+   ============================================================ */
+@media (max-width:576px){
+
+  /* Zeit-Spalte schmaler */
+  #load-view-root th:nth-child(2),
+  #load-view-root td:nth-child(2){
+    width:44px !important;
+    min-width:44px !important;
+    text-align:center;
+  }
+
+  /* AKTUELL – nur Spalten 1–2 */
+  #load-view-root[data-view="display"] .load-table tbody tr.is-current > td:nth-child(1),
+  #load-view-root[data-view="display"] .load-table tbody tr.is-current > td:nth-child(2){
+    background-color: rgba(13,110,253,0.20) !important;
+  }
+
+  /* NÄCHSTER – nur Spalten 1–2 */
+  #load-view-root[data-view="display"] .load-table tbody tr.is-next > td:nth-child(1),
+  #load-view-root[data-view="display"] .load-table tbody tr.is-next > td:nth-child(2){
+    background-color: rgba(214,0,0,0.17) !important;
+  }
+
+  /* Springer-Spalte stabilisieren */
+  #load-view-root td:nth-child(5) > div{
+    display:flex !important;
+    flex-direction:column;
+    gap:1px;
+  }
+
+  .person-block{
+    gap:8px;
+    justify-content:flex-start;
+  }
+  .person-block .person-name{
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    flex:1;
+  }
+  .person-block .person-meta,
+  .person-block small{
+    white-space:nowrap;
+    flex-shrink:0;
+    text-align:right;
+    margin-left:8px;
+  }
+
+  /* Block-Markierung mobile dezenter */
+  #load-view-root[data-view="display"] .person-block.tandem-seat,
+  #load-view-root[data-view="display"] .person-block.instruction-seat{
+    border-left-width: 3px;
+    background-color: rgba(var(--block-rgb, 0,0,0), 0.08);
+  }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="display-topbar">
+  <div class="display-now">
+    <div class="fw-semibold">Aktuelles Datum &amp; Uhrzeit</div>
+    <div class="text-muted" id="nowText">–</div>
+  </div>
+
+  <div class="display-countdown" id="nextCountdown">
+    Nächster Load in: –
+  </div>
+</div>
+
+<!-- ✅ MOBILE: Logos eine Zeile tiefer (über der Tabelle / über Springer) -->
+<div class="mobile-logos-row" aria-hidden="true">
+  <div class="mobile-logos-spacer"></div>
+  <div class="mobile-logos-content">
+    <img src="{{ url_for('static', filename='img/HU_Bleistift.png') }}" class="hu-logo" alt="">
+    <span class="mobile-logos-text">MANIFEST OU · Vers. 7.7</span>
+    <img src="{{ url_for('static', filename='img/Logo_DZ.png') }}" alt="">
+  </div>
+</div>
+
+
+<div id="displayState"
+     data-current="{{ current_load_id|default('') }}"
+     data-next="{{ next_load_id|default('') }}"
+     data-next-start="{{ next_start_iso|default('') }}"></div>
+
+<div class="display-status-strip" aria-live="polite">
+  <div class="display-status-pill is-current" id="currentLoadPill">
+    <span class="status-label">AKTUELL</span>
+    <span class="status-value" id="currentLoadLabel">–</span>
+  </div>
+  <div class="display-status-pill is-next" id="nextLoadPill">
+    <span class="status-label">NÄCHSTER LOAD</span>
+    <span class="status-value" id="nextLoadLabel">–</span>
+  </div>
+</div>
+
+<div class="display-list-wrap">
+  {% include "load/partials/display_table.html" %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  /* ================= STATE ================= */
+  function getState() {
+    const s = document.getElementById("displayState");
+    return {
+      currentLoadId: s?.dataset.current ? Number(s.dataset.current) : null,
+      nextLoadId: s?.dataset.next ? Number(s.dataset.next) : null,
+      nextStartIso: (s?.dataset.nextStart || null)
+    };
+  }
+  window.displayGetState = getState;
+
+  /* ================= CLOCK ================= */
+  function updateNow() {
+    const now = new Date();
+    const s = now.toLocaleString("de-DE", {
+      weekday: "long",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    });
+    const el = document.getElementById("nowText");
+    if (el) el.textContent = s;
+  }
+
+  /* ================= MARKER ================= */
+  function rowByLoadId(loadId) {
+    if (!loadId) return null;
+    const persons = document.getElementById(`load_${loadId}_persons`);
+    return persons ? persons.closest("tr") : null;
+  }
+
+  function applyMarkers() {
+    const { currentLoadId, nextLoadId } = getState();
+
+    document.querySelectorAll("#load-view-root tbody tr").forEach(tr => {
+      tr.classList.remove("is-current", "is-next");
+      tr.querySelectorAll(".load-badge-wrap").forEach(b => b.remove());
+    });
+
+    const currentRow = rowByLoadId(currentLoadId);
+    const nextRow = rowByLoadId(nextLoadId);
+
+    if (currentRow) {
+      currentRow.classList.add("is-current");
+      const cell = currentRow.querySelector("td:first-child");
+      if (cell) {
+        const wrap = document.createElement("div");
+        wrap.className = "load-badge-wrap";
+        wrap.innerHTML = `<span class="load-badge load-badge-current">AKTUELL</span>`;
+        cell.appendChild(wrap);
+      }
+    }
+
+    if (nextRow) {
+      nextRow.classList.add("is-next");
+      const cell = nextRow.querySelector("td:first-child");
+      if (cell) {
+        const wrap = document.createElement("div");
+        wrap.className = "load-badge-wrap";
+        wrap.innerHTML = `<span class="load-badge load-badge-next">NÄCHSTER LOAD</span>`;
+        cell.appendChild(wrap);
+      }
+    }
+  }
+  window.displayApplyMarkers = applyMarkers;
+
+  function resolveLoadLabel(loadId) {
+    const row = rowByLoadId(loadId);
+    if (!row) return "–";
+    const strong = row.querySelector("td:first-child strong");
+    return (strong?.textContent || "–").replace(/\s+/g, " ").trim();
+  }
+
+  function updateStatusStrip() {
+    const { currentLoadId, nextLoadId } = getState();
+    const currentPill = document.getElementById("currentLoadPill");
+    const nextPill = document.getElementById("nextLoadPill");
+    const currentLabel = document.getElementById("currentLoadLabel");
+    const nextLabel = document.getElementById("nextLoadLabel");
+
+    if (currentLabel) currentLabel.textContent = resolveLoadLabel(currentLoadId);
+    if (nextLabel) nextLabel.textContent = resolveLoadLabel(nextLoadId);
+
+    if (currentPill) {
+      currentPill.classList.toggle("is-muted", !currentLoadId || !rowByLoadId(currentLoadId));
+    }
+    if (nextPill) {
+      nextPill.classList.toggle("is-muted", !nextLoadId || !rowByLoadId(nextLoadId));
+    }
+  }
+  window.displayUpdateStatusStrip = updateStatusStrip;
+
+  /* ================= COUNTDOWN ================= */
+  function fmtSignedCountdown(ms) {
+    // Nach Start: ab -60s in Minuten umschalten (-1 Minute, -2 Minuten, ...)
+    if (ms <= -60000) {
+      const absSeconds = Math.floor(Math.abs(ms) / 1000);
+      const minutes = Math.floor(absSeconds / 60);
+      return `-${minutes} ${minutes === 1 ? "Minute" : "Minuten"}`;
+    }
+
+    const sign = ms < 0 ? "-" : "";
+    const total = Math.floor(Math.abs(ms) / 1000);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${sign}${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+  }
+
+  let zeroTriggered = false;
+  function updateCountdown() {
+    const el = document.getElementById("nextCountdown");
+    if (!el) return;
+
+    const { nextStartIso } = getState();
+    if (!nextStartIso) {
+      el.textContent = "Nächster Load in: –";
+      zeroTriggered = false;
+      return;
+    }
+
+    const nextDate = new Date(nextStartIso);
+    const diff = nextDate - new Date();
+
+    /* ✅ Robust: ungültiges Datum -> kein Countdown */
+    if (!Number.isFinite(diff)) {
+      el.textContent = "Nächster Load in: –";
+      zeroTriggered = false;
+      return;
+    }
+
+    if (diff <= 0) {
+      if (!zeroTriggered) {
+        zeroTriggered = true;
+        window.forceDisplayRefresh?.();
+      }
+    } else {
+      zeroTriggered = false;
+    }
+
+    el.textContent = `Nächster Load in: ${fmtSignedCountdown(diff)}`;
+  }
+
+  window.displayIsCountdownZero = () => {
+    const { nextStartIso } = getState();
+    if (!nextStartIso) return false;
+    const d = new Date(nextStartIso) - new Date();
+    return Number.isFinite(d) ? (d <= 0) : false;
+  };
+
+  document.addEventListener("DOMContentLoaded", () => {
+    updateNow();
+    setInterval(updateNow, 1000);
+
+    applyMarkers();
+    updateStatusStrip();
+    updateCountdown();
+    setInterval(updateCountdown, 1000);
+  });
+})();
+</script>
+
+<script>
+/*
+  ✅ DISPLAY-ONLY: störende Hinweis-Texte entfernen
+  - initial bei DOMContentLoaded
+  - und NACH Auto-Refresh (Event: display:refreshed)
+*/
+function displayRemoveHints() {
+  const killPhrases = [
+    "Personen anklicken",
+    "oder als",
+    "Mehrfachauswahl",
+    "einklappen",
+    "ausklappen"
+  ];
+
+  const scope = document.querySelector(".display-list-wrap");
+  if (!scope) return;
+
+  const walker = document.createTreeWalker(
+    scope,
+    NodeFilter.SHOW_TEXT,
+    null
+  );
+
+  let node;
+  while ((node = walker.nextNode())) {
+    const txt = node.nodeValue;
+    if (!txt) continue;
+    const lower = txt.toLowerCase();
+    if (killPhrases.some(p => lower.includes(p.toLowerCase()))) {
+      node.nodeValue = "";
+    }
+  }
+}
+
+document.addEventListener("DOMContentLoaded", displayRemoveHints);
+document.addEventListener("display:refreshed", () => {
+  displayRemoveHints();
+  window.displayApplyMarkers?.();
+  window.displayUpdateStatusStrip?.();
+});
+</script>
+
+<script src="{{ url_for('static', filename='load/load_blocks_view.js') }}" defer></script>
+<script src="{{ url_for('static', filename='load/display_auto_refresh.js') }}" defer></script>
+{% endblock %}

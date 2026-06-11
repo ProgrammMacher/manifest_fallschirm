@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Import – Fehler{% endblock %}
+{% block header %}Import – Fehler{% endblock %}
+
+{% block content %}
+
+<div class="card shadow-sm">
+    <div class="card-body">
+
+        <h4 class="mb-3 text-danger fw-bold">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            Beim Import sind Fehler oder Konflikte aufgetreten
+        </h4>
+
+        <p class="text-muted mb-4">
+            Die folgenden Einträge konnten nicht vollständig verarbeitet werden.  
+            Bestehende Werte wurden nicht überschrieben – nur Ergänzungen waren erlaubt.
+        </p>
+
+        {% if errors and errors|length > 0 %}
+
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Excel</th>
+                        <th>Vorname</th>
+                        <th>Nachname</th>
+                        <th>Telefon</th>
+                        <th>E-Mail</th>
+                        <th>Gewicht</th>
+                        <th>Größe</th>
+                        <th>Geburtstag</th>
+                        <th>IBAN</th>
+                        <th>Mitglied</th>
+                        <th>Tandem</th>
+                        <th>Notfallname</th>
+                        <th>Notfalltelefon</th>
+                        <th>Hinweise</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for row in errors %}
+                    <tr class="table-danger">
+
+                        <!-- Excel-Spalte -->
+                        <td>
+                            <span class="badge bg-secondary">
+                                Spalte {{ row.column }}
+                            </span>
+                        </td>
+
+                        <!-- Basisdaten -->
+                        <td>{{ row.data.first_name or "–" }}</td>
+                        <td>{{ row.data.last_name or "–" }}</td>
+                        <td>{{ row.data.phone or "–" }}</td>
+                        <td>{{ row.data.email or "–" }}</td>
+
+                        <!-- Gewicht / Größe -->
+                        <td>{{ row.data.weight_kg or "–" }}</td>
+                        <td>{{ row.data.height_cm or "–" }}</td>
+
+                        <!-- Geburtstag -->
+                        <td>
+                            {% if row.data.birthdate %}
+                                {% if row.data.birthdate.__class__.__name__ == "date" %}
+                                    {{ row.data.birthdate.strftime('%d.%m.%Y') }}
+                                {% else %}
+                                    {{ row.data.birthdate }}
+                                {% endif %}
+                            {% else %}
+                                –
+                            {% endif %}
+                        </td>
+
+                        <!-- IBAN -->
+                        <td>{{ row.data.iban or "–" }}</td>
+
+                        <!-- Mitglied -->
+                        <td>
+                            {% if row.data.is_member %}
+                                <span class="badge bg-success">Ja</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Nein</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Tandem -->
+                        <td>
+                            {% if row.data.is_tandem_guest %}
+                                <span class="badge bg-primary">Ja</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Nein</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Notfallkontakt -->
+                        <td>{{ row.data.emergency_name or "–" }}</td>
+                        <td>{{ row.data.emergency_phone or "–" }}</td>
+
+                        <!-- Hinweise -->
+                        <td class="text-danger">
+                            {% if row.reason %}
+                                {% for note in row.reason.split(";") %}
+                                    <div class="fw-bold">{{ note.strip() }}</div>
+                                {% endfor %}
+                            {% else %}
+                                <span class="text-muted">Keine Details verfügbar</span>
+                            {% endif %}
+                        </td>
+
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% else %}
+
+        <div class="alert alert-success">
+            <i class="bi bi-check-circle-fill"></i>
+            Keine Fehler gefunden.
+        </div>
+
+        {% endif %}
+
+        <!-- ACTION BUTTONS -->
+        <div class="d-flex justify-content-between mt-4">
+
+            <a href="{{ url_for('import_preview.preview') }}" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Zurück zur Vorschau
+            </a>
+
+            <a href="{{ url_for('pwa.pwa_index') }}" class="btn btn-primary">
+                <i class="bi bi-house-door-fill"></i> Zur Startseite
+            </a>
+
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+{% block title %}Import – Vorschau{% endblock %}
+
+{# ---------------------------------------------------------
+   Hilfs-Makro für farbige Zellen
+   --------------------------------------------------------- #}
+{% macro cell(row, value, field) %}
+    {% set errors = row.field_errors or {} %}
+    {% set warnings = row.field_warnings or {} %}
+
+    {% if errors.get(field) %}
+        <span class="text-danger fw-bold">{{ value }}</span>
+    {% elif warnings.get(field) %}
+        <span class="text-warning fw-bold">{{ value }}</span>
+    {% else %}
+        {{ value }}
+    {% endif %}
+{% endmacro %}
+
+{% block header %}
+Import – Vorschau
+{% endblock %}
+
+{% block content %}
+
+<style>
+    .merge-card {
+        background: #f8f9fa;
+        border: 1px solid #d9dee3;
+        border-radius: 0.75rem;
+        padding: 1rem;
+    }
+
+    .merge-table td,
+    .merge-table th {
+        vertical-align: top;
+    }
+
+    .merge-value {
+        min-width: 180px;
+        white-space: normal;
+    }
+</style>
+
+{% set mode_label = 'HORIZONTAL (Backup/Export)' if import_mode == 'horizontal' else 'VERTIKAL (Vorlage)' %}
+{% set mode_badge = 'bg-success' if import_mode == 'horizontal' else 'bg-primary' %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="fw-bold m-0">Import-Vorschau</h4>
+
+    <div>
+        <span class="badge {{ mode_badge }} me-2">Modus: {{ mode_label }}</span>
+
+        <a href="{{ url_for('import_preview.preview', filter='all') }}"
+           class="btn btn-outline-secondary btn-sm {% if filter_mode == 'all' %}active{% endif %}">
+            Alle
+        </a>
+
+        <a href="{{ url_for('import_preview.preview', filter='errors') }}"
+           class="btn btn-outline-danger btn-sm {% if filter_mode == 'errors' %}active{% endif %}">
+            Fehler
+        </a>
+
+        <a href="{{ url_for('import_preview.preview', filter='warnings') }}"
+           class="btn btn-outline-warning btn-sm {% if filter_mode == 'warnings' %}active{% endif %}">
+            Warnungen
+        </a>
+
+        <a href="{{ url_for('import_preview.preview', filter='duplicates') }}"
+           class="btn btn-outline-warning btn-sm {% if filter_mode == 'duplicates' %}active{% endif %}">
+            Doubletten
+        </a>
+
+        <a href="{{ url_for('import_preview.preview', filter='valid') }}"
+           class="btn btn-outline-success btn-sm {% if filter_mode == 'valid' %}active{% endif %}">
+            Gültige
+        </a>
+    </div>
+</div>
+
+{% if rows|length == 0 %}
+<div class="alert alert-info">
+    Keine Daten vorhanden. Bitte lade zuerst eine Datei hoch.
+</div>
+
+<a href="{{ url_for('import_preview.index') }}" class="btn btn-primary">
+    Neue Datei wählen
+</a>
+
+{% else %}
+
+{% if import_mode == 'vertical' %}
+<div class="alert alert-warning border mb-3">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    <strong>Manuelle Prüfung nach dem Import erforderlich:</strong>
+    Die Felder <strong>Mitglied</strong>, <strong>Partner-Verein</strong>, <strong>Schüler</strong> und <strong>Tandemmaster</strong> werden über die Importvorlage nicht gesetzt.
+    Bitte prüfe nach dem Import für jede betroffene Person, ob diese Felder korrekt eingestellt sind.
+</div>
+{% endif %}
+
+<form method="post" action="{{ url_for('import_execute.execute') }}">
+<div class="table-responsive">
+<table class="table table-bordered table-hover align-middle">
+    <thead class="table-light">
+        <tr>
+            <th>#</th>
+            <th>Vorname</th>
+            <th>Nachname</th>
+            <th>Telefon</th>
+            <th>E-Mail</th>
+            <th>Gewicht</th>
+            <th>Größe</th>
+            <th>Geburtstag</th>
+            <th>IBAN</th>
+            <th>Mitglied</th>
+            <th>Tandem</th>
+            <th>Notfallname</th>
+            <th>Notfalltelefon</th>
+            <th>Hinweise</th>
+        </tr>
+    </thead>
+
+    <tbody>
+
+    {% for row in rows %}
+        <tr
+            {% if row.field_errors %}
+                class="table-danger"
+            {% elif row.is_duplicate %}
+                class="table-warning"
+            {% elif row.field_warnings %}
+                class="table-warning"
+            {% else %}
+                class="table-success"
+            {% endif %}
+        >
+            <td>{{ loop.index }}</td>
+
+            <td>{{ cell(row, row.cleaned_data.first_name, "first_name") }}</td>
+            <td>{{ cell(row, row.cleaned_data.last_name, "last_name") }}</td>
+            <td>{{ cell(row, row.cleaned_data.phone, "phone") }}</td>
+            <td>{{ cell(row, row.cleaned_data.email, "email") }}</td>
+            <td>{{ cell(row, row.cleaned_data.weight_kg, "weight_kg") }}</td>
+            <td>{{ cell(row, row.cleaned_data.height_cm, "height_cm") }}</td>
+            <td>{{ cell(row, row.cleaned_data.birthdate, "birthdate") }}</td>
+            <td>{{ cell(row, row.cleaned_data.iban, "iban") }}</td>
+
+            <td>
+                {% if row.cleaned_data.is_member %}
+                    <span class="text-success">Ja</span>
+                {% else %}
+                    <span class="text-danger fw-bold">Nein</span>
+                {% endif %}
+            </td>
+
+            <td>
+                {% if row.cleaned_data.is_tandem_guest %}
+                    <span class="text-success">Ja</span>
+                {% else %}
+                    <span class="text-danger fw-bold">Nein</span>
+                {% endif %}
+            </td>
+
+            <td>{{ cell(row, row.cleaned_data.emergency_name, "emergency_name") }}</td>
+            <td>{{ cell(row, row.cleaned_data.emergency_phone, "emergency_phone") }}</td>
+
+            <td>
+                {% if row.notes %}
+                    {% for note in row.notes %}
+                        <div class="small">{{ note }}</div>
+                    {% endfor %}
+                {% else %}
+                    <span class="text-muted small">–</span>
+                {% endif %}
+            </td>
+        </tr>
+
+        {% if row.is_duplicate and row.existing_person %}
+        <tr class="table-light">
+            <td colspan="14">
+                <div class="merge-card" data-merge-entry="{{ row.entry_key }}">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                        <div>
+                            <div class="fw-bold">Bestehende Person erkannt</div>
+                            <div class="small text-muted">
+                                Person-ID {{ row.existing_person.id }}: {{ row.existing_person.full_name }}
+                                {% if row.duplicate_reason %}
+                                    | Treffergrund: {{ row.duplicate_reason }}
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% if row.merge_candidates %}
+                        <div class="d-flex gap-2">
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary"
+                                    data-merge-select="existing"
+                                    data-merge-target="{{ row.entry_key }}">
+                                Alle bisherigen Werte
+                            </button>
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-primary"
+                                    data-merge-select="import"
+                                    data-merge-target="{{ row.entry_key }}">
+                                Alle Importwerte
+                            </button>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    {% if row.merge_candidates %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered merge-table mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Feld</th>
+                                    <th>Alt</th>
+                                    <th>Neu</th>
+                                    <th>Auswahl</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for candidate in row.merge_candidates %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ candidate.label }}</strong>
+                                        {% if candidate.is_name_change %}
+                                            <div class="small text-muted">Bei Übernahme wird der bisherige Name als Ursprungsname gespeichert.</div>
+                                        {% endif %}
+                                    </td>
+                                    <td class="merge-value">{{ candidate.old_display }}</td>
+                                    <td class="merge-value">{{ candidate.new_display }}</td>
+                                    <td>
+                                        <div class="form-check">
+                                            <input class="form-check-input"
+                                                   type="radio"
+                                                   name="merge_choice__{{ row.entry_key }}__{{ candidate.field }}"
+                                                   value="existing"
+                                                   {% if candidate.default_choice == 'existing' %}checked{% endif %}>
+                                            <label class="form-check-label">Bisheriger Wert</label>
+                                        </div>
+                                        <div class="form-check mt-1">
+                                            <input class="form-check-input"
+                                                   type="radio"
+                                                   name="merge_choice__{{ row.entry_key }}__{{ candidate.field }}"
+                                                   value="import"
+                                                   {% if candidate.default_choice == 'import' %}checked{% endif %}
+                                                   {% if not candidate.import_allowed %}disabled{% endif %}>
+                                            <label class="form-check-label">
+                                                Importwert
+                                                {% if not candidate.import_allowed %}
+                                                    <span class="text-muted">(leer)</span>
+                                                {% endif %}
+                                            </label>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="small text-muted mb-0">
+                        Der Datensatz wurde erkannt, aber es gibt keine abweichenden Feldwerte. Es wird keine zweite Person angelegt.
+                    </div>
+                    {% endif %}
+                </div>
+            </td>
+        </tr>
+        {% endif %}
+    {% endfor %}
+
+    </tbody>
+</table>
+</div>
+
+<div class="mt-3 d-flex justify-content-between">
+    <a href="{{ url_for('import_preview.index') }}" class="btn btn-secondary">
+        Neue Datei wählen
+    </a>
+
+    <button type="submit" class="btn btn-primary">
+        Import ausführen
+    </button>
+</div>
+
+</form>
+
+<script>
+document.addEventListener('click', function (event) {
+    const button = event.target.closest('[data-merge-select]');
+    if (!button) {
+        return;
+    }
+
+    const target = button.getAttribute('data-merge-target');
+    const choice = button.getAttribute('data-merge-select');
+    const container = document.querySelector('[data-merge-entry="' + target + '"]');
+    if (!container) {
+        return;
+    }
+
+    const radios = container.querySelectorAll('input[type="radio"][value="' + choice + '"]:not(:disabled)');
+    radios.forEach(function (radio) {
+        radio.checked = true;
+    });
+});
+</script>
+
+{% endif %}
+
+{% endblock %}

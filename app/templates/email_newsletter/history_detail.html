@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}E-Mail Versand-Detail{% endblock %}
+{% block header %}Versand-Detail{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <a href="{{ url_for('email_nl.history') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left"></i> Zurück zur Übersicht
+    </a>
+    {% if manifest_is_dev %}
+    <form method="post"
+          action="{{ url_for('email_nl.history_delete', log_id=log.id) }}"
+          onsubmit="return confirm('Eintrag #' + {{ log.id }} + ' wirklich löschen?');"
+          class="d-inline">
+      <button type="submit" class="btn btn-outline-danger btn-sm">
+        <i class="bi bi-trash"></i> Historie löschen
+      </button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body">
+      <dl class="row mb-0">
+        <dt class="col-sm-3">Datum / Uhrzeit</dt>
+        <dd class="col-sm-9">{{ log.sent_at.strftime('%d.%m.%Y um %H:%M') if log.sent_at else '–' }}</dd>
+
+        <dt class="col-sm-3">Typ</dt>
+        <dd class="col-sm-9">
+          {% if log.mail_type == 'newsletter' %}
+            <span class="badge bg-info text-dark">Newsletter</span>
+          {% else %}
+            <span class="badge bg-secondary">E-Mail</span>
+          {% endif %}
+        </dd>
+
+        <dt class="col-sm-3">Betreff</dt>
+        <dd class="col-sm-9">{{ log.subject or '–' }}</dd>
+
+        <dt class="col-sm-3">Empfänger (Anzahl)</dt>
+        <dd class="col-sm-9">{{ log.recipient_count or 0 }}</dd>
+
+        <dt class="col-sm-3">Status</dt>
+        <dd class="col-sm-9">
+          {% if log.status == 'ok' %}
+            <span class="badge bg-success">OK</span>
+          {% elif log.status == 'partial' %}
+            <span class="badge bg-warning text-dark">Teilweise fehlgeschlagen</span>
+          {% else %}
+            <span class="badge bg-danger">Fehler</span>
+          {% endif %}
+        </dd>
+
+        {% if log.error_detail %}
+        <dt class="col-sm-3">Fehlermeldung</dt>
+        <dd class="col-sm-9 text-danger">{{ log.error_detail }}</dd>
+        {% endif %}
+      </dl>
+    </div>
+  </div>
+
+  {% set recipients = log.get_recipients() %}
+  {% if recipients %}
+  <h5>Empfänger-Liste</h5>
+  <ul class="list-group list-group-flush mb-3">
+    {% for r in recipients %}
+    <li class="list-group-item py-1 small">{{ r }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if log.body_preview %}
+  <h5>Text-Vorschau</h5>
+  <div class="border rounded p-3 bg-light small" style="white-space:pre-wrap;">{{ log.body_preview }}</div>
+  {% endif %}
+</div>
+{% endblock %}

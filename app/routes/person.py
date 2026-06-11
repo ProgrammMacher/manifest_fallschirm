@@ -1,0 +1,621 @@
+# C:\manifest_fallschirm\app\routes\person.py
+
+import os
+from io import BytesIO
+
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
+from sqlalchemy import or_, and_, case
+from datetime import datetime, date
+from app import db
+from app.models.person import Person  # WICHTIG: Model kommt aus models/, nicht hier definieren!
+from app.models.billing_config import BillingConfig
+from app.security.admin import admin_required, is_admin
+from app.services.billing_service import _image_to_data_uri
+
+bp_person = Blueprint("person", __name__, url_prefix="/persons")
+
+
+# ---------------------------------------------------------
+# Hilfsfunktionen
+# ---------------------------------------------------------
+def normalize_phone(phone):
+    if not phone:
+        return ""
+    p = str(phone).strip().replace(" ", "").replace("-", "").replace("/", "")
+    if p.startswith("+49"):
+        p = "0" + p[3:]
+    if p.startswith("0049"):
+        p = "0" + p[4:]
+    return p
+
+
+def normalize_email(email):
+    return (str(email) if email else "").strip().lower()
+
+
+def parse_date_flexible(value: str):
+    """TT.MM.JJJJ oder YYYY-MM-DD -> date | None"""
+    if not value:
+        return None
+    value = value.strip()
+    for fmt in ("%d.%m.%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def is_true(v) -> bool:
+    return (v or "").lower() == "true"
+
+
+def _collect_and_validate(form):
+    """
+    Liest ALLE Felder aus dem Formular, normalisiert und validiert.
+    Liefert: (data_dict, field_errors, warnings)
+    field_errors ist dict[str,str]
+    """
+    field_errors = {}
+    warnings = []
+
+    # Pflichtfelder / Basis
+    first_name = (form.get("first_name") or "").strip()
+    last_name = (form.get("last_name") or "").strip()
+    phone = normalize_phone((form.get("phone") or "").strip())
+    email = normalize_email((form.get("email") or "").strip())
+
+    # E-Mail-Validierung (optional erlaubt, aber wenn angegeben, dann gültig)
+    if email:
+        try:
+            from email_validator import validate_email, EmailNotValidError
+            validate_email(email, check_deliverability=True)
+        except ImportError:
+            field_errors["email"] = "E-Mail-Validierung fehlgeschlagen (Modul fehlt)."
+        except EmailNotValidError as e:
+            field_errors["email"] = "Ungültige E-Mail-Adresse: {}".format(str(e))
+
+    # Deutliche Markierung, falls keine E-Mail vorhanden
+    if not email:
+        email = ""
+
+    # zusätzliche Felder aus deinem Formular
+    emergency_name = (form.get("emergency_name") or "").strip()
+    emergency_relation = (form.get("emergency_relation") or "").strip()
+    emergency_phone = (form.get("emergency_phone") or "").strip()
+    emergency_email = (form.get("emergency_email") or "").strip()
+
+    iban = (form.get("iban") or "").strip()
+    bic = (form.get("bic") or "").strip()
+    account_holder = (form.get("account_holder") or "").strip()
+
+    street_and_number = (form.get("street_and_number") or "").strip()
+    zip_code = (form.get("zip_code") or "").strip()
+    city = (form.get("city") or "").strip()
+
+    license_number = (form.get("license_number") or "").strip()
+    insurance_provider = (form.get("insurance_provider") or "").strip()
+    insurance_number = (form.get("insurance_number") or "").strip()
+
+    comment = (form.get("comment") or "").strip()
+    notes = (form.get("notes") or "").strip()
+
+    # Flags
+    is_member = is_true(form.get("is_member"))
+    is_partner_verein = is_true(form.get("is_partner_verein"))
+    is_tandem_guest = is_true(form.get("is_tandem_guest"))
+    is_tandemmaster = is_true(form.get("is_tandemmaster"))
+    is_student = is_true(form.get("is_student"))
+    is_video = is_true(form.get("is_video"))
+    is_aff_teacher = is_true(form.get("is_aff_teacher"))
+    is_aff_student = is_true(form.get("is_aff_student"))
+
+    # ---- Validierung (wie bisher, nicht strenger) ----
+    if not first_name:
+        field_errors["first_name"] = "Vorname darf nicht leer sein."
+    if not last_name:
+        field_errors["last_name"] = "Nachname darf nicht leer sein."
+    if is_tandem_guest:
+        if not phone:
+            warnings.append("Tandemgast: Telefonnummer fehlt (wichtig, aber Speichern ist erlaubt).")
+        elif len(phone) < 5:
+            warnings.append("Tandemgast: Telefonnummer wirkt unvollständig (wichtig, aber Speichern ist erlaubt).")
+    else:
+        if len(phone) < 5:
+            field_errors["phone"] = "Telefonnummer ist ungültig."
+
+    # Gewicht
+    weight_raw = (form.get("weight_kg") or "").strip()
+    weight_kg = None
+    if not weight_raw:
+        field_errors["weight_kg"] = "Gewicht ist ein Pflichtfeld."
+    elif not weight_raw.isdigit():
+        field_errors["weight_kg"] = "Gewicht muss eine ganze Zahl sein."
+    else:
+        weight_kg = int(weight_raw)
+
+    # Größe optional
+    height_raw = (form.get("height_cm") or "").strip()
+    height_cm = None
+    if height_raw:
+        if not height_raw.isdigit():
+            field_errors["height_cm"] = "Größe muss eine ganze Zahl sein."
+        else:
+            height_cm = int(height_raw)
+
+    # Geburtstag optional (HTML date liefert YYYY-MM-DD)
+    birthdate_raw = (form.get("birthdate") or "").strip()
+    birthdate = None
+    if birthdate_raw:
+        bd = parse_date_flexible(birthdate_raw)
+        if bd is None:
+            field_errors["birthdate"] = "Geburtstag muss ein gültiges Datum sein."
+        else:
+            birthdate = bd
+
+    # Exklusivitätsregel:
+    # Partner-Verein darf weder Vereinsmitglied noch (Tandem-)Gast sein.
+    if is_partner_verein and is_member:
+        field_errors["is_partner_verein"] = "Partner-Verein kann nicht gleichzeitig Vereinsmitglied sein."
+        field_errors["is_member"] = "Vereinsmitglied kann nicht gleichzeitig Partner-Verein sein."
+    if is_partner_verein and is_tandem_guest:
+        field_errors["is_partner_verein"] = "Partner-Verein kann nicht gleichzeitig Tandemgast sein."
+        field_errors["is_tandem_guest"] = "Tandemgast kann nicht gleichzeitig Partner-Verein sein."
+
+    # Lehrer
+    is_teacher = is_true(form.get("is_teacher"))
+    teacher_license_expires_raw = (form.get("teacher_license_expires") or "").strip()
+    teacher_license_expires = None
+    if is_teacher:
+        if not teacher_license_expires_raw:
+            field_errors["teacher_license_expires"] = "Ablaufdatum der Lehrerlizenz ist Pflicht, wenn Lehrer = Ja."
+        else:
+            tl = parse_date_flexible(teacher_license_expires_raw)
+            if tl is None:
+                field_errors["teacher_license_expires"] = "Ablaufdatum Lehrerlizenz muss ein gültiges Datum sein."
+            else:
+                teacher_license_expires = tl
+
+    # Enthaftung
+    liability_waiver_given = is_true(form.get("liability_waiver_given"))
+    liability_waiver_date_raw = (form.get("liability_waiver_date") or "").strip()
+    liability_waiver_date = None
+    if liability_waiver_given:
+        if liability_waiver_date_raw:
+            lw = parse_date_flexible(liability_waiver_date_raw)
+            liability_waiver_date = lw if lw else date.today()
+        else:
+            liability_waiver_date = date.today()
+
+    # Zusätzliche Hinweise für Tandemgast: wichtige, aber nicht blockierende Felder
+    if is_tandem_guest:
+        if not email:
+            warnings.append("Tandemgast: E-Mail fehlt (wichtig, aber Speichern ist erlaubt).")
+
+        if not any([street_and_number, zip_code, city]):
+            warnings.append("Tandemgast: Adresse fehlt (wichtig, aber Speichern ist erlaubt).")
+        elif not all([street_and_number, zip_code, city]):
+            warnings.append("Tandemgast: Adresse ist unvollständig (wichtig, aber Speichern ist erlaubt).")
+
+        if not any([emergency_name, emergency_relation, emergency_phone, emergency_email]):
+            warnings.append("Tandemgast: Notfallkontakt fehlt (wichtig, aber Speichern ist erlaubt).")
+        elif not emergency_name or not emergency_phone:
+            warnings.append("Tandemgast: Notfallkontakt ist unvollständig (Name/Telefon wichtig, aber Speichern ist erlaubt).")
+
+    data = dict(
+        first_name=first_name,
+        last_name=last_name,
+        phone=phone,
+        email=email,
+        emergency_name=emergency_name,
+        emergency_relation=emergency_relation,
+        emergency_phone=emergency_phone,
+        emergency_email=emergency_email,
+        iban=iban,
+        bic=bic,
+        account_holder=account_holder,
+        street_and_number=street_and_number,
+        zip_code=zip_code,
+        city=city,
+        license_number=license_number,
+        insurance_provider=insurance_provider,
+        insurance_number=insurance_number,
+        comment=comment,
+        notes=notes,
+        weight_kg=weight_kg,
+        height_cm=height_cm,
+        birthdate=birthdate,
+        is_member=is_member,
+        is_partner_verein=is_partner_verein,
+        is_tandem_guest=is_tandem_guest,
+        is_tandemmaster=is_tandemmaster,
+        is_student=is_student,
+        is_video=is_video,
+        is_aff_teacher=is_aff_teacher,
+        is_aff_student=is_aff_student,
+        is_teacher=is_teacher,
+        teacher_license_expires=teacher_license_expires,
+        liability_waiver_date=liability_waiver_date,
+    )
+
+    return data, field_errors, warnings
+
+
+# ---------------------------------------------------------
+# Personenliste
+# Standard: aktive Personen, Archiv über filter=archived
+# ---------------------------------------------------------
+@bp_person.route("/")
+def list_persons():
+    search = request.args.get("search", "").strip()
+    # Neue Logik: filters=value1,value2,value3
+    filters_str = request.args.get("filters", "").strip()
+    filters_list = [f.strip() for f in filters_str.split(",") if f.strip()] if filters_str else []
+    
+    sort = request.args.get("sort", "last_name")
+    direction = request.args.get("direction", "asc")
+
+    # Standard: aktive; Archiv: nur archivierte
+    if "archived" in filters_list:
+        query = Person.query.filter(Person.deleted_at.isnot(None))
+    else:
+        query = Person.query.filter(Person.deleted_at.is_(None))
+
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            or_(
+                Person.first_name.ilike(like),
+                Person.last_name.ilike(like),
+                Person.phone.ilike(like),
+                Person.email.ilike(like),
+            )
+        )
+        if search.lower() == "lehrer":
+            query = query.filter(Person.is_teacher.is_(True))
+        if search.lower() == "gast":
+            query = query.filter(
+                Person.is_member.is_(False),
+                Person.is_tandem_guest.is_(False),
+                Person.is_partner_verein.is_(False),
+            )
+
+    # Multiple Filter mit AND kombinieren
+    for f in filters_list:
+        if f == "members":
+            query = query.filter(Person.is_member.is_(True))
+        elif f == "partner":
+            query = query.filter(Person.is_partner_verein.is_(True))
+        elif f == "tandem":
+            query = query.filter(Person.is_tandem_guest.is_(True))
+        elif f == "teacher":
+            query = query.filter(Person.is_teacher.is_(True))
+        elif f == "aff_teacher":
+            query = query.filter(Person.is_aff_teacher.is_(True))
+        elif f == "student":
+            query = query.filter(Person.is_student.is_(True))
+        elif f == "video":
+            query = query.filter(Person.is_video.is_(True))
+        elif f == "aff_student":
+            query = query.filter(Person.is_aff_student.is_(True))
+        elif f == "tandemmaster":
+            query = query.filter(Person.is_tandemmaster.is_(True))
+        elif f == "guest":
+            query = query.filter(
+                Person.is_member.is_(False),
+                Person.is_tandem_guest.is_(False),
+                Person.is_partner_verein.is_(False),
+            )
+        elif f == "liability_ok":
+            query = query.filter(Person.liability_waiver_date.isnot(None))
+        elif f == "liability_bad":
+            query = query.filter(
+                or_(
+                    Person.liability_waiver_date.is_(None),
+                    Person.liability_waiver_date < date(date.today().year, 1, 1),
+                )
+            )
+        elif f == "weight_bad":
+            # schneller als Python-Loop: SQL
+            query = query.filter(
+                or_(
+                    and_(Person.is_tandem_guest.is_(True),
+                         or_(Person.weight_kg < 40, Person.weight_kg > 90)),
+                    and_(Person.is_tandem_guest.is_(False),
+                         or_(Person.weight_kg < 50, Person.weight_kg > 100)),
+                )
+            )
+
+    valid_sort_fields = {
+        "last_name": Person.last_name,
+        "first_name": Person.first_name,
+        "is_member": Person.is_member,
+        "is_partner_verein": Person.is_partner_verein,
+        "is_tandem_guest": Person.is_tandem_guest,
+        "teacher": Person.is_teacher,
+        "guest": case(
+            (
+                and_(
+                    Person.is_member.is_(False),
+                    Person.is_tandem_guest.is_(False),
+                    Person.is_partner_verein.is_(False),
+                ),
+                1,
+            ),
+            else_=0,
+        ),
+        "weight_kg": Person.weight_kg,
+        "liability_waiver_date": Person.liability_waiver_date,
+        "liability_waiver_valid": Person.liability_waiver_date,  # Template-Link
+        "teacher_license_expires": Person.teacher_license_expires,
+    }
+
+    primary = valid_sort_fields.get(sort, Person.last_name)
+    if direction == "desc":
+        primary = primary.desc()
+
+    persons = query.order_by(primary, Person.last_name.asc(), Person.first_name.asc()).all()
+
+    return render_template(
+        "person/list.html",
+        persons=persons,
+        search=search,
+        filters_str=filters_str,
+        filters_list=filters_list,
+        sort=sort,
+        direction=direction,
+    )
+
+
+# ---------------------------------------------------------
+# CRUD – Neue Person anlegen
+# ---------------------------------------------------------
+@bp_person.route("/new", methods=["GET", "POST"])
+def new_person():
+    if request.method == "POST":
+        data, field_errors, warnings = _collect_and_validate(request.form)
+
+        if field_errors:
+            person = Person(**data)
+            return render_template(
+                "person/form.html",
+                person=person,
+                field_errors=field_errors,
+                form_data=request.form,
+            )
+
+        p = Person(**data)
+        db.session.add(p)
+        db.session.commit()
+        for warning in warnings:
+            flash(warning, "warning")
+        flash("Person erfolgreich angelegt.", "success")
+        return redirect(url_for("person.list_persons"))
+
+    return render_template("person/form.html", person=None, field_errors={}, form_data=None)
+
+
+# ---------------------------------------------------------
+# CRUD – Person anzeigen
+# ---------------------------------------------------------
+@bp_person.route("/detail/<int:id>")
+def detail(id):
+    person = Person.query.get_or_404(id)
+    return render_template("person/detail.html", person=person)
+
+
+# ---------------------------------------------------------
+# CRUD – Person bearbeiten
+# ---------------------------------------------------------
+@bp_person.route("/edit/<int:id>", methods=["GET", "POST"])
+def edit_person(id):
+    person = Person.query.get_or_404(id)
+
+    if request.method == "POST":
+        data, field_errors, warnings = _collect_and_validate(request.form)
+
+        if field_errors:
+            return render_template(
+                "person/form.html",
+                person=person,
+                field_errors=field_errors,
+                form_data=request.form,
+            )
+
+        previous_name = person.current_name
+        for k, v in data.items():
+            setattr(person, k, v)
+        person.remember_original_name(previous_name)
+
+        # Newsletter-Status nur bei expliziter manueller Aktion aendern.
+        newsletter_action = (request.form.get("newsletter_opt_out_action") or "").strip()
+        if newsletter_action == "set_opt_out":
+            person.newsletter_opt_out = True
+        elif newsletter_action == "clear_opt_out":
+            person.newsletter_opt_out = False
+            person.newsletter_unsubscribe_token = None
+
+        db.session.commit()
+        for warning in warnings:
+            flash(warning, "warning")
+        flash("Person erfolgreich aktualisiert.", "success")
+        return redirect(url_for("person.list_persons"))
+
+    return render_template("person/form.html", person=person, field_errors={}, form_data=None)
+
+
+# ---------------------------------------------------------
+# Newsletter-Abmeldung zurücksetzen (Admin/DB-Admin)
+# ---------------------------------------------------------
+@bp_person.route("/reset_newsletter_optout/<int:id>", methods=["POST"])
+def reset_newsletter_optout(id):
+    from flask import session as fsession
+    if not (fsession.get("is_admin") or fsession.get("is_db_admin")):
+        flash("Zugriff verweigert.", "danger")
+        return redirect(url_for("person.detail", id=id))
+    person = Person.query.get_or_404(id)
+    person.newsletter_opt_out = False
+    person.newsletter_unsubscribe_token = None
+    db.session.commit()
+    flash(f"{person.full_name}: Newsletter-Abmeldung zurückgesetzt.", "success")
+    return redirect(url_for("person.detail", id=id))
+
+
+# ---------------------------------------------------------
+# SOFTDELETE – Person ins Archiv verschieben
+# (explizite Route, für UI-Buttons)
+# ---------------------------------------------------------
+@bp_person.route("/archive/<int:id>", methods=["POST"])
+def archive_person(id):
+    person = Person.query.get_or_404(id)
+
+    if person.is_archived:
+        flash("Person ist bereits archiviert.", "info")
+        return redirect(url_for("person.list_persons"))
+
+    try:
+        person.archive(reason="archived_via_ui")
+        db.session.commit()
+        flash("Person ins Archiv verschoben.", "success")
+    except Exception:
+        db.session.rollback()
+        flash("Archivierung fehlgeschlagen. Bitte erneut versuchen.", "danger")
+
+    return redirect(url_for("person.list_persons"))
+
+
+# ---------------------------------------------------------
+# Restore aus dem Archiv
+# ---------------------------------------------------------
+@bp_person.route("/restore/<int:id>", methods=["POST"])
+def restore_person(id):
+    person = Person.query.get_or_404(id)
+
+    if person.is_active:
+        flash("Person ist bereits aktiv.", "info")
+        return redirect(url_for("person.list_persons"))
+
+    try:
+        person.restore()
+        db.session.commit()
+        flash("Person wiederhergestellt.", "success")
+    except Exception:
+        db.session.rollback()
+        flash("Wiederherstellung fehlgeschlagen.", "danger")
+
+    return redirect(url_for("person.list_persons", filter="archived"))
+
+
+# ---------------------------------------------------------
+# HARDDELETE – Nur für Admins und nur ohne Loads/Rechnungen
+# ---------------------------------------------------------
+@bp_person.route("/hard_delete/<int:id>", methods=["POST"])
+@admin_required
+def hard_delete_person(id):
+    person = Person.query.get_or_404(id)
+
+    if not person.can_hard_delete():
+        flash("Endgültiges Löschen nicht möglich: Es existieren Sprünge oder Rechnungen.", "danger")
+        return redirect(url_for("person.detail", id=person.id))
+
+    try:
+        db.session.delete(person)
+        db.session.commit()
+        flash("Person endgültig gelöscht (keine Loads/Rechnungen vorhanden).", "success")
+    except Exception:
+        db.session.rollback()
+        flash("Endgültiges Löschen fehlgeschlagen. Bitte erneut versuchen.", "danger")
+
+    return redirect(url_for("person.list_persons"))
+
+
+# ---------------------------------------------------------
+# ALT: /delete – abwärtskompatibel, jetzt nur noch Softdelete
+# ---------------------------------------------------------
+@bp_person.route("/delete/<int:id>", methods=["POST"])
+def delete_person(id):
+    """
+    Alte Route: wird aus Kompatibilitätsgründen beibehalten,
+    führt aber nur noch eine Archivierung durch.
+    """
+    person = Person.query.get_or_404(id)
+
+    try:
+        person.archive(reason="archived_via_legacy_delete")
+        db.session.commit()
+        flash("Person ins Archiv verschoben.", "success")
+    except Exception:
+        db.session.rollback()
+        flash("Aktion fehlgeschlagen. Bitte erneut versuchen.", "danger")
+
+    return redirect(url_for("person.list_persons"))
+
+
+# ---------------------------------------------------------
+# Template-Helfer: is_admin() in Templates verfügbar machen
+# ---------------------------------------------------------
+@bp_person.app_context_processor
+def inject_is_admin():
+    """
+    Stellt is_admin() in allen Templates dieses Blueprints zur Verfügung.
+    Nutzung in Jinja: {% if is_admin() %}...{% endif %}
+    """
+    return {"is_admin": is_admin}
+
+
+@bp_person.route("/<int:id>/waiver.pdf")
+def waiver_pdf(id):
+    person = Person.query.get_or_404(id)
+    billing_config = BillingConfig.query.first()
+
+    # Robust gegen Alt-/Importfälle: bool, "ja", "true", "1", "yes" gelten als Tandemgast.
+    raw_tandem = getattr(person, "is_tandem_guest", False)
+    if isinstance(raw_tandem, str):
+        is_tandem_guest = raw_tandem.strip().lower() in {"ja", "true", "1", "yes"}
+    else:
+        is_tandem_guest = bool(raw_tandem)
+
+    static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static"))
+    logo_data_uri = None
+    if billing_config and getattr(billing_config, "logo_filename", None):
+        logo_path = os.path.join(static_dir, "img", billing_config.logo_filename)
+        logo_data_uri = _image_to_data_uri(logo_path)
+
+    waiver_text = ""
+    if billing_config:
+        waiver_text = (
+            billing_config.waiver_text_tandem if is_tandem_guest else billing_config.waiver_text_skydiver
+        ) or ""
+
+    place = ""
+    if billing_config:
+        place = (getattr(billing_config, "city", "") or "").strip()
+
+    waiver_date_label = person.liability_waiver_date.strftime("%d.%m.%Y") if person.liability_waiver_date else ""
+
+    html = render_template(
+        "person/waiver_pdf.html",
+        person=person,
+        billing_config=billing_config,
+        logo_data_uri=logo_data_uri,
+        is_tandem_guest=is_tandem_guest,
+        waiver_text=waiver_text,
+        waiver_place=place,
+        waiver_date_label=waiver_date_label,
+    )
+
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    from weasyprint import HTML
+
+    pdf_bytes = HTML(string=html, base_url=base_dir).write_pdf(
+        presentational_hints=True,
+        optimize_size=("fonts", "images"),
+    )
+
+    filename = f"Enthaftung_{person.id}_{(person.last_name or '').strip()}_{(person.first_name or '').strip()}.pdf"
+    return send_file(
+        BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        download_name=filename,
+        as_attachment=False,
+    )

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Statistik – Load {{ load.load_number }}{% endblock %}
+{% block header %}
+<i class="bi bi-zoom-in"></i> Statistik – Load {{ load.load_number }}
+{% endblock %}
+
+{% block content %}
+
+<div class="card mb-3">
+  <div class="card-body">
+    <h5 class="fw-bold">Load‑Übersicht</h5>
+    <div class="row g-3">
+      <div class="col-md-3"><b>Datum:</b> {{ (load.actual_time or load.created_at).strftime("%d.%m.%Y") }}</div>
+      <div class="col-md-3"><b>Uhrzeit:</b> {{ (load.actual_time or load.created_at).strftime("%H:%M") }}</div>
+      <div class="col-md-3"><b>Flugplatz:</b> {{ load.airfield.name }}</div>
+      <div class="col-md-3"><b>Flugzeug:</b> {{ load.aircraft.type }} {{ load.aircraft.registration }}</div>
+      <div class="col-md-3"><b>Höhe:</b> {{ load.height_m }} m</div>
+      <div class="col-md-3"><b>Tanken:</b>
+        {% if load.fuel_required %}
+          <span class="text-danger"><i class="bi bi-fuel-pump-fill"></i> ja</span>
+        {% else %}nein{% endif %}
+      </div>
+      <div class="col-md-3"><b>Einträge:</b> {{ load.entries|length }}</div>
+      <div class="col-md-3"><b>Payload:</b> {{ "%.0f"|format(load.payload_sum_kg or 0) }} kg</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <h5 class="fw-bold mb-3">Entries & Preise</h5>
+
+    <div class="table-responsive">
+      <table class="table table-striped align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Person</th>
+            <th>Status</th>
+            <th>Höhe</th>
+            <th>Schirmmiete</th>
+            <th>Brutto</th>
+            <th>Netto</th>
+            <th>MwSt</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <td>{{ r.person }}</td>
+              <td>{{ r.entry.status_code }}</td>
+              <td>{{ r.entry.height_m }} m</td>
+              <td>{% if r.entry.gear_rental %}✅{% else %}–{% endif %}</td>
+              <td>{{ "{:,.2f}".format(r.gross_est).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</td>
+              <td>{{ "{:,.2f}".format(r.net_est).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</td>
+              <td>{{ "{:,.2f}".format(r.vat_est).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}

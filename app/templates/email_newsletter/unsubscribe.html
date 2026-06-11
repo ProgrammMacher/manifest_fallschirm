@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Newsletter abbestellen</title>
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body class="bg-light">
+<div class="container mt-5" style="max-width:480px;">
+  <div class="card shadow-sm">
+    <div class="card-body text-center p-5">
+
+      {% if state == 'invalid' or state == 'not_found' %}
+        <i class="bi bi-exclamation-triangle fs-1 text-warning"></i>
+        <h3 class="mt-3">Link ungültig</h3>
+        <p class="text-muted">
+          Der Abmelde-Link ist ungültig oder abgelaufen.
+          Bitte wenden Sie sich direkt an den Verein, um sich vom Newsletter abzumelden.
+        </p>
+
+      {% elif state == 'confirm' %}
+        <i class="bi bi-bell-slash fs-1 text-secondary"></i>
+        <h3 class="mt-3">Newsletter abbestellen</h3>
+        {% if person_name %}
+          <p>Hallo <strong>{{ person_name }}</strong>,</p>
+        {% endif %}
+        <p class="text-muted">
+          Möchten Sie sich vom Newsletter abmelden?
+          Sie erhalten dann keine weiteren Newsletter-E-Mails.
+        </p>
+        <form method="post">
+          <button class="btn btn-danger">
+            <i class="bi bi-bell-slash"></i> Ja, Newsletter abbestellen
+          </button>
+        </form>
+        <p class="mt-3">
+          <a href="/" class="text-muted small">Abbrechen</a>
+        </p>
+
+      {% elif state == 'done' %}
+        <i class="bi bi-check-circle fs-1 text-success"></i>
+        <h3 class="mt-3">Abgemeldet</h3>
+        {% if person_name %}
+          <p>Hallo <strong>{{ person_name }}</strong>,</p>
+        {% endif %}
+        <p class="text-muted">
+          Sie wurden erfolgreich vom Newsletter abgemeldet
+          und erhalten keine weiteren Newsletter-E-Mails.
+        </p>
+        <p class="text-muted small">
+          Falls dies ein Irrtum war, wenden Sie sich bitte an den Verein.
+        </p>
+
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

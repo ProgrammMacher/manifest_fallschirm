@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block content %}
+<!--
+ NEW LOAD (INKREMENTELL, FUNKTIONSVOLL):
+ ✅ Zweck:
+ - Anlegen eines neuen Loads
+ - Optionale Vorauswahl von Flugplatz & Flugzeug
+ ❗ Wichtig:
+ - KEIN load_editor.js
+ - KEINE Block-Logik
+ - KEIN Autocomplete
+ - Diese Datei ist bewusst leichtgewichtig
+ ✅ Funktionsumfang entspricht vollständig der früheren Version
+-->
+<style>
+/* ================= Layout ================= */
+.load-list-container {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+/* ================= Tabelle (VORBEREITUNG) ================= */
+table.load-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+table.load-table th,
+table.load-table td {
+  border-right: 1px solid #dee2e6;
+  padding: 6px 8px;
+  vertical-align: top;
+}
+table.load-table th:last-child,
+table.load-table td:last-child {
+  border-right: none;
+}
+/* Startbreiten */
+.col-load { width: 150px; }
+.col-time { width: 70px; }
+.col-height { width: 70px; }
+.col-weight { width: 80px; text-align: right; }
+.col-action { width: 150px; }
+/* ================= Resize (vorbereitet) ================= */
+th.resizable {
+  position: relative;
+}
+th.resizable::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+}
+/* ================= Personen (vorbereitet) ================= */
+.person-block {
+  padding: 2px 6px;
+  margin-bottom: 2px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+.person-paid { background:#e7f1ff; } /* hellblau */
+.person-billed { background:#e8f7ea; } /* hellgrün */
+.person-name { white-space: nowrap; }
+.person-meta {
+  font-size:0.75rem;
+  opacity:0.8;
+  white-space:nowrap;
+}
+.toggle-link {
+  cursor:pointer;
+  font-size:0.75rem;
+  color:#0d6efd;
+  user-select:none;
+}
+</style>
+
+<!-- ========================================================= -->
+<!-- ✅ FORM: NEUEN LOAD ANLEGEN (mit Betriebstag) -->
+<!-- ========================================================= -->
+<form method="POST" action="{{ url_for('load.new_load') }}">
+
+  <div class="container-fluid mb-3">
+
+    <!-- ✅ NEU: Betriebstag + Startzeit -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="fw-bold mb-3">
+          <i class="bi bi-calendar-event"></i>
+          Betriebstag & Startzeit
+        </h5>
+
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label fw-bold">Betriebstag (Datum)</label>
+            <input type="date"
+                   name="planned_date"
+                   class="form-control"
+                   value="{{ default_planned_date }}">
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label fw-bold">Startzeit (Uhrzeit)</label>
+            <input type="time"
+                   name="planned_start_time"
+                   class="form-control"
+                   value="{{ default_planned_start_time }}">
+          </div>
+
+          <div class="col-md-4 d-flex align-items-end">
+            <button type="submit" class="btn btn-success w-100">
+              <i class="bi bi-plus-circle"></i>
+              Neuen Load anlegen
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Erweiterte Optionen -->
+    <a class="btn btn-outline-secondary"
+       data-bs-toggle="collapse"
+       href="#newLoadAdvancedOptions"
+       role="button"
+       aria-expanded="false"
+       aria-controls="newLoadAdvancedOptions">
+      <i class="bi bi-sliders"></i>
+      Flugplatz / Flugzeug ändern (optional)
+    </a>
+
+    <div class="collapse mt-3" id="newLoadAdvancedOptions">
+      <div class="card card-body">
+
+        <!-- Flugplatz -->
+        <div class="mb-3">
+          <label class="form-label fw-bold">Flugplatz</label>
+          <select name="airfield_id" class="form-select" id="new_load_airfield_id">
+            {% for af in airfields %}
+              <option value="{{ af.id }}"
+                      {% if af.id == default_airfield_id %}selected{% endif %}>
+                {{ af.name }}{% if af.is_home_airfield %} (Heimat){% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Flugzeug -->
+        <div class="mb-3">
+          <label class="form-label fw-bold">Flugzeug</label>
+          <select name="aircraft_id" class="form-select" id="new_load_aircraft_id">
+            {% for ac in aircrafts %}
+              <option value="{{ ac.id }}"
+                      {% if ac.id == default_aircraft_id %}selected{% endif %}>
+                {{ ac.registration }} – {{ ac.type }} ({{ ac.seats }} Sitze)
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</form>
+
+<!-- ========================================================= -->
+<!-- ✅ VORBEREITUNG: LOAD-LISTE (DERZEIT NICHT GENUTZT) -->
+<!-- ========================================================= -->
+<!--
+ Dieser Block bleibt bewusst erhalten,
+ um bei Bedarf die Load-Liste wieder hier einzubetten,
+ OHNE zusätzliche CSS-/JS-Dateien nachladen zu müssen.
+-->
+<div class="container-fluid load-list-container">
+  <div class="table-responsive">
+    <table class="table table-striped table-hover align-middle load-table">
+      <!-- hier später ggf. Liste -->
+    </table>
+  </div>
+</div>
+
+<script>
+/* Spalten per Maus verschiebbar (vorbereitet) */
+document.querySelectorAll("th.resizable").forEach(th => {
+  let startX, startWidth;
+  th.addEventListener("mousedown", e => {
+    if (e.offsetX < th.offsetWidth - 5) return;
+    startX = e.pageX;
+    startWidth = th.offsetWidth;
+    function onMove(ev) {
+      th.style.width = startWidth + (ev.pageX - startX) + "px";
+    }
+    function onUp() {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+});
+
+/* Personen ein-/ausklappen (vorbereitet) */
+function togglePersons(id, el) {
+  const box = document.getElementById(id);
+  const collapsed = box.style.display === "none";
+  box.style.display = collapsed ? "" : "none";
+  el.textContent = collapsed ? "▲ einklappen" : "▼ ausklappen";
+}
+</script>
+
+<script>
+// ✅ INKREMENTELL (NEU): Anzeige der Sitzanzahl beim Flugzeugwechsel (ohne Speichern)
+// Hinweis: Diese Seite legt nur den Load an. Die tatsächliche Sitz-Tabelle wird im Editor gerendert.
+// Wir zeigen hier aber sofort die Sitzzahl des gewählten Flugzeugs an und speichern sie optional in localStorage.
+(function(){
+  const sel = document.getElementById('new_load_aircraft_id');
+  const labelEl = document.getElementById('selected_aircraft_label');
+  const seatsEl = document.getElementById('selected_aircraft_seats');
+  if (!sel) return;
+
+  function parseSeatsFromOptionText(text){
+    const t = String(text || '');
+    const m = t.match(/\((\d+)\s*Sitze\)/i);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  function update(){
+    const opt = sel.options[sel.selectedIndex];
+    const txt = opt ? opt.textContent : '';
+    const seats = parseSeatsFromOptionText(txt);
+
+    if (labelEl) labelEl.textContent = txt ? txt.replace(/\s*\(\d+\s*Sitze\)\s*/i, '').trim() : '–';
+    if (seatsEl) seatsEl.textContent = (seats != null && Number.isFinite(seats)) ? String(seats) : '–';
+
+    try {
+      localStorage.setItem('manifest_new_load_aircraft_seats', (seats != null ? String(seats) : ''));
+      localStorage.setItem('manifest_new_load_aircraft_id', sel.value || '');
+    } catch(e) {}
+  }
+
+  sel.addEventListener('change', update);
+  update();
+})();
+</script>
+
+{% endblock %}

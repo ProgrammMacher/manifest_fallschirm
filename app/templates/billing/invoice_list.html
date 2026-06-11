@@ -1,0 +1,1459 @@
+{% extends "base.html" %}
+{% block title %}Rechnungen – Übersicht{% endblock %}
+{% block header %}Rechnungen – Übersicht{% endblock %}
+
+{% block content %}
+<div class="container" id="invoiceListRoot">
+
+  {% set kw = date.today().isocalendar()[1] %}
+  {% set period = period|default(request.args.get('period','all')) %}
+  {% set year_now = date.today().year %}
+  {% set f_person = (filters.get('person') or '') if filters else '' %}
+  {% set f_person_id = (filters.get('person_id') or '') if filters else '' %}
+  {% set f_text = (filters.get('text') or '') if filters else '' %}
+  {% set f_status = (filters.get('status') or '') if filters else '' %}
+  {% set f_payment = (filters.get('payment') or '') if filters else '' %}
+  {% set f_email = (filters.get('email') or '') if filters else '' %}
+  {% set f_content_status = (filters.get('content_status') or '') if filters else '' %}
+  {% set f_invoice_source = (filters.get('invoice_source') or 'all') if filters else 'all' %}
+  {% set f_sort = (filters.get('sort') or 'date_desc') if filters else 'date_desc' %}
+  {% set f_delta_scope = delta_scope|default('visible') %}
+  {% set load_from = from_date|default(request.args.get('from', '')) %}
+  {% set load_to = to_date|default(request.args.get('to', '')) %}
+  {% set invoice_from = invoice_from_date|default(request.args.get('invoice_from', '')) %}
+  {% set invoice_to = invoice_to_date|default(request.args.get('invoice_to', '')) %}
+
+  <!-- Kopf -->
+  <div class="d-flex align-items-center gap-2 mb-3">
+    <a href="{{ url_for('billing.overview') }}" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> Zur Abrechnungsübersicht
+    </a>
+     <a href="{{ url_for('billing.invoice_list_pdf', period=period, from_date=load_from, to_date=load_to, invoice_from=invoice_from, invoice_to=invoice_to, person=f_person, person_id=f_person_id, text=f_text, status=f_status, payment=f_payment, email=f_email, content_status=f_content_status, invoice_source=f_invoice_source, sort=f_sort, delta_scope=f_delta_scope) }}"
+       id="invoiceListPdfLink"
+       data-base-href="{{ url_for('billing.invoice_list_pdf') }}"
+       data-period="{{ period }}"
+       data-from="{{ load_from }}"
+       data-to="{{ load_to }}"
+       data-invoice-from="{{ invoice_from }}"
+       data-invoice-to="{{ invoice_to }}"
+       data-invoice-source="{{ f_invoice_source }}"
+       class="btn btn-outline-danger">
+      <i class="bi bi-file-earmark-pdf"></i> PDF
+    </a>
+     <a href="{{ url_for('billing.invoice_list_csv', period=period, from=load_from, to=load_to, invoice_from=invoice_from, invoice_to=invoice_to, person=f_person, person_id=f_person_id, text=f_text, status=f_status, payment=f_payment, email=f_email, content_status=f_content_status, invoice_source=f_invoice_source, sort=f_sort, delta_scope=f_delta_scope) }}"
+       id="invoiceListCsvLink"
+       data-base-href="{{ url_for('billing.invoice_list_csv') }}"
+       data-period="{{ period }}"
+       data-from="{{ load_from }}"
+       data-to="{{ load_to }}"
+       data-invoice-from="{{ invoice_from }}"
+       data-invoice-to="{{ invoice_to }}"
+       class="btn btn-outline-success">
+      <i class="bi bi-filetype-csv"></i> CSV
+    </a>
+     <a href="{{ url_for('billing.invoice_list_xlsx', period=period, from=load_from, to=load_to, invoice_from=invoice_from, invoice_to=invoice_to, person=f_person, person_id=f_person_id, text=f_text, status=f_status, payment=f_payment, email=f_email, content_status=f_content_status, invoice_source=f_invoice_source, sort=f_sort, delta_scope=f_delta_scope) }}"
+       id="invoiceListXlsxLink"
+       data-base-href="{{ url_for('billing.invoice_list_xlsx') }}"
+       data-period="{{ period }}"
+       data-from="{{ load_from }}"
+       data-to="{{ load_to }}"
+       data-invoice-from="{{ invoice_from }}"
+       data-invoice-to="{{ invoice_to }}"
+       class="btn btn-outline-success">
+      <i class="bi bi-file-earmark-excel"></i> Excel
+    </a>
+    {% if session.get('is_admin') %}
+    <a href="{{ url_for('billing.invoice_list_cancelled') }}" class="btn btn-outline-warning">
+      Stornierte Rechnungen
+    </a>
+    {% endif %}
+  </div>
+
+  <div class="mb-2">
+    <h2 class="fw-bold mb-0">Rechnungen</h2>
+     <div class="btn-group btn-group-sm mt-2" role="group" aria-label="Rechnungsquelle">
+      <a class="btn {% if f_invoice_source == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+        href="{{ url_for('billing.invoice_list', period=period, from=load_from, to=load_to, invoice_from=invoice_from, invoice_to=invoice_to, person=f_person, person_id=f_person_id, text=f_text, status=f_status, payment=f_payment, email=f_email, content_status=f_content_status, invoice_source='all', sort=f_sort, delta_scope=f_delta_scope) }}">Alle</a>
+      <a class="btn {% if f_invoice_source == 'loads' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+        href="{{ url_for('billing.invoice_list', period=period, from=load_from, to=load_to, invoice_from=invoice_from, invoice_to=invoice_to, person=f_person, person_id=f_person_id, text=f_text, status=f_status, payment=f_payment, email=f_email, content_status=f_content_status, invoice_source='loads', sort=f_sort, delta_scope=f_delta_scope) }}">Loads</a>
+      <a class="btn {% if f_invoice_source == 'manual' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+        href="{{ url_for('billing.invoice_list', period=period, from=load_from, to=load_to, invoice_from=invoice_from, invoice_to=invoice_to, person=f_person, person_id=f_person_id, text=f_text, status=f_status, payment=f_payment, email=f_email, content_status=f_content_status, invoice_source='manual', sort=f_sort, delta_scope=f_delta_scope) }}">Manuelle Rechnungen</a>
+     </div>
+    <div class="text-muted fw-semibold mt-1">Filter nach Load-Datum</div>
+  </div>
+
+  {# =============================== #}
+  {# Load-Datumsfilter + Rechnungsdatumsfilter #}
+  {# =============================== #}
+  <div class="mb-2">
+    <div class="btn-group mb-1" role="group" aria-label="Zeitraum">
+      <a class="btn btn-sm {% if period == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+        href="{{ url_for('billing.invoice_list', period='all', invoice_from=invoice_from, invoice_to=invoice_to, person=f_person, person_id=f_person_id, text=f_text, status=f_status, payment=f_payment, email=f_email, content_status=f_content_status, invoice_source=f_invoice_source, sort=f_sort, delta_scope=f_delta_scope) }}">
+        Alle
+      </a>
+
+      <a class="btn btn-sm {% if period == 'today' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+        href="{{ url_for('billing.invoice_list', period='today', invoice_from=invoice_from, invoice_to=invoice_to, person=f_person, person_id=f_person_id, text=f_text, status=f_status, payment=f_payment, email=f_email, content_status=f_content_status, invoice_source=f_invoice_source, sort=f_sort, delta_scope=f_delta_scope) }}">
+        Heute
+      </a>
+
+      <a class="btn btn-sm {% if period == 'week' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+        href="{{ url_for('billing.invoice_list', period='week', invoice_from=invoice_from, invoice_to=invoice_to, person=f_person, person_id=f_person_id, text=f_text, status=f_status, payment=f_payment, email=f_email, content_status=f_content_status, invoice_source=f_invoice_source, sort=f_sort, delta_scope=f_delta_scope) }}">
+        Woche (KW {{ "%02d"|format(kw) }})
+      </a>
+
+      <a class="btn btn-sm {% if period == 'month' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+        href="{{ url_for('billing.invoice_list', period='month', invoice_from=invoice_from, invoice_to=invoice_to, person=f_person, person_id=f_person_id, text=f_text, status=f_status, payment=f_payment, email=f_email, content_status=f_content_status, invoice_source=f_invoice_source, sort=f_sort, delta_scope=f_delta_scope) }}">
+        Monat
+      </a>
+
+      <a class="btn btn-sm {% if period == 'year' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+        href="{{ url_for('billing.invoice_list', period='year', invoice_from=invoice_from, invoice_to=invoice_to, person=f_person, person_id=f_person_id, text=f_text, status=f_status, payment=f_payment, email=f_email, content_status=f_content_status, invoice_source=f_invoice_source, sort=f_sort, delta_scope=f_delta_scope) }}">
+        Jahr {{ year_now }}
+      </a>
+    </div>
+
+    <form class="row g-2 align-items-end mt-2"
+          method="get"
+          action="{{ url_for('billing.invoice_list') }}">
+      <input type="hidden" name="period" value="range">
+      <input type="hidden" name="person" value="{{ f_person }}">
+      <input type="hidden" name="person_id" value="{{ f_person_id }}">
+      <input type="hidden" name="text" value="{{ f_text }}">
+      <input type="hidden" name="status" value="{{ f_status }}">
+      <input type="hidden" name="payment" value="{{ f_payment }}">
+      <input type="hidden" name="email" value="{{ f_email }}">
+      <input type="hidden" name="content_status" value="{{ f_content_status }}">
+      <input type="hidden" name="invoice_source" value="{{ f_invoice_source }}">
+      <input type="hidden" name="sort" value="{{ f_sort }}">
+      <input type="hidden" name="delta_scope" value="{{ f_delta_scope }}">
+      <input type="hidden" name="invoice_from" value="{{ invoice_from }}">
+      <input type="hidden" name="invoice_to" value="{{ invoice_to }}">
+
+      <div class="col-auto">
+        <label class="form-label mb-0 text-muted fw-bold fs-5">Loaddatum von</label>
+        <input type="date" class="form-control form-control-sm" name="from"
+               value="{{ load_from }}">
+      </div>
+
+      <div class="col-auto">
+        <label class="form-label mb-0 text-muted fw-bold fs-5">bis</label>
+        <input type="date" class="form-control form-control-sm" name="to"
+               value="{{ load_to }}">
+      </div>
+
+      <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-outline-secondary">
+          Loaddatum anwenden
+        </button>
+      </div>
+    </form>
+
+    <form class="row g-2 align-items-end mt-2"
+          method="get"
+          action="{{ url_for('billing.invoice_list') }}">
+      <input type="hidden" name="period" value="{{ period }}">
+      {% if load_from %}<input type="hidden" name="from" value="{{ load_from }}">{% endif %}
+      {% if load_to %}<input type="hidden" name="to" value="{{ load_to }}">{% endif %}
+      <input type="hidden" name="person" value="{{ f_person }}">
+      <input type="hidden" name="person_id" value="{{ f_person_id }}">
+      <input type="hidden" name="text" value="{{ f_text }}">
+      <input type="hidden" name="status" value="{{ f_status }}">
+      <input type="hidden" name="payment" value="{{ f_payment }}">
+      <input type="hidden" name="email" value="{{ f_email }}">
+      <input type="hidden" name="content_status" value="{{ f_content_status }}">
+      <input type="hidden" name="invoice_source" value="{{ f_invoice_source }}">
+      <input type="hidden" name="sort" value="{{ f_sort }}">
+      <input type="hidden" name="delta_scope" value="{{ f_delta_scope }}">
+
+      <div class="col-auto">
+        <label class="form-label mb-0 text-muted fw-bold fs-5">Rechnungsdatum von</label>
+        <input type="date" class="form-control form-control-sm" name="invoice_from"
+               value="{{ invoice_from }}">
+      </div>
+
+      <div class="col-auto">
+        <label class="form-label mb-0 text-muted fw-bold fs-5">bis</label>
+        <input type="date" class="form-control form-control-sm" name="invoice_to"
+               value="{{ invoice_to }}">
+      </div>
+
+      <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-outline-secondary">
+          Rechnungsdatum anwenden
+        </button>
+      </div>
+    </form>
+
+    {# Bezahlarten-Legende #}
+    <div class="d-flex flex-wrap gap-2 align-items-center small text-muted ms-1 mt-2">
+      <span>Bezahlarten:</span>
+      <span class="badge bg-success">Bar</span>
+      <span class="badge bg-primary">Karte</span>
+      <span class="badge bg-secondary">Überweisung</span>
+      <span class="badge bg-info text-dark">WERO</span>
+      <span class="badge bg-warning text-dark">Vorkasse / Gutschein</span>
+    </div>
+  </div>
+
+  {% if invoices %}
+
+    <!-- =============================== -->
+    <!-- Filter / Suche -->
+    <!-- =============================== -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <div class="row g-2 align-items-end">
+
+          <!-- Reihe 1 -->
+          <div class="col-md-5">
+            <label class="form-label">Person</label>
+            <input type="text" class="form-control" id="filterPerson"
+                   placeholder="Person suchen…" autocomplete="off" value="{{ f_person }}">
+            <input type="hidden" id="filterPersonId" value="{{ f_person_id }}">
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label">Person (Dropdown)</label>
+            <select class="form-select" id="filterPersonSelect">
+              <option value="">– Alle –</option>
+            </select>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Freitext</label>
+            <input type="text" class="form-control" id="filterText"
+                   placeholder="Rechnungsnr., Jahr, Betrag…" value="{{ f_text }}">
+          </div>
+
+          <!-- Reihe 2 -->
+          <div class="col-md-3">
+            <label class="form-label">Status</label>
+            <select class="form-select" id="filterStatus">
+              <option value="">Alle</option>
+              <option value="open" {% if f_status == 'open' %}selected{% endif %}>Offen</option>
+              <option value="paid" {% if f_status == 'paid' %}selected{% endif %}>Bezahlt</option>
+            </select>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label">Bezahlart</label>
+            <select class="form-select" id="filterPayment">
+              <option value="">Alle</option>
+              <option value="cash" {% if f_payment == 'cash' %}selected{% endif %}>Bar</option>
+              <option value="card" {% if f_payment == 'card' %}selected{% endif %}>Karte</option>
+              <option value="transfer" {% if f_payment == 'transfer' %}selected{% endif %}>Überweisung</option>
+              <option value="wero" {% if f_payment == 'wero' %}selected{% endif %}>WERO</option>
+              <option value="voucher" {% if f_payment == 'voucher' %}selected{% endif %}>Vorkasse / Gutschein</option>
+            </select>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label">E-Mail-Versand</label>
+            <select class="form-select" id="filterEmail">
+              <option value="">Alle</option>
+              <option value="not_sent" {% if f_email == 'not_sent' %}selected{% endif %}>Nicht versendet</option>
+              <option value="error" {% if f_email == 'error' %}selected{% endif %}>Fehler</option>
+              <option value="pending" {% if f_email == 'pending' %}selected{% endif %}>Versuch ohne Ergebnis</option>
+              <option value="sent_unconfirmed" {% if f_email == 'sent_unconfirmed' %}selected{% endif %}>SMTP ok, unbestätigt</option>
+              <option value="sent_confirmed" {% if f_email == 'sent_confirmed' %}selected{% endif %}>Eingang bestätigt</option>
+            </select>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label">Inhaltsstatus</label>
+            <select class="form-select" id="filterContentStatus">
+              <option value="">Alle</option>
+              <option value="tandem_guest" {% if f_content_status == 'tandem_guest' %}selected{% endif %}>Tandemgast</option>
+              <option value="student" {% if f_content_status == 'student' %}selected{% endif %}>Schüler</option>
+              <option value="teacher" {% if f_content_status == 'teacher' %}selected{% endif %}>Lehrer</option>
+              <option value="tandemmaster" {% if f_content_status == 'tandemmaster' %}selected{% endif %}>Tandemmaster</option>
+              <option value="member" {% if f_content_status == 'member' %}selected{% endif %}>Verein</option>
+              <option value="guest" {% if f_content_status == 'guest' %}selected{% endif %}>Gast</option>
+              <option value="partner" {% if f_content_status == 'partner' %}selected{% endif %}>Partner-Verein</option>
+              <option value="aff_student" {% if f_content_status == 'aff_student' %}selected{% endif %}>AFF-Schüler</option>
+              <option value="aff_teacher" {% if f_content_status == 'aff_teacher' %}selected{% endif %}>AFF-Lehrer</option>
+              <option value="video" {% if f_content_status == 'video' %}selected{% endif %}>Video</option>
+              <option value="manual" {% if f_content_status == 'manual' %}selected{% endif %}>Manuell</option>
+            </select>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Sortierung</label>
+            <select class="form-select" id="sortBy">
+              <option value="date_desc" {% if f_sort == 'date_desc' %}selected{% endif %}>Datum ↓</option>
+              <option value="date_asc" {% if f_sort == 'date_asc' %}selected{% endif %}>Datum ↑</option>
+              <option value="amount_desc" {% if f_sort == 'amount_desc' %}selected{% endif %}>Betrag ↓</option>
+              <option value="amount_asc" {% if f_sort == 'amount_asc' %}selected{% endif %}>Betrag ↑</option>
+              <option value="status_asc" {% if f_sort == 'status_asc' %}selected{% endif %}>Status ↑</option>
+              <option value="status_desc" {% if f_sort == 'status_desc' %}selected{% endif %}>Status ↓</option>
+              <option value="pay_asc" {% if f_sort == 'pay_asc' %}selected{% endif %}>Bezahlart ↑</option>
+              <option value="pay_desc" {% if f_sort == 'pay_desc' %}selected{% endif %}>Bezahlart ↓</option>
+              <!-- optional erweiterte Modi (Dropdown) -->
+              <option value="inv_desc" {% if f_sort == 'inv_desc' %}selected{% endif %}>Rechnungsnr. ↓</option>
+              <option value="inv_asc" {% if f_sort == 'inv_asc' %}selected{% endif %}>Rechnungsnr. ↑</option>
+              <option value="person_asc" {% if f_sort == 'person_asc' %}selected{% endif %}>Person ↑</option>
+              <option value="person_desc" {% if f_sort == 'person_desc' %}selected{% endif %}>Person ↓</option>
+              <option value="email_desc" {% if f_sort == 'email_desc' %}selected{% endif %}>E‑Mail versendet ↓</option>
+              <option value="email_asc" {% if f_sort == 'email_asc' %}selected{% endif %}>E‑Mail versendet ↑</option>
+              <option value="content_status_asc" {% if f_sort == 'content_status_asc' %}selected{% endif %}>Inhaltsstatus ↑</option>
+              <option value="content_status_desc" {% if f_sort == 'content_status_desc' %}selected{% endif %}>Inhaltsstatus ↓</option>
+            </select>
+          </div>
+
+          <div class="col-md-2">
+            <button class="btn btn-outline-secondary w-100"
+                    id="resetFilters" title="Filter zurücksetzen">✕</button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- =============================== -->
+    <!-- Tabelle -->
+    <!-- =============================== -->
+    <div class="table-responsive">
+      <table class="table table-striped align-middle" id="invoiceTable">
+        <thead class="table-light">
+          <tr>
+            <th role="button" class="sortable" data-sort-key="inv_id">
+              Rechnungsnr. <span class="sort-indicator"></span>
+            </th>
+            <th role="button" class="sortable" data-sort-key="person">
+              Person <span class="sort-indicator"></span>
+            </th>
+            <th role="button" class="sortable" data-sort-key="date">
+              Datum <span class="sort-indicator"></span>
+            </th>
+            <th role="button" class="sortable text-end" data-sort-key="amount">
+              Summe (Brutto) <span class="sort-indicator"></span>
+            </th>
+            <th role="button" class="sortable" data-sort-key="status">
+              Status <span class="sort-indicator"></span>
+            </th>
+            <th role="button" class="sortable" data-sort-key="payment">
+              Bezahlart <span class="sort-indicator"></span>
+            </th>
+            <th role="button" class="sortable" data-sort-key="email">
+              E‑Mail versendet <span class="sort-indicator"></span>
+            </th>
+            <th role="button" class="sortable" data-sort-key="purpose">
+              Verwendungszweck <span class="sort-indicator"></span>
+            </th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+
+        {% for inv in invoices %}
+          {% set inv_no = invoice_display_number(inv) %}
+          {% set _content_csv = invoice_content_status_codes_csv(inv) %}
+          {% set _is_manual_invoice = 'manual' in _content_csv.split(',') %}
+          {% set inv_label = inv.created_at.strftime('%Y') ~ ('-manuell #' if _is_manual_invoice else '-Sprünge #') ~ inv_no %}
+          {% set prepaid_amount = invoice_prepaid_amount(inv) %}
+          {% set onsite_amount = invoice_onsite_amount(inv) %}
+
+          {# --- Bezahlart Mapping + Badge --- #}
+          {% set pm = (inv.payment_method or '') if inv.is_paid or prepaid_amount == 0 else 'voucher' %}
+          {% set pm_label = '—' %}
+          {% set pm_badge = 'bg-secondary' %}
+
+          {% if pm == 'cash' %}
+            {% set pm_label = 'Bar' %}
+            {% set pm_badge = 'bg-success' %}
+          {% elif pm == 'card' %}
+            {% set pm_label = 'Karte' %}
+            {% set pm_badge = 'bg-primary' %}
+          {% elif pm == 'transfer' %}
+            {% set pm_label = 'Überweisung' %}
+            {% set pm_badge = 'bg-secondary' %}
+          {% elif pm == 'wero' %}
+            {% set pm_label = 'WERO' %}
+            {% set pm_badge = 'bg-info text-dark' %}
+          {% elif pm == 'voucher' %}
+            {% set pm_label = 'Vorkasse / Gutschein' %}
+            {% set pm_badge = 'bg-warning text-dark' %}
+          {% endif %}
+
+          {% set purpose = generate_invoice_purpose(inv, invoice_number=inv_no) %}
+          {# E-Mail-Status für Filter und Sortierung #}
+          {% set _err_newer = inv.email_last_error and inv.email_last_attempt_at and (not inv.email_sent_at or inv.email_last_attempt_at >= inv.email_sent_at) %}
+          {% set _pending   = inv.email_last_attempt_at and not inv.email_sent_ok and not inv.email_last_error %}
+          {% if _err_newer %}
+            {% set _email_status = 'error' %}
+          {% elif _pending %}
+            {% set _email_status = 'pending' %}
+          {% elif inv.email_sent_ok and inv.email_delivery_confirmed_at %}
+            {% set _email_status = 'sent_confirmed' %}
+          {% elif inv.email_sent_ok %}
+            {% set _email_status = 'sent_unconfirmed' %}
+          {% else %}
+            {% set _email_status = 'not_sent' %}
+          {% endif %}
+
+          <tr class="invoice-row"
+              data-inv-id="{{ inv.id }}"
+              data-person-id="{{ inv.person.id }}"
+              data-person="{{ inv.person.full_name|lower }}"
+              data-person-sort="{{ (inv.person.last_name ~ ' ' ~ inv.person.first_name)|lower }}"
+              data-search="{{ (inv_label ~ ' ' ~ inv.person.full_name ~ ' ' ~ pm_label)|lower }}"
+              data-status="{{ 'paid' if inv.is_paid else 'open' }}"
+              data-payment="{{ pm }}"
+              data-prepaid="{{ prepaid_amount }}"
+              data-onsite="{{ onsite_amount }}"
+              data-date="{{ inv.created_at.timestamp() }}"
+              data-amount="{{ inv.total_amount }}"
+              data-email-status="{{ _email_status }}"
+              data-content-status="{{ _content_csv }}"
+              data-content-status-sort="{{ invoice_content_status_sort_key(inv) }}"
+              data-email-ts="{% if inv.email_sent_ok and inv.email_sent_at %}{{ inv.email_sent_at.timestamp() }}{% elif inv.email_last_attempt_at %}{{ inv.email_last_attempt_at.timestamp() }}{% else %}0{% endif %}">
+
+            <td><strong>{{ inv_label }}</strong></td>
+            <td>
+              {{ inv.person.full_name }}
+              {% if _is_manual_invoice %}
+                <span class="badge bg-dark ms-1">Manuell</span>
+              {% endif %}
+            </td>
+            <td>{{ inv.created_at.strftime('%d.%m.%Y') }}</td>
+
+            <td class="text-end">
+              {{ "{:,.2f}".format(inv.total_amount)
+                 .replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+            </td>
+
+            <td>
+              {% if inv.is_paid %}
+                <span class="badge bg-success">Bezahlt</span>
+              {% else %}
+                <span class="badge bg-warning text-dark">Offen</span>
+              {% endif %}
+            </td>
+
+            <td>
+              {% if inv.is_paid %}
+                {% if prepaid_amount > 0 %}
+                  <span class="badge {{ pm_badge }}" title="Vor Ort">{{ pm_label }} ({{ "{:,.2f}".format(onsite_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €)</span>
+                  <span class="badge bg-warning text-dark" title="Vorkasse/Gutschein">Vorkasse / Gutschein ({{ "{:,.2f}".format(prepaid_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €)</span>
+                {% else %}
+                  <span class="badge {{ pm_badge }}">{{ pm_label }}</span>
+                {% endif %}
+              {% elif prepaid_amount > 0 %}
+                <span class="badge bg-warning text-dark" title="Vorkasse/Gutschein">Vorkasse / Gutschein ({{ "{:,.2f}".format(prepaid_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €)</span>
+                {% if onsite_amount > 0 %}
+                  <span class="badge bg-secondary" title="Vor Ort noch offen">Vor Ort offen ({{ "{:,.2f}".format(onsite_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €)</span>
+                {% endif %}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+
+            <td>
+              {% if _email_status == 'error' %}
+                <span class="text-danger">
+                  <i class="bi bi-exclamation-triangle-fill"></i>
+                  <strong>Fehler</strong> {{ inv.email_last_attempt_at.strftime('%d.%m.%Y %H:%M') }}
+                </span>
+                <div class="small text-danger mt-1" title="{{ inv.email_last_error }}">
+                  {{ (inv.email_last_error or '')|truncate(70, True, '…') }}
+                </div>
+              {% elif _email_status == 'pending' %}
+                <span class="text-secondary">
+                  <i class="bi bi-question-circle"></i>
+                  Versuch {{ inv.email_last_attempt_at.strftime('%d.%m.%Y %H:%M') }}
+                </span>
+                <div class="small text-secondary">Kein Ergebnis gespeichert</div>
+              {% elif _email_status == 'sent_unconfirmed' %}
+                <span class="text-warning"
+                      title="SMTP akzeptiert für {{ inv.email_last_recipient or 'unbekannt' }}{% if inv.email_last_message_id %} | Message-ID: {{ inv.email_last_message_id }}{% endif %}">
+                  <i class="bi bi-hourglass-split"></i>
+                  {{ inv.email_sent_at.strftime('%d.%m.%Y %H:%M') }}
+                </span>
+                <div class="small text-warning">SMTP ok, Eingang unbestätigt</div>
+              {% elif _email_status == 'sent_confirmed' %}
+                <span class="text-success"
+                      title="Empfänger: {{ inv.email_last_recipient or 'unbekannt' }}{% if inv.email_last_message_id %} | Message-ID: {{ inv.email_last_message_id }}{% endif %}">
+                  <i class="bi bi-check-lg"></i>
+                  {{ inv.email_sent_at.strftime('%d.%m.%Y %H:%M') }}
+                </span>
+                <div class="small text-success">
+                  Eingang bestätigt{% if inv.email_delivery_confirmed_at %} {{ inv.email_delivery_confirmed_at.strftime('%d.%m.%Y %H:%M') }}{% endif %}
+                </div>
+              {% else %}
+                <span class="text-muted small">—</span>
+              {% endif %}
+            </td>
+
+            <td>{{ purpose }}</td>
+
+            <td class="text-end">
+              <a href="{{ url_for('billing.invoice_detail', invoice_id=inv_no) }}"
+                 class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-search"></i> Details
+              </a>
+            </td>
+          </tr>
+        {% endfor %}
+
+        </tbody>
+        <tfoot>
+          <tr class="table-light fw-bold" id="invoiceSubtotalRow">
+            <td colspan="3" class="text-end">Teilsumme (gefilterte Ansicht)</td>
+            <td class="text-end" id="invoiceSubtotalAmount">0,00 €</td>
+            <td colspan="4"></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <small class="text-muted">
+        Alle Beträge sind Bruttosummen. Netto- und MwSt‑Details siehe Rechnungsansicht.
+      </small>
+    </div>
+
+    <style>
+      /* Vorschlagsliste (nicht durch Card/Overflow abschneiden) */
+      .invoice-ac-list{
+        position:absolute;
+        z-index:10000;
+        display:none;
+        max-height:280px;
+        overflow:auto;
+        background:#f8fafc;
+        border:1px solid #94a3b8;
+        border-radius:10px;
+        box-shadow:0 6px 18px rgba(0,0,0,0.18);
+      }
+      .invoice-ac-list .list-group-item{ cursor:pointer; }
+      th.sortable{ cursor:pointer; user-select:none; }
+      .paid-method-breakdown-note{ font-size:.875rem; }
+      .paid-method-breakdown-row{ font-size:.92rem; }
+    </style>
+
+    <!-- =============================== -->
+    <!-- Plausibilitätsprüfung (Delta) -->
+    <!-- =============================== -->
+    <div class="card mt-4">
+      <div class="card-body">
+
+        <!-- Gesamtsumme (prominente Zeile) -->
+        <div class="d-flex justify-content-between p-2 mb-2 rounded" style="background:#fef9c3;border:1.5px solid #ca8a04;">
+          <span class="fw-bold fs-6" id="sumTotalLabel">Gesamtsumme abrechenbar (bezahlt + offen + nicht fakturiert)</span>
+          <strong class="fs-6" id="sumTotalValue" data-base-value="{{ sum_total }}">
+            {{ "{:,.2f}".format(sum_total)
+               .replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+          </strong>
+        </div>
+
+        <div class="d-flex justify-content-between">
+          <span id="sumBillableLabel">Noch nicht fakturiert (Filteransicht)</span>
+          <strong id="sumBillableValue" data-base-value="{{ sum_billable_uninvoiced }}">
+            {{ "{:,.2f}".format(sum_billable_uninvoiced)
+               .replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+          </strong>
+        </div>
+
+        <div class="d-flex justify-content-between mt-1">
+          <span id="sumOpenInvoicesLabel">Summe offen fakturiert (sichtbare Rechnungen)</span>
+          <strong id="sumOpenInvoicesValue" class="text-danger" data-base-value="{{ sum_open_invoices }}">
+            {{ "{:,.2f}".format(sum_open_invoices)
+               .replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+          </strong>
+        </div>
+
+        <div class="d-flex justify-content-between mt-1">
+          <span id="sumPaidLabel">Summe bereits bezahlt (sichtbare Rechnungen)</span>
+          <strong id="sumPaidValue" class="text-success" data-base-value="{{ sum_paid }}">
+            {{ "{:,.2f}".format(sum_paid)
+               .replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+          </strong>
+        </div>
+
+        <div class="mt-1 ps-2">
+          <div id="paidMethodBreakdownNote" class="text-muted paid-method-breakdown-note">
+            Teilsummen nach Bezahlart (Anteile aus bereits bezahlten, sichtbaren Rechnungen):
+          </div>
+          <div id="paidMethodBreakdownRows" class="mt-1">
+            <div class="d-flex justify-content-between paid-method-breakdown-row" data-payment-method="cash">
+              <span>Bar</span>
+              <span id="paidMethodCashValue" class="fw-semibold">0,00 €</span>
+            </div>
+            <div class="d-flex justify-content-between paid-method-breakdown-row" data-payment-method="card">
+              <span>Karte</span>
+              <span id="paidMethodCardValue" class="fw-semibold">0,00 €</span>
+            </div>
+            <div class="d-flex justify-content-between paid-method-breakdown-row" data-payment-method="transfer">
+              <span>Überweisung</span>
+              <span id="paidMethodTransferValue" class="fw-semibold">0,00 €</span>
+            </div>
+            <div class="d-flex justify-content-between paid-method-breakdown-row" data-payment-method="wero">
+              <span>WERO</span>
+              <span id="paidMethodWeroValue" class="fw-semibold">0,00 €</span>
+            </div>
+            <div class="d-flex justify-content-between paid-method-breakdown-row" data-payment-method="voucher">
+              <span>Vorkasse / Gutschein</span>
+              <span id="paidMethodVoucherValue" class="fw-semibold">0,00 €</span>
+            </div>
+          </div>
+        </div>
+
+        <hr>
+
+        <details id="deltaDetails" {% if delta != 0 %}open{% endif %}>
+          <summary id="deltaSummary" class="fw-bold {% if delta != 0 %}text-danger{% else %}text-success{% endif %}" data-base-open="{{ '1' if delta != 0 else '0' }}">
+            <span id="deltaSummaryLabel">Δ Abrechnungsfähig – offen fakturiert (Filteransicht):</span>
+            <span id="deltaSummaryValue" data-base-value="{{ delta }}">{{ "{:,.2f}".format(delta)
+               .replace(',', 'X').replace('.', ',').replace('X', '.') }} €</span>
+          </summary>
+
+          <div class="mt-3">
+            <p id="billableRowsIntro" class="mb-2 text-muted {% if delta == 0 %}d-none{% endif %}">Betroffene (noch nicht fakturierte) Personen:</p>
+            <div id="billableControls" class="row g-2 align-items-end mb-2 {% if delta == 0 %}d-none{% endif %}">
+              <div class="col-md-4">
+                <label class="form-label mb-1">Status (abrechnungsfähig)</label>
+                <select class="form-select form-select-sm" id="filterBillableContentStatus">
+                  <option value="">Alle</option>
+                  <option value="tandem_guest">Tandemgast</option>
+                  <option value="student">Schüler</option>
+                  <option value="teacher">Lehrer</option>
+                  <option value="tandemmaster">Tandemmaster</option>
+                  <option value="member">Verein</option>
+                  <option value="guest">Gast</option>
+                  <option value="partner">Partner-Verein</option>
+                  <option value="aff_student">AFF-Schüler</option>
+                  <option value="aff_teacher">AFF-Lehrer</option>
+                  <option value="video">Video</option>
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label mb-1">Sortierung (abrechnungsfähig)</label>
+                <select class="form-select form-select-sm" id="sortBillableBy">
+                  <option value="name_asc">Person ↑</option>
+                  <option value="name_desc">Person ↓</option>
+                  <option value="status_asc">Status ↑</option>
+                  <option value="status_desc">Status ↓</option>
+                  <option value="count_desc">Offene Sprünge ↓</option>
+                  <option value="count_asc">Offene Sprünge ↑</option>
+                  <option value="amount_desc">Vorschau-Betrag ↓</option>
+                  <option value="amount_asc">Vorschau-Betrag ↑</option>
+                </select>
+              </div>
+            </div>
+            <div id="billableRowsList" class="table-responsive {% if delta == 0 %}d-none{% endif %}">
+              <table class="table table-bordered align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Person</th>
+                    <th>Status</th>
+                    <th class="text-end">Offene Sprünge</th>
+                    <th class="text-end">Vorschau‑Betrag €</th>
+                    <th class="text-center">Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody id="billableRowsBody">
+                  {% for r in billable_rows %}
+                  <tr class="billable-person-item"
+                      data-person-id="{{ r.person.id }}"
+                      data-person="{{ r.person.full_name|lower }}"
+                      data-person-sort="{{ (r.person.last_name ~ ' ' ~ r.person.first_name)|lower }}"
+                      data-content-status="{{ r.content_status_codes_csv|default('') }}"
+                      data-content-status-sort="{{ r.content_status_sort|default('') }}"
+                      data-count="{{ r.count }}"
+                      data-amount="{{ r.amount }}"
+                      data-search="{{ (r.person.full_name ~ ' ' ~ r.amount)|lower }}">
+                    <td>
+                      <strong>{{ r.person.last_name }}, {{ r.person.first_name }}</strong>
+                      {% if r.person.member_number %}
+                        <br>
+                        <small class="text-muted">Mitglieds‑Nr. {{ r.person.member_number }}</small>
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if r.content_status_labels %}
+                        {% for s in r.content_status_labels %}
+                          <span class="badge bg-light text-dark border me-1 mb-1">{{ s }}</span>
+                        {% endfor %}
+                      {% else %}
+                        <span class="text-muted small">—</span>
+                      {% endif %}
+                    </td>
+                    <td class="text-end">{{ r.count }}</td>
+                    <td class="text-end">
+                      {{ "{:,.2f}".format(r.amount)
+                         .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                    </td>
+                    <td class="text-center">
+                      <a href="{{ url_for('billing.person_billing', person_id=r.person.id) }}"
+                         class="btn btn-sm btn-outline-secondary me-1">
+                        Details
+                      </a>
+                      <form method="post"
+                            action="{{ url_for('billing.create_invoice_for_person', person_id=r.person.id) }}"
+                            style="display:inline">
+                        <button type="submit" class="btn btn-sm btn-success"
+                                onclick="return confirm('Rechnung für {{ r.person.full_name }} erzeugen?');">
+                          Rechnung erzeugen
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          <p id="billableRowsEmpty" class="mt-2 text-success {% if delta != 0 %}d-none{% endif %}">
+            ✅ Abrechnung vollständig – keine offenen Beträge.
+          </p>
+          </div>
+        </details>
+
+      </div>
+    </div>
+
+  {% else %}
+    <div class="alert alert-info">
+      Es sind noch keine Rechnungen vorhanden.
+    </div>
+  {% endif %}
+
+</div>
+
+<script>
+(function () {
+  // ---------- Helpers ----------
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+  const tbody = $("#invoiceTable tbody");
+  const rows = $$(".invoice-row");
+
+  // Filter Controls
+  const inputPerson   = $("#filterPerson");
+  const inputPersonId = $("#filterPersonId");
+  const selectPerson  = $("#filterPersonSelect"); // neu
+  const inputText     = $("#filterText");
+  const selectStatus  = $("#filterStatus");
+  const selectPay     = $("#filterPayment");
+  const selectEmail   = $("#filterEmail");
+  const selectContentStatus = $("#filterContentStatus");
+  const selectSort    = $("#sortBy");
+  const resetBtn      = $("#resetFilters");
+  const subtotalAmount = $("#invoiceSubtotalAmount");
+  const pdfLink = $("#invoiceListPdfLink");
+  const sumBillableLabel = $("#sumBillableLabel");
+  const sumBillableValue = $("#sumBillableValue");
+  const sumOpenInvoicesLabel = $("#sumOpenInvoicesLabel");
+  const sumOpenInvoicesValue = $("#sumOpenInvoicesValue");
+  const sumPaidValue = $("#sumPaidValue");
+  const paidMethodBreakdownRows = $$(".paid-method-breakdown-row");
+  const paidMethodValueByCode = {
+    cash: $("#paidMethodCashValue"),
+    card: $("#paidMethodCardValue"),
+    transfer: $("#paidMethodTransferValue"),
+    wero: $("#paidMethodWeroValue"),
+    voucher: $("#paidMethodVoucherValue"),
+  };
+  const deltaDetails = $("#deltaDetails");
+  const deltaSummary = $("#deltaSummary");
+  const deltaSummaryLabel = $("#deltaSummaryLabel");
+  const deltaSummaryValue = $("#deltaSummaryValue");
+  const billableRowsIntro = $("#billableRowsIntro");
+  const billableRowsList = $("#billableRowsList");
+  const billableRowsEmpty = $("#billableRowsEmpty");
+  const billableItems = $$(".billable-person-item");
+  const billableRowsBody = $("#billableRowsBody");
+  const filterBillableContentStatus = $("#filterBillableContentStatus");
+  const sortBillableBy = $("#sortBillableBy");
+
+  const thSortable = $$("th.sortable");
+
+  // Wenn keine Tabelle vorhanden ist (z.B. keine invoices), sauber abbrechen
+  if (!tbody || rows.length === 0) return;
+  if (!inputText || !selectStatus || !selectSort || !resetBtn || !inputPerson || !inputPersonId || !selectPay) return;
+
+  // --- Autocomplete-Liste an BODY (damit sie nicht abgeschnitten wird) ---
+  const acList = document.createElement("div");
+  acList.className = "invoice-ac-list list-group";
+  document.body.appendChild(acList);
+
+  let timer = null;
+
+  async function searchPersons(q) {
+    try {
+      const res = await fetch(`/loads/api/person/search?q=${encodeURIComponent(q || "")}`);
+      if (!res.ok) return [];
+      const arr = await res.json();
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function closeAutocomplete() {
+    acList.style.display = "none";
+    acList.innerHTML = "";
+  }
+
+  function positionAutocomplete() {
+    const rect = inputPerson.getBoundingClientRect();
+    acList.style.left  = (rect.left + window.scrollX) + "px";
+    acList.style.top   = (rect.bottom + window.scrollY + 4) + "px";
+    acList.style.width = rect.width + "px";
+  }
+
+  // ---------- Person Dropdown: aus Tabelle befüllen ----------
+  function buildPersonDropdown() {
+    if (!selectPerson) return;
+
+    const map = new Map(); // id -> label
+    rows.forEach(r => {
+      const id = (r.dataset.personId || "").trim();
+      if (!id) return;
+      const cell = r.querySelector("td:nth-child(2)");
+      const label = cell ? cell.textContent.trim() : "";
+      if (!label) return;
+      map.set(id, label);
+    });
+
+    const current = selectPerson.value || (inputPersonId ? (inputPersonId.value || "") : "");
+    selectPerson.innerHTML = `<option value="">– Alle –</option>`;
+
+    Array.from(map.entries())
+      .sort((a, b) => a[1].localeCompare(b[1], "de"))
+      .forEach(([id, label]) => {
+        const opt = document.createElement("option");
+        opt.value = id;
+        opt.textContent = label;
+        selectPerson.appendChild(opt);
+      });
+
+    selectPerson.value = current;
+  }
+
+  // ---------- Sorting (Header click + Dropdown) ----------
+  let sortKey = "date";
+  let sortDir = "desc";
+
+  function getCurrentSortMode() {
+    if (sortKey === "date" && sortDir === "desc") return "date_desc";
+    if (sortKey === "date" && sortDir === "asc") return "date_asc";
+    if (sortKey === "amount" && sortDir === "desc") return "amount_desc";
+    if (sortKey === "amount" && sortDir === "asc") return "amount_asc";
+    if (sortKey === "status" && sortDir === "desc") return "status_desc";
+    if (sortKey === "status" && sortDir === "asc") return "status_asc";
+    if (sortKey === "payment" && sortDir === "desc") return "pay_desc";
+    if (sortKey === "payment" && sortDir === "asc") return "pay_asc";
+    if (sortKey === "inv_id" && sortDir === "desc") return "inv_desc";
+    if (sortKey === "inv_id" && sortDir === "asc") return "inv_asc";
+    if (sortKey === "person" && sortDir === "desc") return "person_desc";
+    if (sortKey === "person" && sortDir === "asc") return "person_asc";
+    if (sortKey === "email" && sortDir === "desc") return "email_desc";
+    if (sortKey === "email" && sortDir === "asc") return "email_asc";
+    if (sortKey === "content_status" && sortDir === "asc") return "content_status_asc";
+    if (sortKey === "content_status" && sortDir === "desc") return "content_status_desc";
+    return "date_desc";
+  }
+
+  function syncSortSelectToCurrentMode() {
+    if (!selectSort) return;
+    const mode = getCurrentSortMode();
+    if (selectSort.value !== mode) {
+      selectSort.value = mode;
+    }
+  }
+
+  function updatePdfLink() {
+    if (!pdfLink) return;
+
+    const url = new URL(pdfLink.dataset.baseHref || pdfLink.href, window.location.origin);
+    const period = pdfLink.dataset.period || "all";
+    const from = pdfLink.dataset.from || "";
+    const to = pdfLink.dataset.to || "";
+    const invoiceFrom = pdfLink.dataset.invoiceFrom || "";
+    const invoiceTo = pdfLink.dataset.invoiceTo || "";
+    const invoiceSource = (pdfLink.dataset.invoiceSource || "all").trim() || "all";
+
+    url.searchParams.set("period", period);
+    if (from) {
+      url.searchParams.set("from", from);
+    } else {
+      url.searchParams.delete("from");
+    }
+    if (to) {
+      url.searchParams.set("to", to);
+    } else {
+      url.searchParams.delete("to");
+    }
+    if (invoiceFrom) {
+      url.searchParams.set("invoice_from", invoiceFrom);
+    } else {
+      url.searchParams.delete("invoice_from");
+    }
+    if (invoiceTo) {
+      url.searchParams.set("invoice_to", invoiceTo);
+    } else {
+      url.searchParams.delete("invoice_to");
+    }
+    url.searchParams.set("invoice_source", invoiceSource);
+
+    const personId = (inputPersonId.value || "").trim();
+    const person = (inputPerson.value || "").trim();
+    const text = (inputText.value || "").trim();
+    const status = (selectStatus.value || "").trim();
+    const payment = (selectPay.value || "").trim();
+    const email = selectEmail ? (selectEmail.value || "").trim() : "";
+    const contentStatus = selectContentStatus ? (selectContentStatus.value || "").trim() : "";
+    const sort = getCurrentSortMode();
+    const deltaScope = "visible";
+
+    if (personId) {
+      url.searchParams.set("person_id", personId);
+    } else {
+      url.searchParams.delete("person_id");
+    }
+
+    if (person) {
+      url.searchParams.set("person", person);
+    } else {
+      url.searchParams.delete("person");
+    }
+
+    if (text) {
+      url.searchParams.set("text", text);
+    } else {
+      url.searchParams.delete("text");
+    }
+
+    if (status) {
+      url.searchParams.set("status", status);
+    } else {
+      url.searchParams.delete("status");
+    }
+
+    if (payment) {
+      url.searchParams.set("payment", payment);
+    } else {
+      url.searchParams.delete("payment");
+    }
+
+    if (email) {
+      url.searchParams.set("email", email);
+    } else {
+      url.searchParams.delete("email");
+    }
+
+    if (contentStatus) {
+      url.searchParams.set("content_status", contentStatus);
+    } else {
+      url.searchParams.delete("content_status");
+    }
+
+    url.searchParams.set("sort", sort);
+    url.searchParams.set("delta_scope", deltaScope);
+    pdfLink.href = url.toString();
+
+    // CSV- und Excel-Links synchron halten
+    ["invoiceListCsvLink", "invoiceListXlsxLink"].forEach(id => {
+      const exportLink = document.getElementById(id);
+      if (!exportLink) return;
+      const exportUrl = new URL(exportLink.dataset.baseHref || exportLink.href, window.location.origin);
+      exportUrl.search = url.search;  // gleiche Parameter wie PDF
+      exportLink.href = exportUrl.toString();
+    });
+  }
+
+  function setIndicators() {
+    thSortable.forEach(th => {
+      const key = th.dataset.sortKey;
+      const span = th.querySelector(".sort-indicator");
+      if (!span) return;
+      if (key === sortKey) {
+        span.textContent = (sortDir === "asc") ? " ▲" : " ▼";
+      } else {
+        span.textContent = "";
+      }
+    });
+  }
+
+  function getSortValue(row) {
+    switch (sortKey) {
+      case "inv_id":  return Number(row.dataset.invId || 0);
+      case "person":  return (row.dataset.personSort || row.dataset.person || "");
+      case "date":    return Number(row.dataset.date || 0);
+      case "amount":  return Number(row.dataset.amount || 0);
+      case "status":  return (row.dataset.status || "");
+      case "payment": return (row.dataset.payment || "");
+      case "email":   return Number(row.dataset.emailTs || 0);
+      case "content_status": return (row.dataset.contentStatusSort || "");
+      default:        return 0;
+    }
+  }
+
+  function compareRows(a, b) {
+    const va = getSortValue(a);
+    const vb = getSortValue(b);
+
+    if (typeof va === "number" && typeof vb === "number") {
+      return va - vb;
+    }
+    return String(va).localeCompare(String(vb), "de");
+  }
+
+  function applySort() {
+    const visible = rows.filter(r => r.style.display !== "none");
+
+    visible.sort((a, b) => {
+      const c = compareRows(a, b);
+      return (sortDir === "asc") ? c : -c;
+    });
+
+    visible.forEach(r => tbody.appendChild(r));
+    setIndicators();
+  }
+
+  function formatEur(value) {
+    const n = Number(value || 0);
+    return `${n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+  }
+
+  function updateFilteredSubtotal() {
+    const visibleRows = rows.filter(r => r.style.display !== "none");
+    let sumVisible = 0;
+
+    visibleRows.forEach(row => {
+      const amount = Number(row.dataset.amount || 0);
+      sumVisible += amount;
+    });
+
+    if (subtotalAmount) subtotalAmount.textContent = formatEur(sumVisible);
+  }
+
+  function updateDeltaPanel() {
+    if (!sumBillableValue || !sumOpenInvoicesValue || !deltaSummaryValue) {
+      return;
+    }
+
+    if (sumBillableLabel) sumBillableLabel.textContent = "Summe abrechnungsfähig (noch nicht fakturiert, Filteransicht)";
+    if (sumOpenInvoicesLabel) sumOpenInvoicesLabel.textContent = "Summe offen fakturiert (sichtbare Rechnungen)";
+    if (deltaSummaryLabel) deltaSummaryLabel.textContent = "Δ Abrechnungsfähig – offen fakturiert (Filteransicht):";
+
+    const visibleRows = rows.filter(row => row.style.display !== "none");
+    const totalVisibleSum = visibleRows.reduce((sum, row) => sum + Number(row.dataset.amount || 0), 0);
+    const openVisibleSum = visibleRows.reduce((sum, row) => {
+      if ((row.dataset.status || "") !== "open") return sum;
+      const total = Number(row.dataset.amount || 0);
+      const prepaid = Number(row.dataset.prepaid || 0);
+      return sum + (total - prepaid);
+    }, 0);
+
+    const pid = (inputPersonId.value || "").trim();
+    const personText = (inputPerson.value || "").toLowerCase().trim();
+    const text = (inputText.value || "").toLowerCase().trim();
+    const status = (selectStatus.value || "").trim();
+    const pay = (selectPay.value || "").trim();
+    const billableContentStatus = filterBillableContentStatus ? (filterBillableContentStatus.value || "").trim() : "";
+    const billableSortMode = sortBillableBy ? (sortBillableBy.value || "name_asc") : "name_asc";
+
+    let visibleBillableSum = 0;
+    let visibleBillableCount = 0;
+
+    function billableSortValue(item) {
+      if (billableSortMode === "name_desc" || billableSortMode === "name_asc") {
+        return item.dataset.personSort || item.dataset.person || "";
+      }
+      if (billableSortMode === "status_asc" || billableSortMode === "status_desc") {
+        return item.dataset.contentStatusSort || "";
+      }
+      if (billableSortMode === "count_asc" || billableSortMode === "count_desc") {
+        return Number(item.dataset.count || 0);
+      }
+      if (billableSortMode === "amount_asc" || billableSortMode === "amount_desc") {
+        return Number(item.dataset.amount || 0);
+      }
+      return item.dataset.personSort || item.dataset.person || "";
+    }
+
+    billableItems.forEach(item => {
+      const itemPid = (item.dataset.personId || "").trim();
+      const itemPerson = (item.dataset.person || "");
+      const itemSearch = (item.dataset.search || "");
+      const itemContentStatus = "," + (item.dataset.contentStatus || "") + ",";
+
+      const matchPerson =
+        (pid && itemPid === pid) ||
+        (!pid && (!personText || itemPerson.includes(personText)));
+
+      const matchText = !text || itemSearch.includes(text);
+      const matchStatus = !status || status === "open";
+      const matchPay = !pay;
+      const matchBillableContentStatus = !billableContentStatus || itemContentStatus.includes("," + billableContentStatus + ",");
+
+      const visible = matchPerson && matchText && matchStatus && matchPay && matchBillableContentStatus;
+      item.classList.toggle("d-none", !visible);
+
+      if (visible) {
+        visibleBillableCount += 1;
+        visibleBillableSum += Number(item.dataset.amount || 0);
+      }
+    });
+
+    if (billableRowsBody) {
+      const sortedBillable = billableItems.slice().sort((a, b) => {
+        const va = billableSortValue(a);
+        const vb = billableSortValue(b);
+        let cmp = 0;
+
+        if (typeof va === "number" && typeof vb === "number") {
+          cmp = va - vb;
+        } else {
+          cmp = String(va).localeCompare(String(vb), "de");
+        }
+
+        if (
+          billableSortMode === "name_desc" ||
+          billableSortMode === "status_desc" ||
+          billableSortMode === "count_desc" ||
+          billableSortMode === "amount_desc"
+        ) {
+          cmp = -cmp;
+        }
+        return cmp;
+      });
+
+      sortedBillable.forEach(item => billableRowsBody.appendChild(item));
+    }
+
+    const visibleDelta = visibleBillableSum - openVisibleSum;
+
+    sumBillableValue.textContent = formatEur(visibleBillableSum);
+    sumOpenInvoicesValue.textContent = formatEur(openVisibleSum);
+    deltaSummaryValue.textContent = formatEur(visibleDelta);
+    if (sumPaidValue) sumPaidValue.textContent = formatEur(totalVisibleSum - openVisibleSum);
+
+    const paidSumsByPayment = {
+      cash: 0,
+      card: 0,
+      transfer: 0,
+      wero: 0,
+      voucher: 0,
+    };
+
+    visibleRows.forEach(row => {
+      const payment = (row.dataset.payment || "").trim();
+      const onsite = Number(row.dataset.onsite || 0);
+      const prepaid = Number(row.dataset.prepaid || 0);
+
+      if ((row.dataset.status || "") === "paid" && Object.prototype.hasOwnProperty.call(paidSumsByPayment, payment)) {
+        paidSumsByPayment[payment] += onsite;
+      }
+      paidSumsByPayment.voucher += prepaid;
+    });
+
+    Object.entries(paidMethodValueByCode).forEach(([payment, target]) => {
+      if (target) target.textContent = formatEur(paidSumsByPayment[payment] || 0);
+    });
+
+    paidMethodBreakdownRows.forEach(row => row.classList.remove("d-none"));
+
+    deltaSummary.classList.toggle("text-danger", visibleDelta !== 0);
+    deltaSummary.classList.toggle("text-success", visibleDelta === 0);
+
+    if (deltaDetails) {
+      deltaDetails.open = visibleDelta !== 0;
+    }
+
+    if (billableRowsIntro) billableRowsIntro.classList.toggle("d-none", visibleBillableCount === 0);
+    if (billableRowsList) billableRowsList.classList.toggle("d-none", visibleBillableCount === 0);
+    if (billableRowsEmpty) billableRowsEmpty.classList.toggle("d-none", visibleBillableCount !== 0);
+
+    // Gesamtsumme: bezahlt + offen + noch nicht fakturiert
+    const sumTotalValue = $("#sumTotalValue");
+    if (sumTotalValue) {
+      const paidSum = totalVisibleSum - openVisibleSum;
+      const grandTotal = paidSum + openVisibleSum + visibleBillableSum;
+      sumTotalValue.textContent = formatEur(grandTotal);
+    }
+  }
+
+  function setSortFromSelect() {
+    const mode = (selectSort.value || "").trim();
+
+    if (mode === "date_desc")   { sortKey = "date";    sortDir = "desc"; return; }
+    if (mode === "date_asc")    { sortKey = "date";    sortDir = "asc";  return; }
+    if (mode === "amount_desc") { sortKey = "amount";  sortDir = "desc"; return; }
+    if (mode === "amount_asc")  { sortKey = "amount";  sortDir = "asc";  return; }
+    if (mode === "status_asc")  { sortKey = "status";  sortDir = "asc";  return; }
+    if (mode === "status_desc") { sortKey = "status";  sortDir = "desc"; return; }
+    if (mode === "pay_asc")     { sortKey = "payment"; sortDir = "asc";  return; }
+    if (mode === "pay_desc")    { sortKey = "payment"; sortDir = "desc"; return; }
+
+    if (mode === "inv_desc")    { sortKey = "inv_id";  sortDir = "desc"; return; }
+    if (mode === "inv_asc")     { sortKey = "inv_id";  sortDir = "asc";  return; }
+    if (mode === "person_asc")  { sortKey = "person";  sortDir = "asc";  return; }
+    if (mode === "person_desc") { sortKey = "person";  sortDir = "desc"; return; }
+    if (mode === "email_desc")  { sortKey = "email";   sortDir = "desc"; return; }
+    if (mode === "email_asc")   { sortKey = "email";   sortDir = "asc";  return; }
+    if (mode === "content_status_asc")  { sortKey = "content_status"; sortDir = "asc";  return; }
+    if (mode === "content_status_desc") { sortKey = "content_status"; sortDir = "desc"; return; }
+
+    sortKey = "date";
+    sortDir = "desc";
+  }
+
+  thSortable.forEach(th => {
+    th.addEventListener("click", () => {
+      const key = th.dataset.sortKey;
+      if (!key) return;
+
+      if (sortKey === key) {
+        sortDir = (sortDir === "asc") ? "desc" : "asc";
+      } else {
+        sortKey = key;
+        sortDir = (key === "person" || key === "payment" || key === "status") ? "asc" : "desc";
+      }
+      applySort();
+      updateFilteredSubtotal();
+      updateDeltaPanel();
+      syncSortSelectToCurrentMode();
+      updatePdfLink();
+    });
+  });
+
+      updateDeltaPanel();
+  // ---------- Filtering ----------
+  function applyFilters() {
+    const pid = (inputPersonId.value || "").trim();
+    const personText = (inputPerson.value || "").toLowerCase().trim();
+    const text = (inputText.value || "").toLowerCase().trim();
+    const status = (selectStatus.value || "").trim();
+    const pay = (selectPay.value || "").trim();
+    const email = selectEmail ? (selectEmail.value || "").trim() : "";
+    const contentStatus = selectContentStatus ? (selectContentStatus.value || "").trim() : "";
+
+    rows.forEach(row => {
+      const rowPid = (row.dataset.personId || "").trim();
+      const rowPerson = (row.dataset.person || "");
+      const rowSearch = (row.dataset.search || "");
+      const rowStatus = (row.dataset.status || "");
+      const rowPay = (row.dataset.payment || "");
+      const rowPrepaid = Number(row.dataset.prepaid || 0);
+      const rowEmail = (row.dataset.emailStatus || "");
+      const rowContentStatus = "," + (row.dataset.contentStatus || "") + ",";
+
+      const matchPerson =
+        (pid && rowPid === pid) ||
+        (!pid && (!personText || rowPerson.includes(personText)));
+
+      const matchText   = !text   || rowSearch.includes(text);
+      const matchStatus = !status || rowStatus === status;
+      const matchPay    = !pay || (pay === "voucher" ? rowPrepaid > 0 : rowPay === pay);
+      const matchEmail  = !email  || rowEmail === email;
+      const matchContentStatus = !contentStatus || rowContentStatus.includes("," + contentStatus + ",");
+
+      row.style.display = (matchPerson && matchText && matchStatus && matchPay && matchEmail && matchContentStatus) ? "" : "none";
+    });
+
+    applySort();
+    updateFilteredSubtotal();
+    updateDeltaPanel();
+    updatePdfLink();
+  }
+
+  // Autocomplete input
+  inputPerson.addEventListener("input", () => {
+      updatePdfLink();
+    const q = inputPerson.value.trim();
+
+    inputPersonId.value = "";
+    if (selectPerson) selectPerson.value = "";
+    applyFilters();
+
+    if (timer) clearTimeout(timer);
+    if (!q) {
+      closeAutocomplete();
+      return;
+    }
+
+    timer = setTimeout(async () => {
+      const persons = await searchPersons(q);
+      acList.innerHTML = "";
+
+      persons.slice(0, 10).forEach(p => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "list-group-item list-group-item-action";
+        btn.textContent = (p && p.name) ? p.name : "";
+        btn.addEventListener("click", () => {
+          inputPerson.value = p.name || "";
+          inputPersonId.value = String(p.id || "");
+          if (selectPerson && p && p.id) selectPerson.value = String(p.id);
+          closeAutocomplete();
+          applyFilters();
+        });
+        acList.appendChild(btn);
+      });
+
+      if (persons.length > 0) {
+        positionAutocomplete();
+        acList.style.display = "block";
+      } else {
+        closeAutocomplete();
+      }
+    }, 150);
+  });
+
+  inputPerson.addEventListener("focus", async () => {
+    const q = inputPerson.value.trim();
+    if (!q) return;
+
+    const persons = await searchPersons(q);
+    acList.innerHTML = "";
+
+    persons.slice(0, 10).forEach(p => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "list-group-item list-group-item-action";
+      btn.textContent = (p && p.name) ? p.name : "";
+      btn.addEventListener("click", () => {
+        inputPerson.value = p.name || "";
+        inputPersonId.value = String(p.id || "");
+        if (selectPerson && p && p.id) selectPerson.value = String(p.id);
+        closeAutocomplete();
+        applyFilters();
+      });
+      acList.appendChild(btn);
+    });
+
+    if (persons.length > 0) {
+      positionAutocomplete();
+      acList.style.display = "block";
+    }
+  });
+
+  document.addEventListener("click", (e) => {
+    if (e.target === inputPerson) return;
+    if (acList.contains(e.target)) return;
+    closeAutocomplete();
+  });
+
+  window.addEventListener("scroll", closeAutocomplete, true);
+  window.addEventListener("resize", closeAutocomplete);
+
+  // Dropdown Person
+  if (selectPerson) {
+    selectPerson.addEventListener("change", () => {
+      const id = (selectPerson.value || "").trim();
+      inputPersonId.value = id;
+
+      if (!id) {
+        inputPerson.value = "";
+        closeAutocomplete();
+        applyFilters();
+        return;
+      }
+
+      const opt = selectPerson.options[selectPerson.selectedIndex];
+      inputPerson.value = opt ? opt.textContent.trim() : "";
+      closeAutocomplete();
+      applyFilters();
+    });
+  }
+
+  inputText.addEventListener("input", applyFilters);
+  selectStatus.addEventListener("change", applyFilters);
+  selectPay.addEventListener("change", applyFilters);
+  if (selectEmail) selectEmail.addEventListener("change", applyFilters);
+  if (selectContentStatus) selectContentStatus.addEventListener("change", applyFilters);
+  if (filterBillableContentStatus) filterBillableContentStatus.addEventListener("change", updateDeltaPanel);
+  if (sortBillableBy) sortBillableBy.addEventListener("change", updateDeltaPanel);
+
+  selectSort.addEventListener("change", () => {
+    setSortFromSelect();
+    applySort();
+    updateFilteredSubtotal();
+    updateDeltaPanel();
+    updatePdfLink();
+  });
+
+  resetBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+
+    inputPerson.value = "";
+    inputPersonId.value = "";
+    if (selectPerson) selectPerson.value = "";
+
+    inputText.value = "";
+    selectStatus.value = "";
+    selectPay.value = "";
+    if (selectEmail) selectEmail.value = "";
+    if (selectContentStatus) selectContentStatus.value = "";
+    if (filterBillableContentStatus) filterBillableContentStatus.value = "";
+    if (sortBillableBy) sortBillableBy.value = "name_asc";
+
+    selectSort.value = "date_desc";
+    sortKey = "date";
+    sortDir = "desc";
+
+    closeAutocomplete();
+    rows.forEach(r => r.style.display = "");
+    buildPersonDropdown();
+    applySort();
+    updateFilteredSubtotal();
+    updateDeltaPanel();
+    updatePdfLink();
+  });
+
+  // Init
+  buildPersonDropdown();
+  setSortFromSelect();
+  applyFilters();
+  applySort();
+  updateFilteredSubtotal();
+  updateDeltaPanel();
+  updatePdfLink();
+})();
+</script>
+
+<!-- bfcache-Fix -->
+<script>
+window.addEventListener("pageshow", e => {
+  if (e.persisted) window.location.reload();
+});
+</script>
+
+<!-- Aktive Versand-Jobs in Liste markieren -->
+<script>
+(function () {
+  function markActiveJobs() {
+    fetch('/billing/email_jobs_active', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(data => {
+        const ids = (data && data.active) ? data.active : [];
+        ids.forEach(function (invId) {
+          // Zeile mit data-inv-id finden
+          const row = document.querySelector('tr[data-inv-id="' + invId + '"]');
+          if (!row) return;
+          // Versand-Spalte (td mit E-Mail-Status-Inhalt): letzte td vor Aktionen
+          const cells = row.querySelectorAll('td');
+          // Die E-Mail-Statusspalte ist die 7. Spalte (0-basiert: Index 6)
+          // Sicherer: Zelle suchen, die ein bi-exclamation / bi-check / Strich / hourglass enthält
+          // Alternativ: einfach ein kleines Badge am Ende der Zeile anhängen
+          if (!row.dataset.sendingBadgeAdded) {
+            row.dataset.sendingBadgeAdded = '1';
+            const lastTd = cells[cells.length - 2]; // vor Aktions-Spalte
+            if (lastTd) {
+              const badge = document.createElement('span');
+              badge.className = 'badge bg-info text-dark ms-1 email-sending-badge';
+              badge.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Wird gesendet\u2026';
+              lastTd.appendChild(badge);
+            }
+          }
+        });
+      })
+      .catch(function () {});
+  }
+
+  document.addEventListener('DOMContentLoaded', markActiveJobs);
+})();
+</script>
+{% endblock %}

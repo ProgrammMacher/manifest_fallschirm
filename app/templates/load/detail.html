@@ -1,0 +1,544 @@
+<!-- C:\manifest_fallschirm\app\templates\load\detail.html -->
+{% extends "base.html" %}
+{% block title %}Load {{ load.load_number }}{% endblock %}
+{% block header %}Load {{ load.load_number }}{% endblock %}
+{% block content %}
+{% include "load/partials/editor_styles.html" %}
+
+<style>
+/* ========================================================= */
+/* 🟦 TANDEM- & INSTRUCTION-FARBEN — IDENTISCH ZU LISTE/EDITOR */
+/* ========================================================= */
+.tandem-seat{
+  --tandem-bg:#e8f1ff;
+  --tandem-color:#0d6efd;
+  background:var(--tandem-bg) !important;
+  border-left:6px solid var(--tandem-color) !important;
+}
+.tandem-seat-1{--tandem-bg:#e8f1ff;--tandem-color:#6aa8ff;}
+.tandem-seat-2{--tandem-bg:#e9f9e9;--tandem-color:#7acb7a;}
+.tandem-seat-3{--tandem-bg:#fff7e0;--tandem-color:#e6c463;}
+.tandem-seat-4{--tandem-bg:#ffece5;--tandem-color:#e6a48c;}
+.tandem-seat-5{--tandem-bg:#f3e8ff;--tandem-color:#b79ce6;}
+.tandem-seat-6{--tandem-bg:#e7fbff;--tandem-color:#6fd3e6;}
+.tandem-seat-7{--tandem-bg:#f0ffe8;--tandem-color:#9ad36f;}
+.tandem-seat-8{--tandem-bg:#fff0f7;--tandem-color:#e6a1c4;}
+.tandem-seat-9{--tandem-bg:#f7f7ff;--tandem-color:#9aa8ff;}
+.tandem-seat-10{--tandem-bg:#fff6e8;--tandem-color:#e6b26f;}
+
+.instruction-seat{
+  --instr-bg:#fff7e0;
+  --instr-color:#e6c463;
+  background:var(--instr-bg) !important;
+  border-left:6px solid var(--instr-color) !important;
+}
+.instruction-seat-1{--instr-bg:#fff7e0;--instr-color:#e6c463;}
+.instruction-seat-2{--instr-bg:#fff2c7;--instr-color:#e0b84e;}
+.instruction-seat-3{--instr-bg:#fffbe8;--instr-color:#d6c86a;}
+.instruction-seat-4{--instr-bg:#fff3d9;--instr-color:#d9a84e;}
+.instruction-seat-5{--instr-bg:#fff8cc;--instr-color:#d1b100;}
+.instruction-seat-6{--instr-bg:#f0f6ff;--instr-color:#6aa8ff;}
+.instruction-seat-7{--instr-bg:#eef9f0;--instr-color:#6fbf8a;}
+.instruction-seat-8{--instr-bg:#fdf1f7;--instr-color:#e6a1c4;}
+.instruction-seat-9{--instr-bg:#f6f6f6;--instr-color:#9aa0a6;}
+.instruction-seat-10{--instr-bg:#fef6e8;--instr-color:#e6b26f;}
+
+/* Folgeload */
+.follow-load-warning{
+  color:#b58900;
+  font-weight:800;
+  font-size:0.75rem;
+  margin-top:2px;
+}
+
+/* ========================================================= */
+/* 🟦 Mehrfachauswahl — Tabellenvariante (Detail) */
+/* ========================================================= */
+.person-select-mode tr[data-block-entry="1"]{
+  cursor:pointer;
+}
+.person-selected td{
+  background:rgba(13,110,253,0.06) !important;
+  box-shadow:inset 0 0 0 2px rgba(13,110,253,0.35);
+}
+.person-selected td:first-child{
+  position:relative;
+}
+.person-selected td:first-child::after{
+  content:"✓";
+  position:absolute;
+  top:2px;
+  right:6px;
+  font-weight:900;
+  font-size:0.9rem;
+  color:rgba(13,110,253,0.95);
+  background:rgba(255,255,255,0.9);
+  border-radius:10px;
+  padding:0 6px;
+  line-height:1.2;
+}
+</style>
+
+<!-- ========================================================= -->
+<!-- 🟦 BLOCK 1 — LOAD-HEADER -->
+<!-- ========================================================= -->
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h4 class="fw-bold m-0">
+        <i class="bi bi-airplane-engines"></i> Load {{ load.load_number }}
+      </h4>
+
+      <div class="d-flex gap-2">
+
+        <!-- Copy Load -->
+        <button type="button"
+                class="btn btn-outline-secondary"
+                id="copy_load_detail"
+                title="Diesen Load ins Clipboard kopieren">
+          <i class="bi bi-clipboard"></i>
+        </button>
+
+        <!-- Mehrfachauswahl -->
+        <button type="button"
+                id="toggle_select_mode"
+                class="btn btn-warning"
+                title="Mehrfachauswahl aktivieren/deaktivieren">
+          <i class="bi bi-check2-square"></i> Mehrfachauswahl
+        </button>
+
+        <!-- Markierung löschen -->
+        <button type="button"
+                id="clear_selection"
+                class="btn btn-outline-secondary"
+                title="Alle Markierungen entfernen">
+          <i class="bi bi-x-lg"></i>
+        </button>
+
+        <!-- Auswahl kopieren -->
+        <button type="button"
+                id="copy_selected_detail"
+                class="btn btn-outline-secondary"
+                title="Markierte Personen ins Clipboard kopieren">
+          <i class="bi bi-clipboard-check"></i>
+        </button>
+
+        {% if (not load.has_paid_entries) and (load.status != "completed" or session.get('is_admin')) %}
+          <a href="{{ url_for('load.edit_load', id=load.id) }}"
+             class="btn btn-primary"
+             title="Load bearbeiten">
+            <i class="bi bi-pencil-square"></i> Load bearbeiten
+          </a>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Hinweis Mehrfachauswahl -->
+    <div id="multi_select_hint"
+         class="alert alert-info py-2 px-3 mt-2 d-none"
+         style="font-size:0.9rem;">
+      <strong>Mehrfachauswahl aktiv:</strong>
+      Personen anklicken (✓) → <em>Auswahl kopieren</em> oder als <em>Paket ziehen</em>.
+    </div>
+
+    {% if load.status == "completed" %}
+      <div class="alert alert-info">
+        Load durchgeführt.
+        {% if session.get('is_admin') %}
+          <strong>Admin:</strong> Änderungen möglich (bezahlte Einträge bleiben gesperrt).
+        {% else %}
+          Änderungen sind nicht mehr möglich.
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {% if load.has_paid_entries %}
+      <div class="alert alert-warning">
+        Dieser Load enthält bezahlte Einträge.
+        Bezahlte Personen können nicht mehr geändert oder gelöscht werden.
+      </div>
+    {% endif %}
+
+    <!-- META-DATEN -->
+    <div class="row g-3">
+      <div class="col-md-3">
+        <strong>Flugplatz</strong>
+        <div>{{ load.airfield.name }}</div>
+      </div>
+
+      <div class="col-md-3">
+        <strong>Flugzeug</strong>
+        <div>
+          <span class="badge bg-secondary">{{ load.aircraft.type }}</span>
+          <span class="badge bg-info text-dark">{{ load.aircraft.registration }}</span>
+        </div>
+      </div>
+
+      <div class="col-md-3">
+        <strong>Absprunghöhe</strong>
+        <div>{{ load.height_m }} m</div>
+      </div>
+
+      <div class="col-md-3">
+        <strong>Sitzplätze</strong>
+        <div>{{ load.entries|length }} belegt</div>
+      </div>
+
+      <div class="col-md-3">
+        <strong>Max. Gewicht</strong>
+        <div>
+          {% if load.max_payload_kg %}
+            {{ "%.0f"|format(load.max_payload_kg) }} kg
+          {% else %}
+            <span class="text-muted">nicht definiert</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="col-md-3">
+        <strong>Gesamtgewicht</strong>
+        <div>
+          {% set total = load.payload_sum_kg %}
+          {% set maxp = load.max_payload_kg or 999999 %}
+          {% if total > maxp %}
+            <span class="badge bg-danger">{{ "%.0f"|format(total) }} kg</span>
+          {% elif total > maxp * 0.9 %}
+            <span class="badge bg-warning text-dark">{{ "%.0f"|format(total) }} kg</span>
+          {% else %}
+            <span class="badge bg-success">{{ "%.0f"|format(total) }} kg</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="col-md-3">
+        <strong>Startzeit</strong>
+        <div>
+          {% if load.actual_time %}
+            <span class="badge bg-success">{{ load.actual_time.strftime("%H:%M") }}</span>
+          {% else %}
+            <span class="text-muted">noch nicht gestartet</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="col-md-3">
+        <strong>Status</strong>
+        <div>
+          <span class="badge bg-secondary">{{ load.status }}</span>
+        </div>
+      </div>
+    </div>
+
+    {% if load.status != "completed" %}
+      <form method="POST"
+            action="{{ url_for('load.set_actual_time', id=load.id) }}"
+            class="row g-2 align-items-end mt-3">
+        <div class="col-md-3">
+          <label class="form-label fw-bold">Startdatum</label>
+          <input type="date"
+                 name="actual_date"
+                 class="form-control"
+                 value="{{ (load.actual_time or load.created_at).strftime('%Y-%m-%d') }}">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label fw-bold">Startzeit</label>
+          <input type="time"
+                 name="actual_time_hm"
+                 class="form-control"
+                 value="{% if load.actual_time %}{{ load.actual_time.strftime('%H:%M') }}{% endif %}">
+        </div>
+
+        <div class="col-md-3">
+          <button type="submit" class="btn btn-outline-primary mt-4">
+            <i class="bi bi-save"></i> Startzeit speichern
+          </button>
+        </div>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ========================================================= -->
+<!-- 🟦 BLOCK 2 — SPRINGER -->
+<!-- ========================================================= -->
+{% set entries = load.entries|sort(attribute='seat') %}
+{% set blocks = load.blocks %}
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h5 class="fw-bold mb-3">Springer</h5>
+
+    <table class="table table-hover table-bordered table-sm align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Sitz</th>
+          <th>Person</th>
+          <th>Status</th>
+          <th>Höhe</th>
+          <th>Gewicht</th>
+          <th>Preis</th>
+        </tr>
+      </thead>
+
+      <tbody data-block-scope="load">
+        {% for e in entries %}
+          {% set css_class = "" %}
+          {% for b in blocks %}
+            {% if b.type == "block" and e.id in b.entry_ids %}
+              {% if not css_class %}
+                {% set css_class = b.css_class %}
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+
+          {% if (not css_class) and e.status_code in ["Schüler", "Schüler Ek 1", "Schüler Ek 2", "Schüler GK 6"] %}
+            {% set css_class = "instruction-seat instruction-seat-1" %}
+          {% endif %}
+
+          <tr class="{{ css_class }}"
+              data-block-entry="1"
+              data-seat="{{ e.seat }}"
+              data-status="{{ e.status_code }}"
+              data-person-id="{{ e.person_id }}"
+              data-person-name="{{ e.person.full_name }}"
+              data-gear-rental="{{ 1 if e.gear_rental else 0 }}"
+              data-height="{{ e.height_m }}"
+              draggable="true">
+
+            <td>{{ e.seat }}</td>
+
+            <td>
+              <div class="d-flex justify-content-between align-items-start gap-2">
+                <div>
+                  {{ e.person.full_name }}
+
+                  {% if e.follow_load_warning %}
+                    <div class="follow-load-warning">Achtung Folgeload</div>
+                  {% endif %}
+
+                  {% if e.paid %}
+                    <span class="badge bg-success ms-2">bezahlt</span>
+                  {% endif %}
+                </div>
+
+                <div class="text-end">
+                  <div class="person-status-mini">{{ e.status_code }}</div>
+                </div>
+              </div>
+            </td>
+
+            <td><span class="badge bg-secondary">{{ e.status_code }}</span></td>
+            <td>{{ e.height_m }} m</td>
+            <td>{{ e.payload_kg }} kg</td>
+            <td>
+              {% if e.preis_berechnet is not none %}
+                {{ "%.2f"|format(e.preis_berechnet) }} €
+              {% else %}
+                –
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ========================================================= -->
+<!-- 🟦 AKTIONEN -->
+<!-- ========================================================= -->
+{% set delete_confirm = "Load wirklich löschen?" %}
+{% if load.status == "completed" %}
+  {% set delete_confirm = delete_confirm ~ " Load schon durchgeführt." %}
+{% endif %}
+
+<div class="mt-4 d-flex justify-content-between">
+  <a href="{{ url_for('load.list_loads') }}" class="btn btn-secondary">
+    <i class="bi bi-arrow-left"></i> Zurück zur Übersicht
+  </a>
+
+  <div class="d-flex gap-2">
+    {% if load.status != "completed" and not load.actual_time %}
+      <a href="{{ url_for('load.start', id=load.id) }}"
+         class="btn btn-warning"
+         title="Startzeit jetzt setzen"
+         onclick="return confirm('Startzeit jetzt setzen?');">
+        <i class="bi bi-airplane"></i> Start
+      </a>
+    {% endif %}
+
+    {% if load.status != "completed" %}
+      <a href="{{ url_for('load.complete', id=load.id) }}"
+         class="btn btn-primary"
+         title="Load abschließen"
+         onclick="return confirm('Load wirklich abschließen? Danach keine Änderungen mehr möglich.');">
+        <i class="bi bi-check-circle"></i> Load durchgeführt
+      </a>
+    {% endif %}
+
+    {% if session.get('is_admin') and not load.has_paid_entries and not load.has_linked_invoice_items %}
+      <form action="{{ url_for('load.delete_load', id=load.id) }}"
+            method="POST"
+            onsubmit="return confirm('{{ delete_confirm }}')">
+        <button type="submit" class="btn btn-danger" title="Load löschen">
+          <i class="bi bi-trash"></i> Load löschen
+        </button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   🟦 Clipboard + Drag&Drop + Multi-Select
+========================================================= */
+const CLIPBOARD_KEY = "manifest_load_clipboard_v1";
+
+function saveClipboard(payload) {
+  try {
+    localStorage.setItem(CLIPBOARD_KEY, JSON.stringify(payload));
+    return true;
+  } catch (e) {
+    console.warn("Clipboard speichern fehlgeschlagen:", e);
+    return false;
+  }
+}
+
+function _detailRows() {
+  return document.querySelectorAll("tbody[data-block-scope='load'] tr[data-block-entry='1']");
+}
+
+function _detailEntryFromRow(tr) {
+  const personId = tr.dataset.personId;
+  const status = tr.dataset.status;
+  const height = parseInt(tr.dataset.height || "0", 10);
+  const personName = tr.dataset.personName || "";
+  const gearRentalRaw = tr.dataset.gearRental || tr.dataset.gear_rental || "0";
+  const gearRental = String(gearRentalRaw) === "1" || String(gearRentalRaw).toLowerCase() === "true";
+  if (!personId || !status) return null;
+  return {
+    personId,
+    status,
+    height,
+    personName,
+    gear_rental: gearRental,
+    gearRental: gearRental,
+  };
+}
+
+/* Copy gesamten Load */
+document.getElementById("copy_load_detail")?.addEventListener("click", () => {
+  const entries = [];
+  _detailRows().forEach((tr) => {
+    const e = _detailEntryFromRow(tr);
+    if (e) entries.push(e);
+  });
+  if (!entries.length) {
+    alert("Keine Einträge gefunden.");
+    return;
+  }
+  const ok = saveClipboard({ source: "load", loadId: "{{ load.id }}", entries });
+  if (ok) alert("Load ins Clipboard kopiert. Jetzt im Editor „Aus Clipboard einfügen“ nutzen.");
+});
+
+/* =========================================================
+   Mehrfachauswahl
+========================================================= */
+let __detailMultiSelectEnabled = false;
+
+function __detailUpdateHint() {
+  const hint = document.getElementById("multi_select_hint");
+  if (!hint) return;
+  const active = document.body.classList.contains("person-select-mode");
+  hint.classList.toggle("d-none", !active);
+}
+
+document.getElementById("toggle_select_mode")?.addEventListener("click", () => {
+  __detailMultiSelectEnabled = !__detailMultiSelectEnabled;
+  document.body.classList.toggle("person-select-mode", __detailMultiSelectEnabled);
+
+  if (!__detailMultiSelectEnabled) {
+    document
+      .querySelectorAll("tbody[data-block-scope='load'] tr.person-selected[data-block-entry='1']")
+      .forEach(x => x.classList.remove("person-selected"));
+  }
+  __detailUpdateHint();
+});
+
+document.getElementById("clear_selection")?.addEventListener("click", () => {
+  document
+    .querySelectorAll("tbody[data-block-scope='load'] tr.person-selected[data-block-entry='1']")
+    .forEach(x => x.classList.remove("person-selected"));
+});
+
+_detailRows().forEach((tr) => {
+  tr.addEventListener("click", (ev) => {
+    if (!__detailMultiSelectEnabled) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    tr.classList.toggle("person-selected");
+  });
+});
+
+function __detailGetSelectedEntries() {
+  const selected = document.querySelectorAll(
+    "tbody[data-block-scope='load'] tr.person-selected[data-block-entry='1']"
+  );
+  const entries = [];
+  selected.forEach((tr) => {
+    const e = _detailEntryFromRow(tr);
+    if (e) entries.push(e);
+  });
+  return entries;
+}
+
+/* Copy nur Auswahl */
+document.getElementById("copy_selected_detail")?.addEventListener("click", () => {
+  const entries = __detailGetSelectedEntries();
+  if (!entries.length) {
+    alert("Keine Personen markiert. Mehrfachauswahl aktivieren und Personen anklicken.");
+    return;
+  }
+  const ok = saveClipboard({ source: "detail-selected", loadId: "{{ load.id }}", entries });
+  if (ok) alert("Auswahl ins Clipboard kopiert. Jetzt im Editor „Aus Clipboard einfügen“ nutzen.");
+});
+
+/* =========================================================
+   Drag&Drop: Single oder Paket
+========================================================= */
+_detailRows().forEach((tr) => {
+  tr.addEventListener("dragstart", (ev) => {
+    try { ev.dataTransfer.effectAllowed = "copy"; } catch (e) {}
+
+    if (__detailMultiSelectEnabled) {
+      const selected = __detailGetSelectedEntries();
+      if (selected.length) {
+        const payload = { entries: selected };
+        try {
+          ev.dataTransfer.setData("application/json", JSON.stringify(payload));
+        } catch (_) {
+          ev.dataTransfer.setData("text/plain", JSON.stringify(payload));
+        }
+        return;
+      }
+    }
+
+    // sonst Single
+    const single = _detailEntryFromRow(tr);
+    if (!single) return;
+    try {
+      ev.dataTransfer.setData("application/json", JSON.stringify(single));
+    } catch (_) {
+      ev.dataTransfer.setData("text/plain", JSON.stringify(single));
+    }
+  });
+});
+
+/* Initial */
+try { __detailUpdateHint(); } catch (e) {}
+</script>
+
+<!-- ✅ READ-ONLY Block-Färbung für Detail -->
+<script src="{{ url_for('static', filename='load/load_blocks_view.js') }}" defer></script>
+
+{% endblock %}

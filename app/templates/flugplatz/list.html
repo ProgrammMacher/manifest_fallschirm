@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Flugplätze – Manifest{% endblock %}
+{% block header %}Flugplätze{% endblock %}
+
+{% block content %}
+
+{# Flugplätze nach Aktiv/Inaktiv trennen #}
+{% set plaetze_active = plaetze | selectattr('active') | list %}
+{% set plaetze_inactive = plaetze | rejectattr('active') | list %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="fw-bold m-0">
+    <i class="bi bi-geo-alt-fill"></i> Flugplätze
+  </h4>
+
+  <div class="d-flex gap-2">
+    {% if session.is_admin %}
+      <a href="{{ url_for('flugplatz.archiv') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-archive"></i> Archiv
+      </a>
+      <a href="{{ url_for('flugplatz.new_flugplatz') }}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> Neuer Flugplatz
+      </a>
+    {% else %}
+      <span class="badge bg-secondary">
+        Nur Ansicht – keine Änderungen möglich
+      </span>
+    {% endif %}
+  </div>
+</div>
+
+{# ===================================================== #}
+{# AKTIVE FLUGPLÄTZE #}
+{# ===================================================== #}
+<h5 class="fw-bold mt-4 mb-2 text-success">
+  <i class="bi bi-geo-alt-fill"></i> Aktive Flugplätze
+</h5>
+
+{% if plaetze_active %}
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-hover table-sm align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Name</th>
+            <th>Heimatflugplatz</th>
+            <th class="text-end">Aktion</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for p in plaetze_active %}
+          <tr>
+            <td class="fw-semibold">
+              {{ p.name }}
+              <span class="badge bg-success ms-2">aktiv</span>
+            </td>
+            <td>
+              {% if p.is_home_airfield %}
+                <span class="badge bg-success">
+                  <i class="bi bi-house-door-fill"></i> Heimat
+                </span>
+              {% else %}
+                <span class="badge bg-secondary">Nein</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% if session.is_admin %}
+                <a href="{{ url_for('flugplatz.edit_flugplatz', id=p.id) }}"
+                   class="btn btn-sm btn-outline-warning"
+                   title="Bearbeiten">
+                  <i class="bi bi-pencil-square"></i>
+                </a>
+              {% else %}
+                <a href="{{ url_for('flugplatz.edit_flugplatz', id=p.id) }}"
+                   class="btn btn-sm btn-outline-secondary"
+                   title="Nur Ansicht">
+                  <i class="bi bi-eye"></i>
+                </a>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% else %}
+<p class="text-muted">Keine aktiven Flugplätze vorhanden.</p>
+{% endif %}
+
+{# ===================================================== #}
+{# INAKTIVE FLUGPLÄTZE #}
+{# ===================================================== #}
+<h5 class="fw-bold mt-4 mb-2 text-warning">
+  <i class="bi bi-slash-circle"></i> Inaktive Flugplätze
+</h5>
+
+{% if plaetze_inactive %}
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-hover table-sm align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Name</th>
+            <th>Heimatflugplatz</th>
+            <th class="text-end">Aktion</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for p in plaetze_inactive %}
+          <tr>
+            <td class="fw-semibold">
+              {{ p.name }}
+              <span class="badge bg-warning text-dark ms-2">inaktiv</span>
+            </td>
+            <td>
+              {% if p.is_home_airfield %}
+                <span class="badge bg-success">
+                  <i class="bi bi-house-door-fill"></i> Heimat
+                </span>
+              {% else %}
+                <span class="badge bg-secondary">Nein</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% if session.is_admin %}
+                <a href="{{ url_for('flugplatz.edit_flugplatz', id=p.id) }}"
+                   class="btn btn-sm btn-outline-warning"
+                   title="Bearbeiten">
+                  <i class="bi bi-pencil-square"></i>
+                </a>
+              {% else %}
+                <a href="{{ url_for('flugplatz.edit_flugplatz', id=p.id) }}"
+                   class="btn btn-sm btn-outline-secondary"
+                   title="Nur Ansicht">
+                  <i class="bi bi-eye"></i>
+                </a>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% else %}
+<p class="text-muted">Keine inaktiven Flugplätze vorhanden.</p>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}Flugzeug ersetzen{% endblock %}
+{% block header %}Flugzeug ersetzen{% endblock %}
+
+{% block content %}
+
+<div class="card shadow-sm">
+    <div class="card-body">
+
+        <!-- TITLE -->
+        <h4 class="fw-bold mb-3">
+            <i class="bi bi-arrow-left-right"></i>
+            Flugzeug ersetzen
+        </h4>
+
+        <!-- WARNING -->
+        <div class="alert alert-danger d-flex align-items-center">
+            <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i>
+            <div>
+                Das Flugzeug 
+                <span class="badge bg-danger">{{ aircraft.registration }}</span>
+                kann nicht gelöscht werden, da es noch in folgenden Loads verwendet wird.
+            </div>
+        </div>
+
+        <!-- COUNT OF LOADS -->
+        <div class="alert alert-info d-flex align-items-center mb-4">
+            <i class="bi bi-info-circle-fill me-2 fs-5"></i>
+            <div>
+                Insgesamt betroffen:
+                <span class="badge bg-primary">{{ loads|length }}</span>
+                Load{% if loads|length != 1 %}s{% endif %}
+            </div>
+        </div>
+
+        <!-- LOAD LIST -->
+        <h5 class="fw-bold mt-4 mb-3">
+            <i class="bi bi-list-ul"></i>
+            Betroffene Loads
+        </h5>
+
+        <div class="table-responsive mb-4">
+            <table class="table table-hover table-sm align-middle shadow-sm">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Load‑Nr.</th>
+                        <th>Höhe</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for load in loads %}
+                    <tr>
+                        <td>{{ load.id }}</td>
+                        <td>{{ load.load_number }}</td>
+                        <td>{{ load.height_m }} m</td>
+
+                        <td>
+                            {% set s = load.status %}
+                            {% if s == "open" %}
+                                <span class="badge bg-success">Offen</span>
+                            {% elif s == "boarding" %}
+                                <span class="badge bg-warning text-dark">Boarding</span>
+                            {% elif s == "airborne" %}
+                                <span class="badge bg-info text-dark">In der Luft</span>
+                            {% elif s == "landed" %}
+                                <span class="badge bg-primary">Gelandet</span>
+                            {% elif s == "completed" %}
+                                <span class="badge bg-secondary">Abgeschlossen</span>
+                            {% else %}
+                                <span class="badge bg-dark">{{ s }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <hr class="my-4">
+
+        <!-- NEW AIRCRAFT SELECTION -->
+        <h5 class="fw-bold mb-3">
+            <i class="bi bi-airplane-engines"></i>
+            Neues Flugzeug auswählen
+        </h5>
+
+        <form action="{{ url_for('aircraft.replace_aircraft_execute', aircraft_id=aircraft.id) }}"
+              method="post" class="mt-3">
+
+            <div class="mb-3">
+                <label for="new_aircraft_id" class="form-label fw-bold">
+                    Ersatzflugzeug *
+                </label>
+
+                <select name="new_aircraft_id" id="new_aircraft_id"
+                        class="form-select" required>
+                    <option value="">Bitte wählen…</option>
+
+                    {% for a in other_aircraft %}
+                    <option value="{{ a.id }}">
+                        {{ a.registration }} – {{ a.type }}
+                        ({{ a.seats }} Sitze, {{ a.default_height }} m)
+                    </option>
+                    {% endfor %}
+                </select>
+
+                <div class="form-text">
+                    Nur aktive und nicht archivierte Flugzeuge werden angezeigt.
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-between mt-4">
+
+                <a href="{{ url_for('aircraft.list_aircraft') }}"
+                   class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Abbrechen
+                </a>
+
+                <button class="btn btn-primary">
+                    <i class="bi bi-arrow-left-right"></i>
+                    Loads übertragen
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+</div>
+
+{% endblock %}

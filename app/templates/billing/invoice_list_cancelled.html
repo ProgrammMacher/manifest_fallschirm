@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Stornierte Rechnungen{% endblock %}
+{% block header %}Stornierte Rechnungen{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="mb-2">
+    <h2 class="fw-bold mb-0">Stornierte Rechnungen</h2>
+  </div>
+
+  <div class="d-flex mb-3">
+    <a href="{{ url_for('billing.invoice_list') }}" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> Aktive Rechnungen
+    </a>
+  </div>
+
+  {% if invoices %}
+    <div class="table-responsive">
+      <table class="table table-striped align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Rechnungsnr.</th>
+            <th>Person</th>
+            <th>Rechnungsdatum</th>
+            <th>Storniert am</th>
+            <th class="text-end">Summe (Brutto)</th>
+            <th>E-Mail versendet</th>
+            <th class="text-end">Aktion</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inv in invoices %}
+            {% set inv_no = invoice_display_number(inv) %}
+            {% set _content_csv = invoice_content_status_codes_csv(inv) %}
+            {% set _is_manual_invoice = 'manual' in _content_csv.split(',') %}
+            {% set inv_label = inv.created_at.strftime('%Y') ~ ('-manuell #' if _is_manual_invoice else '-Sprünge #') ~ inv_no %}
+            <tr>
+              <td>
+                <strong>{{ inv_label }}</strong>
+                <div><span class="badge bg-warning text-dark">Storniert</span></div>
+              </td>
+              <td>{{ inv.person.full_name if inv.person else '—' }}</td>
+              <td>{{ inv.created_at.strftime('%d.%m.%Y') if inv.created_at else '—' }}</td>
+              <td>{{ inv.deleted_at.strftime('%d.%m.%Y %H:%M') if inv.deleted_at else '—' }}</td>
+              <td class="text-end">
+                {{ "{:,.2f}".format(inv.total_amount)
+                  .replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+              </td>
+              <td>
+                {% if inv.email_sent_ok and inv.email_sent_at %}
+                  <span class="text-success">
+                    <i class="bi bi-check-lg"></i>
+                    {{ inv.email_sent_at.strftime('%d.%m.%Y %H:%M') }}
+                  </span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                <a href="{{ url_for('billing.invoice_detail', invoice_id=inv_no) }}" class="btn btn-sm btn-outline-primary">
+                  <i class="bi bi-search"></i> Anzeigen
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="alert alert-info mb-0">
+      Keine stornierten Rechnungen vorhanden.
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

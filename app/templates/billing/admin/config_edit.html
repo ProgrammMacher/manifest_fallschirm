@@ -1,0 +1,366 @@
+{% extends "base.html" %}
+{% block title %}Rechnungssteller – Konfiguration{% endblock %}
+{% block header %}Rechnungssteller – Konfiguration{% endblock %}
+
+{% block content %}
+<div class="container">
+
+  <form method="post">
+
+    <!-- =============================== -->
+    <!-- Rechnungssteller -->
+    <!-- =============================== -->
+    <h4>Rechnungssteller</h4>
+    <div class="row g-2">
+      <div class="col-md-6">
+        <label class="form-label">Name</label>
+        <input class="form-control" name="company_name" value="{{ cfg.company_name }}">
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Logo-Datei</label>
+        <input class="form-control" name="logo_filename" value="{{ cfg.logo_filename }}">
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Straße</label>
+        <input class="form-control" name="street" value="{{ cfg.street }}">
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label">PLZ</label>
+        <input class="form-control" name="zip_code" value="{{ cfg.zip_code }}">
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label">Ort</label>
+        <input class="form-control" name="city" value="{{ cfg.city }}">
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- =============================== -->
+    <!-- Zahlungsinformationen -->
+    <!-- =============================== -->
+    <h4>Zahlungsinformationen</h4>
+
+    <div class="mb-2">
+      <label class="form-label">Zahlungsarten</label>
+      <input class="form-control" name="payment_methods_text" value="{{ cfg.payment_methods_text }}">
+    </div>
+
+    <div class="row g-2">
+      <div class="col-md-4">
+        <label class="form-label">Bank</label>
+        <input class="form-control" name="bank_name" value="{{ cfg.bank_name }}">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">IBAN</label>
+        <input class="form-control" name="iban" value="{{ cfg.iban }}">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">BIC</label>
+        <input class="form-control" name="bic" value="{{ cfg.bic }}">
+      </div>
+    </div>
+
+    <div class="mt-2">
+      <label class="form-label">Zahlungsbedingung</label>
+      <input class="form-control" name="payment_terms" value="{{ cfg.payment_terms }}">
+    </div>
+
+    <hr>
+
+	<!-- =============================== -->
+	<!-- Transaktionskosten (Konfiguration) -->
+	<!-- =============================== -->
+	<h4>Transaktionskosten</h4>
+
+	<div class="row g-2">
+
+	  <div class="col-md-4">
+		<label class="form-label">Festbetrag (€)</label>
+		<input class="form-control"
+			   name="transaction_fee_fixed_eur"
+			   value="{{ cfg.transaction_fee_fixed_eur }}">
+	  </div>
+
+	  <div class="col-md-4">
+		<label class="form-label">Prozent (%)</label>
+		<input class="form-control"
+			   name="transaction_fee_percent"
+			   value="{{ cfg.transaction_fee_percent }}">
+	  </div>
+
+	  <div class="col-md-4">
+		<div class="text-muted" style="font-size:9pt; margin-top:28px;">
+		  Hinweis: Transaktionskosten werden <strong>pro Rechnung</strong> ausgewählt.
+		  Standardmäßig fallen <strong>keine</strong> Gebühren an.
+		</div>
+	  </div>
+
+</div>
+
+    <hr>
+
+	<!-- =============================== -->
+	<!-- Online-Präsenz -->
+	<!-- =============================== -->
+	<h4>Online‑Präsenz</h4>
+
+	<div class="row g-2">
+	  <div class="col-md-4">
+		<label class="form-label">Website</label>
+		<input class="form-control" name="website" value="{{ cfg.website }}">
+	  </div>
+
+	  <div class="col-md-4">
+		<label class="form-label">E‑Mail Rechnungssteller</label>
+		<input class="form-control" name="email" value="{{ cfg.email }}">
+	  </div>
+
+	  <div class="col-md-4">
+		<label class="form-label">Steuernummer</label>
+		<input class="form-control" name="tax_number" value="{{ cfg.tax_number }}">
+	  </div>
+
+	  <div class="col-md-4">
+		<label class="form-label">Instagram</label>
+		<input class="form-control" name="instagram_url" value="{{ cfg.instagram_url }}">
+	  </div>
+
+	  <div class="col-md-4">
+		<label class="form-label">Facebook</label>
+		<input class="form-control" name="facebook_url" value="{{ cfg.facebook_url }}">
+	  </div>
+	</div>
+
+    <hr>
+
+
+	<hr>
+    <!-- =============================== -->
+    <!-- E-Mail-Versand (Rechnungen) -->
+    <!-- =============================== -->
+    <h4>E-Mail‑Versand (Rechnungen)</h4>
+
+    <div class="row g-2">
+
+      <div class="col-md-6">
+        <label class="form-label">Absender‑E-Mail‑Adresse</label>
+        <input type="email"
+               class="form-control"
+               name="mail_sender_address"
+               value="{{ cfg.mail_sender_address or '' }}"
+               placeholder="rechnung@freifall-dessau.de">
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Absendername</label>
+        <input type="text"
+               class="form-control"
+               name="mail_sender_name"
+               value="{{ cfg.mail_sender_name or '' }}"
+               placeholder="Dessauer Fallschirmsportverein">
+      </div>
+
+      <div class="col-md-12 mt-2">
+        <label class="form-label">E-Mail‑Betreff</label>
+        <input type="text"
+               class="form-control"
+               name="mail_subject_template"
+               value="{{ cfg.mail_subject_template or '' }}"
+               placeholder="Deine Rechnung vom Dessauer Fallschirmsportverein">
+      </div>
+
+		<div class="col-md-12 mt-2">
+      <label class="form-label fs-5 fw-semibold">E-Mail‑Text für Rechnungen der Loads</label>
+
+		  <textarea class="form-control"
+					name="mail_body_template"
+					rows="8"
+					placeholder="Hier kannst du den E-Mail-Text bearbeiten. Platzhalter siehe unten.">
+		{{ cfg.mail_body_template }}
+		  </textarea>
+
+		  <small class="text-muted">
+			Verfügbare Platzhalter:
+			<code>{first_name}</code>,
+			<code>{last_name}</code>,
+			<code>{invoice_date}</code>,
+			<code>{airfield_name}</code>
+		  </small>
+		</div>
+
+    <div class="col-md-12 mt-2">
+      <label class="form-label fs-5 fw-semibold">E-Mail‑Text für manuelle Rechnungen</label>
+
+      <textarea class="form-control"
+          name="mail_body_template_manual"
+          rows="10"
+          placeholder="Text für den E-Mail-Versand manuell erstellter Rechnungen.">
+    {{ cfg.mail_body_template_manual or '' }}
+      </textarea>
+
+      <small class="text-muted">
+      Verfügbare Platzhalter:
+      <code>{first_name}</code>,
+      <code>{last_name}</code>,
+      <code>{manual_title}</code>
+      </small>
+    </div>
+
+    </div>
+
+    <div class="row g-2 mt-2">
+      <div class="col-md-12">
+        <label class="form-label">Enthaftungstext (Fallschirmspringer)</label>
+        <textarea class="form-control"
+                  name="waiver_text_skydiver"
+                  rows="12"
+                  placeholder="Text für Enthaftungserklärung Fallschirmspringer">{{ cfg.waiver_text_skydiver or '' }}</textarea>
+      </div>
+
+      <div class="col-md-12 mt-2">
+        <label class="form-label">Enthaftungstext (Tandemgast)</label>
+        <textarea class="form-control"
+                  name="waiver_text_tandem"
+                  rows="12"
+                  placeholder="Text für Enthaftungserklärung Tandemgast">{{ cfg.waiver_text_tandem or '' }}</textarea>
+      </div>
+    </div>
+
+    <!-- =============================== -->
+    <!-- E-Mail-Adresse Konfiguration -->
+    <!-- =============================== -->
+	<hr>
+	<h4>SMTP‑Konfiguration (Mailversand)</h4>
+
+	<div class="row g-2">
+
+	  <div class="col-md-6">
+		<label class="form-label">SMTP‑Server</label>
+		<input class="form-control"
+			   name="smtp_server"
+			   value="{{ cfg.smtp_server or '' }}"
+			   placeholder="smtp.example.de">
+	  </div>
+
+	  <div class="col-md-6 mt-2">
+		<label class="form-label">SMTP‑Fallback‑Host <small class="text-muted">(optional – bei DNS-Ausfall)</small></label>
+		<input class="form-control"
+			   name="smtp_fallback_host"
+			   value="{{ cfg.smtp_fallback_host or '' }}"
+			   placeholder="z.B. smtp.1und1.com (IONOS), leer lassen falls nicht benötigt">
+	  </div>
+
+	  <div class="col-md-3">
+		<label class="form-label">Port</label>
+		<input class="form-control"
+			   name="smtp_port"
+			   value="{{ cfg.smtp_port or '' }}"
+			   placeholder="587">
+	  </div>
+
+	  <div class="col-md-3">
+		<label class="form-label">Benutzername</label>
+		<input class="form-control"
+			   name="smtp_username"
+			   value="{{ cfg.smtp_username or '' }}">
+	  </div>
+
+	  <div class="col-md-6 mt-2">
+		<label class="form-label">Passwort</label>
+		<input type="password"
+			   class="form-control"
+			   name="smtp_password"
+			   placeholder="(wird gespeichert)">
+	  </div>
+
+	  <div class="col-md-3 mt-4">
+		<div class="form-check">
+		  <input class="form-check-input"
+				 type="checkbox"
+				 name="smtp_use_tls"
+				 {% if cfg.smtp_use_tls %}checked{% endif %}>
+		  <label class="form-check-label">TLS</label>
+		</div>
+	  </div>
+
+	  <div class="col-md-3 mt-4">
+		<div class="form-check">
+		  <input class="form-check-input"
+				 type="checkbox"
+				 name="smtp_use_ssl"
+				 {% if cfg.smtp_use_ssl %}checked{% endif %}>
+		  <label class="form-check-label">SSL</label>
+		</div>
+	  </div>
+
+	</div>
+
+  <div class="row g-2 mt-2 align-items-end">
+    <div class="col-md-6">
+    <label class="form-label">Test-Empfänger</label>
+    <input class="form-control"
+         name="smtp_test_to_email"
+         value="{{ smtp_test_to_email or '' }}"
+         placeholder="test@example.de">
+    <div class="form-text">
+      Der Testbutton sitzt direkt in der SMTP-Konfiguration und nutzt die aktuell sichtbaren SMTP-Werte aus diesem Formular.
+    </div>
+    </div>
+    <div class="col-md-6">
+    <button class="btn btn-outline-secondary"
+        formaction="{{ url_for('billing.admin_config_test_email') }}"
+        formmethod="post">
+      SMTP/Testmail senden
+    </button>
+    </div>
+  </div>
+
+
+
+    <!-- =============================== -->
+    <!-- QR-Codes (Grafikdateien) -->
+    <!-- =============================== -->
+    <h4>QR‑Codes (Grafikdateien)</h4>
+
+    <div class="row g-2">
+      <div class="col-md-4">
+        <label class="form-label">QR Instagram (Dateiname)</label>
+        <input class="form-control"
+               name="qr_instagram_filename"
+               value="{{ cfg.qr_instagram_filename }}">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">QR Facebook (Dateiname)</label>
+        <input class="form-control"
+               name="qr_facebook_filename"
+               value="{{ cfg.qr_facebook_filename }}">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">QR Website (Dateiname)</label>
+        <input class="form-control"
+               name="qr_website_filename"
+               value="{{ cfg.qr_website_filename }}">
+      </div>
+    </div>
+
+    <small class="text-muted d-block mt-2">
+      Ablage der Dateien: <code>app/static/img/qr/</code><br>
+      Beispiel: <code>qr_instagram.png</code>
+    </small>
+
+    <div class="mt-4">
+      <button class="btn btn-primary">Speichern</button>
+    </div>
+
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}Manifest Display{% endblock %}</title>
+
+  <!-- ✅ OFFLINE-FIRST: Bootstrap + Icons lokal -->
+  <link href="{{ url_for('static', filename='vendor/bootstrap/5.3.3/css/bootstrap.min.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='vendor/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css') }}" rel="stylesheet">
+
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    :root { --bg:#f5f5f7; --text:#111; }
+    body { background:var(--bg); color:var(--text); font-family:"Inter",system-ui,sans-serif; }
+
+    .display-header{
+      display:flex; align-items:flex-start; justify-content:space-between;
+      gap:12px; margin-bottom:10px;
+    }
+    .header-left{
+      display:flex;
+      align-items:flex-start;
+      gap:12px;
+      min-width:0;
+    }
+    .brand-row{ display:flex; align-items:flex-start; gap:12px; }
+    .brand-square{
+      width:96px; height:96px; object-fit:contain; background:#fff;
+      border-radius:10px; padding:6px; border:1px solid rgba(0,0,0,0.12);
+    }
+    .qr-tile{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:6px;
+      max-width:112px;
+    }
+    .qr-tile-label{
+      font-size:0.72rem;
+      font-weight:700;
+      line-height:1.2;
+      text-align:center;
+      opacity:0.85;
+    }
+    .brand-badge{ text-align:center; line-height:1.1; }
+    .brand-title{ font-weight:700; }
+    .brand-version{ font-size:0.85rem; opacity:0.75; }
+
+    @media (max-width:576px){
+      .container-fluid{ padding:0.4rem !important; }
+      .display-header{ flex-direction:column; align-items:flex-start; gap:2px; }
+      .header-left{ width:100%; }
+      .wifi-qr-tile{ display:none !important; }
+      .brand-row{ display:none !important; }
+      h1{ font-size:1.05rem; line-height:1.2; margin-bottom:0; }
+      .display-topbar{ display:block !important; }
+      .display-countdown{ display:block !important; width:100%; margin-top:4px; font-size:0.85rem; font-weight:600; text-align:left !important; }
+      #nowText{ font-size:0.8rem; }
+
+      table{ width:100%; font-size:0.78rem; table-layout:auto; }
+      th,td{ padding:0.25rem 0.35rem; vertical-align:top; }
+
+      th:nth-child(1), td:nth-child(1){ width:96px; min-width:96px; }
+      th:nth-child(2), td:nth-child(2){ width:56px; min-width:56px; text-align:center; font-size:0.75rem; }
+
+      th:nth-child(3), td:nth-child(3),
+      th:nth-child(4), td:nth-child(4),
+      th:nth-child(6), td:nth-child(6){ display:none; }
+
+      th:nth-child(5), td:nth-child(5){ width:auto; }
+      td:nth-child(5) > div{ display:block !important; }
+    }
+	
+	/* ============================================================
+   QR-CODE (DISPLAY)
+   - leicht transparent
+   - scanbar & unaufdringlich
+   ============================================================ */
+	.display-qr img {
+	  opacity: 0.9;
+	}
+	
+	
+  </style>
+
+  {% block extra_head %}{% endblock %}
+</head>
+
+<body>
+<div class="container-fluid p-3">
+	<div class="display-header">
+    <div class="header-left">
+    <h1 class="fw-bold m-0">{% block header %}{% endblock %}</h1>
+
+    {% if wifi_qr_available and wifi_qr_data %}
+      <div class="qr-tile wifi-qr-tile">
+      <img
+        class="brand-square"
+        alt="QR Code WLAN"
+        src="{{ url_for('load.qr_png') }}?data={{ wifi_qr_data|urlencode }}"
+        style="opacity: 0.9;"
+      >
+      <div class="qr-tile-label">WLAN</div>
+      </div>
+    {% elif wifi_qr_available and not wifi_qr_data %}
+      <div class="qr-tile wifi-qr-tile">
+        <div
+          class="brand-square d-flex align-items-center justify-content-center text-center"
+          style="font-size:0.7rem;font-weight:600;line-height:1.1;padding:8px;background:#fff3cd;border:1px solid #ffc107;"
+        >
+          🔐 Admin-Rechte<br>
+          <span style="font-weight:400;opacity:0.8;font-size:0.65rem;">
+          erforderlich<br>
+          für WLAN-QR
+          </span>
+        </div>
+      <div class="qr-tile-label">WLAN</div>
+      </div>
+    {% endif %}
+    </div>
+
+	  <div class="brand-row">
+    <div class="qr-tile">
+      {% if qr_available %}
+      <img
+        class="brand-square"
+        alt="QR Code mobile Ansicht"
+        src="{{ url_for('load.qr_png') }}?data={{ qr_url|urlencode }}"
+        style="opacity: 0.8;"   {# ✅ LEICHT TRANSPARENT #}
+      >
+      {% else %}
+      <div
+        class="brand-square d-flex align-items-center justify-content-center text-center"
+        style="font-size:0.75rem;font-weight:600;line-height:1.2;padding:8px;"
+      >
+        QR nicht verfügbar<br>
+        <span style="font-weight:400;opacity:0.75;">
+        Mobiler Zugriff nur im<br>
+        selben Netzwerk möglich
+        </span>
+      </div>
+      {% endif %}
+      <div class="qr-tile-label">mobile Ansicht Load-Liste</div>
+    </div>
+
+		<img
+		  src="{{ url_for('static', filename='img/HU_Bleistift.png') }}"
+		  class="brand-square"
+		  alt="Logo HU"
+		>
+
+		<div class="brand-badge">
+		  <div class="brand-title">MANIFEST OU</div>
+		  <div class="brand-version">Vers. 1.2</div>
+		</div>
+
+		<img
+      src="{{ url_for('static', filename='img/Logo_DZ.png') }}"
+		  class="brand-square"
+		  alt="Logo Dessau"
+		>
+	  </div>
+	</div>
+
+  {% block content %}{% endblock %}
+</div>
+
+<script src="{{ url_for('static', filename='vendor/bootstrap/5.3.3/js/bootstrap.bundle.min.js') }}"></script>
+<script>
+  (function () {
+    const bannerId = "manifest-server-offline-banner";
+    let heartbeatFailures = 0;
+
+    function ensureOfflineBanner() {
+      let el = document.getElementById(bannerId);
+      if (el) return el;
+      el = document.createElement("div");
+      el.id = bannerId;
+      el.style.cssText = [
+        "position:fixed",
+        "left:12px",
+        "right:12px",
+        "bottom:12px",
+        "z-index:2000",
+        "padding:10px 14px",
+        "border-radius:10px",
+        "background:#b42318",
+        "color:#fff",
+        "font-weight:600",
+        "font-size:14px",
+        "box-shadow:0 8px 24px rgba(0,0,0,.25)",
+        "display:none",
+      ].join(";");
+      el.textContent = "Server nicht erreichbar. Bitte Anwendung neu starten.";
+      document.body.appendChild(el);
+      return el;
+    }
+
+    function showOfflineBanner() {
+      ensureOfflineBanner().style.display = "block";
+    }
+
+    function hideOfflineBanner() {
+      const el = document.getElementById(bannerId);
+      if (el) el.style.display = "none";
+    }
+
+    function sendHeartbeat() {
+      fetch("{{ url_for('pwa.runtime_heartbeat') }}", {
+        method: "POST",
+        keepalive: true,
+      })
+        .then(() => {
+          heartbeatFailures = 0;
+          hideOfflineBanner();
+        })
+        .catch(() => {
+          heartbeatFailures += 1;
+          if (heartbeatFailures >= 3) {
+            showOfflineBanner();
+          }
+        });
+    }
+
+    sendHeartbeat();
+    setInterval(sendHeartbeat, 20000);
+
+    window.addEventListener("beforeunload", () => {
+      try {
+        navigator.sendBeacon("{{ url_for('pwa.runtime_disconnect') }}", new Blob([], { type: "application/octet-stream" }));
+      } catch (_) {
+        // no-op
+      }
+    });
+  })();
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

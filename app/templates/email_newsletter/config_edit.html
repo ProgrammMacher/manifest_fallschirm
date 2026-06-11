@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block title %}E-Mail-Konfiguration{% endblock %}
+{% block header %}E-Mail-Konfiguration{% endblock %}
+
+{% block content %}
+<div class="container">
+
+  <div class="d-flex gap-2 mb-3">
+    <a href="{{ url_for('email_nl.send') }}" class="btn btn-primary">
+      <i class="bi bi-send"></i> E-Mail verfassen &amp; senden
+    </a>
+    <a href="{{ url_for('email_nl.history') }}" class="btn btn-outline-secondary">
+      <i class="bi bi-clock-history"></i> Versand-Übersicht
+    </a>
+  </div>
+
+  <form method="post">
+
+    <!-- =============================== -->
+    <!-- Block A: Sprungplatzbetreiber   -->
+    <!-- =============================== -->
+    <h4>Sprungplatzbetreiber</h4>
+    <div class="row g-2">
+      <div class="col-md-6">
+        <label class="form-label">Name</label>
+        <input class="form-control" name="company_name"
+               value="{{ cfg.company_name or '' }}">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Logo-Datei</label>
+        <input class="form-control" name="logo_filename"
+               value="{{ cfg.logo_filename or '' }}"
+               placeholder="logo.png">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Straße</label>
+        <input class="form-control" name="street"
+               value="{{ cfg.street or '' }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">PLZ</label>
+        <input class="form-control" name="zip_code"
+               value="{{ cfg.zip_code or '' }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Ort</label>
+        <input class="form-control" name="city"
+               value="{{ cfg.city or '' }}">
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- =============================== -->
+    <!-- Block C: Online-Präsenz         -->
+    <!-- =============================== -->
+    <h4>Online-Präsenz</h4>
+    <div class="row g-2">
+      <div class="col-md-4">
+        <label class="form-label">Website</label>
+        <input class="form-control" name="website"
+               value="{{ cfg.website or '' }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">E-Mail (Absender / Impressum)</label>
+        <input class="form-control" name="email"
+               value="{{ cfg.email or '' }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Steuernummer</label>
+        <input class="form-control" name="tax_number"
+               value="{{ cfg.tax_number or '' }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Instagram</label>
+        <input class="form-control" name="instagram_url"
+               value="{{ cfg.instagram_url or '' }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Facebook</label>
+        <input class="form-control" name="facebook_url"
+               value="{{ cfg.facebook_url or '' }}">
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- =============================== -->
+    <!-- Block D: E-Mail-Standard-Vorlage-->
+    <!-- =============================== -->
+    <h4>Standard-E-Mail-Vorlage</h4>
+    <p class="text-muted small">
+      Diese Werte werden als Vorbelegung im Compose-Bereich verwendet.
+    </p>
+    <div class="row g-2">
+      <div class="col-md-6">
+        <label class="form-label">Absender-E-Mail-Adresse</label>
+        <input type="email" class="form-control" name="mail_sender_address"
+               value="{{ cfg.mail_sender_address or '' }}"
+               placeholder="newsletter@meinverein.de">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Absendername</label>
+        <input class="form-control" name="mail_sender_name"
+               value="{{ cfg.mail_sender_name or '' }}"
+               placeholder="Mein Fallschirmsportverein">
+      </div>
+      <div class="col-md-12 mt-2">
+        <label class="form-label">Standard-Betreff</label>
+        <input class="form-control" name="mail_subject_template"
+               value="{{ cfg.mail_subject_template or '' }}"
+               placeholder="Neuigkeiten vom Mein Fallschirmsportverein">
+      </div>
+      <div class="col-md-12 mt-2">
+        <label class="form-label">Standard-Text</label>
+        <textarea class="form-control" name="mail_body_template" rows="6"
+                  placeholder="Lieber {first_name} {last_name},&#10;&#10;...">{{ config_mail_body_template }}</textarea>
+        <small class="text-muted">
+          Platzhalter: <code>{first_name}</code>, <code>{last_name}</code>
+        </small>
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- =============================== -->
+    <!-- Block E: SMTP-Konfiguration     -->
+    <!-- =============================== -->
+    <h4>SMTP-Konfiguration (Mailversand)</h4>
+    <div class="row g-2">
+      <div class="col-md-6">
+        <label class="form-label">SMTP-Server</label>
+        <input class="form-control" name="smtp_server"
+               value="{{ cfg.smtp_server or '' }}"
+               placeholder="smtp.example.de">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">
+          SMTP-Fallback-Host
+          <small class="text-muted">(optional – bei DNS-Ausfall, z.B. smtp.1und1.com für IONOS)</small>
+        </label>
+        <input class="form-control" name="smtp_fallback_host"
+               value="{{ cfg.smtp_fallback_host or '' }}"
+               placeholder="z.B. smtp.1und1.com">
+      </div>
+      <div class="col-md-3 mt-2">
+        <label class="form-label">Port</label>
+        <input class="form-control" name="smtp_port"
+               value="{{ cfg.smtp_port or '' }}"
+               placeholder="587">
+      </div>
+      <div class="col-md-5 mt-2">
+        <label class="form-label">Benutzername</label>
+        <input class="form-control" name="smtp_username"
+               value="{{ cfg.smtp_username or '' }}">
+      </div>
+      <div class="col-md-4 mt-2">
+        <label class="form-label">Passwort</label>
+        <input type="password" class="form-control" name="smtp_password"
+               placeholder="(wird gespeichert)">
+      </div>
+      <div class="col-md-3 mt-3">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="smtp_use_tls"
+                 {% if cfg.smtp_use_tls %}checked{% endif %}>
+          <label class="form-check-label">STARTTLS</label>
+        </div>
+      </div>
+      <div class="col-md-3 mt-3">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="smtp_use_ssl"
+                 {% if cfg.smtp_use_ssl %}checked{% endif %}>
+          <label class="form-check-label">SSL/TLS (Port 465)</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- SMTP-Test-Button -->
+    <div class="row g-2 mt-2 align-items-end">
+      <div class="col-md-6">
+        <label class="form-label">Test-Empfänger</label>
+        <input class="form-control" name="smtp_test_to_email"
+               value="{{ smtp_test_to_email or '' }}"
+               placeholder="test@example.de">
+        <div class="form-text">
+          Nutzt die aktuell sichtbaren SMTP-Werte aus diesem Formular (kein Speichern nötig).
+        </div>
+      </div>
+      <div class="col-md-6">
+        <button class="btn btn-outline-secondary"
+                formaction="{{ url_for('email_nl.config_test_email') }}"
+                formmethod="post">
+          <i class="bi bi-send-check"></i> SMTP-Testmail senden
+        </button>
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- =============================== -->
+    <!-- Block F: QR-Codes               -->
+    <!-- =============================== -->
+    <h4>QR-Codes (Grafikdateien)</h4>
+    <div class="row g-2">
+      <div class="col-md-4">
+        <label class="form-label">QR Instagram (Dateiname)</label>
+        <input class="form-control" name="qr_instagram_filename"
+               value="{{ cfg.qr_instagram_filename or '' }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">QR Facebook (Dateiname)</label>
+        <input class="form-control" name="qr_facebook_filename"
+               value="{{ cfg.qr_facebook_filename or '' }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">QR Website (Dateiname)</label>
+        <input class="form-control" name="qr_website_filename"
+               value="{{ cfg.qr_website_filename or '' }}">
+      </div>
+    </div>
+    <small class="text-muted d-block mt-2">
+      Ablage: <code>app/static/img/qr/</code> &nbsp;|&nbsp; Beispiel: <code>qr_instagram.png</code>
+    </small>
+
+    <div class="mt-4">
+      <button class="btn btn-primary">
+        <i class="bi bi-floppy"></i> Konfiguration speichern
+      </button>
+    </div>
+
+  </form>
+</div>
+{% endblock %}

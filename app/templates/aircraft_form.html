@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {% if aircraft %}Flugzeug bearbeiten{% else %}Neues Flugzeug{% endif %}
+{% endblock %}
+
+{% block header %}
+    {% if aircraft %}Flugzeug bearbeiten{% else %}Neues Flugzeug{% endif %}
+{% endblock %}
+
+{% block content %}
+
+<div class="card shadow-sm">
+    <div class="card-body">
+
+        <form method="post">
+
+            <!-- TYP -->
+            <div class="mb-3">
+                <label for="type" class="form-label fw-bold">
+                    <i class="bi bi-airplane"></i> Flugzeugtyp
+                </label>
+                <input type="text"
+                       class="form-control"
+                       id="type"
+                       name="type"
+                       placeholder="z. B. Cessna 208"
+                       value="{{ aircraft.type if aircraft else '' }}"
+                       required>
+            </div>
+
+            <!-- REGISTRATION -->
+            <div class="mb-3">
+                <label for="registration" class="form-label fw-bold">
+                    <i class="bi bi-hash"></i> Kennung (Registration)
+                </label>
+                <input type="text"
+                       class="form-control"
+                       id="registration"
+                       name="registration"
+                       placeholder="z. B. D-FAXI"
+                       value="{{ aircraft.registration if aircraft else '' }}"
+                       required>
+                <div class="form-text">
+                    Muss eindeutig sein. Doppelte Kennungen werden abgelehnt.
+                </div>
+            </div>
+
+            <!-- SITZE -->
+            <div class="mb-3">
+                <label for="seats" class="form-label fw-bold">
+                    <i class="bi bi-people"></i> Sitzplätze
+                </label>
+                <input type="number"
+                       class="form-control"
+                       id="seats"
+                       name="seats"
+                       min="1"
+                       max="130"
+                       value="{{ aircraft.seats if aircraft else 1 }}"
+                       required>
+                <div class="form-text">
+                    Wertebereich: 1–130
+                </div>
+            </div>
+
+            <!-- DEFAULT HEIGHT (NEU) -->
+            <div class="mb-3">
+                <label for="default_height" class="form-label fw-bold">
+                    <i class="bi bi-alt"></i> Standard‑Absprunghöhe
+                </label>
+
+                <select class="form-select"
+                        id="default_height"
+                        name="default_height"
+                        required>
+                    {% set current = aircraft.default_height if aircraft else 3000 %}
+
+                    <option value="1500" {% if current == 1500 %}selected{% endif %}>1500 m</option>
+                    <option value="3000" {% if current == 3000 %}selected{% endif %}>3000 m</option>
+                    <option value="4000" {% if current == 4000 %}selected{% endif %}>4000 m</option>
+                </select>
+
+                <div class="form-text">
+                    Diese Höhe wird beim Anlegen neuer Loads automatisch verwendet.
+                </div>
+            </div>
+
+            <!-- AKTIV -->
+            <div class="mb-4">
+                <label class="form-label fw-bold d-block">
+                    <i class="bi bi-airplane"></i> Flugzeugstatus
+                </label>
+
+                <div class="form-check form-switch">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           id="active"
+                           name="active"
+                           {% if aircraft and aircraft.active %}checked{% endif %}>
+                    <label class="form-check-label" for="active">
+                        Flugzeug ist aktiv
+                    </label>
+                </div>
+
+                <div class="form-text">
+                    Inaktive Flugzeuge erscheinen separat in der Liste.
+                </div>
+            </div>
+
+            <!-- BUTTONS -->
+            <div class="d-flex justify-content-between">
+
+                <a href="{{ url_for('aircraft.list_aircraft') }}"
+                   class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Zurück
+                </a>
+
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-save"></i>
+                    {% if aircraft %}Änderungen speichern{% else %}Flugzeug anlegen{% endif %}
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+</div>
+
+{% endblock %}

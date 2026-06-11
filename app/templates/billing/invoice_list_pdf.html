@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Abrechnungsübersicht</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 16mm 12mm 16mm 12mm;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 11px;
+      color: #111827;
+      line-height: 1.35;
+    }
+
+    .header {
+      display: table;
+      width: 100%;
+      margin-bottom: 12px;
+      border-bottom: 1px solid #d1d5db;
+      padding-bottom: 10px;
+    }
+
+    .header-left,
+    .header-right {
+      display: table-cell;
+      vertical-align: top;
+    }
+
+    .header-left {
+      width: 70%;
+    }
+
+    .header-right {
+      width: 30%;
+      text-align: right;
+    }
+
+    .logo {
+      max-height: 54px;
+      max-width: 230px;
+    }
+
+    h1 {
+      margin: 0 0 4px 0;
+      font-size: 20px;
+      color: #0f172a;
+    }
+
+    .meta {
+      color: #374151;
+      margin: 1px 0;
+    }
+
+    .summary {
+      margin: 10px 0 14px 0;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+
+    .summary-row {
+      display: table;
+      width: 100%;
+      margin: 2px 0;
+    }
+
+    .summary-subnote {
+      margin-top: 3px;
+      font-size: 10px;
+      color: #4b5563;
+    }
+
+    .summary-subrow {
+      display: table;
+      width: 100%;
+      margin: 1px 0;
+      font-size: 10px;
+      color: #1f2937;
+    }
+
+    .summary-subvalue {
+      display: table-cell;
+      text-align: right;
+      font-weight: 600;
+      width: 34%;
+    }
+
+    .summary-label,
+    .summary-value {
+      display: table-cell;
+      vertical-align: top;
+    }
+
+    .summary-value {
+      text-align: right;
+      font-weight: bold;
+      width: 34%;
+    }
+
+    .amount-paid {
+      color: #166534;
+    }
+
+    .amount-open {
+      color: #b91c1c;
+      font-weight: bold;
+    }
+
+    .status-open {
+      color: #b91c1c;
+      font-weight: bold;
+    }
+
+    h2 {
+      margin: 14px 0 8px 0;
+      font-size: 14px;
+      color: #0f172a;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 10px;
+    }
+
+    th, td {
+      border: 1px solid #d1d5db;
+      padding: 5px 6px;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f3f4f6;
+      text-align: left;
+      font-weight: 700;
+    }
+
+    .text-end {
+      text-align: right;
+    }
+
+    .muted {
+      color: #6b7280;
+    }
+
+    .footer-note {
+      margin-top: 12px;
+      font-size: 10px;
+      color: #6b7280;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 6px;
+    }
+  </style>
+</head>
+<body>
+  {% set period_labels = {
+    'all': 'Alle',
+    'today': 'Heute',
+    'week': 'Woche',
+    'month': 'Monat',
+    'year': 'Jahr',
+    'range': 'Zeitperiode'
+  } %}
+  {% set active_filters = active_filter_labels|default([]) %}
+  {% set filtered_subtotal = filtered_invoice_subtotal if filtered_invoice_subtotal is defined else (invoices|sum(attribute='total_amount')) %}
+  {% set selected_payment = (filters.payment if filters else '') %}
+  {% set paid_method = namespace(cash=0, card=0, transfer=0, wero=0, voucher=0) %}
+  {% for inv in invoices %}
+    {% if inv.is_paid %}
+      {% set prepaid = invoice_prepaid_amount(inv) %}
+      {% set onsite = invoice_onsite_amount(inv) %}
+      {% if inv.payment_method == 'cash' %}
+        {% set paid_method.cash = paid_method.cash + onsite %}
+      {% elif inv.payment_method == 'card' %}
+        {% set paid_method.card = paid_method.card + onsite %}
+      {% elif inv.payment_method == 'transfer' %}
+        {% set paid_method.transfer = paid_method.transfer + onsite %}
+      {% elif inv.payment_method == 'wero' %}
+        {% set paid_method.wero = paid_method.wero + onsite %}
+      {% endif %}
+      {% set paid_method.voucher = paid_method.voucher + prepaid %}
+    {% endif %}
+  {% endfor %}
+
+  <div class="header">
+    <div class="header-left">
+      <h1>Abrechnungsübersicht</h1>
+      <div class="meta">Ausdruck am {{ generated_at_local.strftime('%d.%m.%Y %H:%M') }} Uhr</div>
+      <div class="meta">Zeitraum: {{ period_labels.get(period, 'Alle') }}{% if period == 'range' and (from_date or to_date) %} ({{ from_date or '...' }} bis {{ to_date or '...' }}){% endif %}</div>
+      <div class="meta">Rechnungen: {{ invoices|length }}</div>
+      <div class="meta">Bezugsrahmen: {{ delta_scope_label }}</div>
+      {% if active_filters %}
+        <div class="meta">Aktive Filter: {{ active_filters|join(' | ') }}</div>
+      {% endif %}
+    </div>
+    <div class="header-right">
+      {% if logo_data_uri %}
+        <img src="{{ logo_data_uri }}" alt="Logo" class="logo">
+      {% elif billing_config and billing_config.company_name %}
+        <strong>{{ billing_config.company_name }}</strong>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="summary">
+    <div class="summary-row" style="background:#fef9c3;border:1.5px solid #ca8a04;border-radius:4px;padding:4px 6px;margin-bottom:6px;">
+      <div class="summary-label" style="font-weight:bold;">Gesamtsumme abrechenbar (bezahlt + offen + nicht fakturiert)</div>
+      <div class="summary-value" style="font-weight:bold;">
+        {{ '{:,.2f}'.format(sum_total).replace(',', 'X').replace('.', ',').replace('X', '.') }} EUR
+      </div>
+    </div>
+    <div class="summary-row">
+      <div class="summary-label">Teilsumme (aktuelle Filteransicht)</div>
+      <div class="summary-value">
+        {{ '{:,.2f}'.format(filtered_subtotal).replace(',', 'X').replace('.', ',').replace('X', '.') }} EUR
+      </div>
+    </div>
+    <div class="summary-row">
+      <div class="summary-label">Noch nicht fakturiert (Filteransicht)</div>
+      <div class="summary-value">
+        {{ '{:,.2f}'.format(sum_billable_uninvoiced).replace(',', 'X').replace('.', ',').replace('X', '.') }} EUR
+      </div>
+    </div>
+    <div class="summary-row">
+      <div class="summary-label">Rechnungen noch offen (nicht bezahlt, sichtbare Rechnungen)</div>
+      <div class="summary-value amount-open">
+        {{ '{:,.2f}'.format(sum_open_invoices).replace(',', 'X').replace('.', ',').replace('X', '.') }} EUR
+      </div>
+    </div>
+    <div class="summary-row">
+      <div class="summary-label">Rechnungen bereits bezahlt (sichtbare Rechnungen)</div>
+      <div class="summary-value amount-paid">
+        {{ '{:,.2f}'.format(delta).replace(',', 'X').replace('.', ',').replace('X', '.') }} EUR
+      </div>
+    </div>
+
+    <div class="summary-subnote">Teilsummen nach Bezahlart (Anteile aus bereits bezahlten, sichtbaren Rechnungen):</div>
+
+    <div class="summary-subrow">
+      <div class="summary-label">Bar</div>
+      <div class="summary-subvalue">{{ '{:,.2f}'.format(paid_method.cash).replace(',', 'X').replace('.', ',').replace('X', '.') }} EUR</div>
+    </div>
+    <div class="summary-subrow">
+      <div class="summary-label">Karte</div>
+      <div class="summary-subvalue">{{ '{:,.2f}'.format(paid_method.card).replace(',', 'X').replace('.', ',').replace('X', '.') }} EUR</div>
+    </div>
+    <div class="summary-subrow">
+      <div class="summary-label">Überweisung</div>
+      <div class="summary-subvalue">{{ '{:,.2f}'.format(paid_method.transfer).replace(',', 'X').replace('.', ',').replace('X', '.') }} EUR</div>
+    </div>
+    <div class="summary-subrow">
+      <div class="summary-label">WERO</div>
+      <div class="summary-subvalue">{{ '{:,.2f}'.format(paid_method.wero).replace(',', 'X').replace('.', ',').replace('X', '.') }} EUR</div>
+    </div>
+    <div class="summary-subrow">
+      <div class="summary-label">Vorkasse / Gutschein</div>
+      <div class="summary-subvalue">{{ '{:,.2f}'.format(paid_method.voucher).replace(',', 'X').replace('.', ',').replace('X', '.') }} EUR</div>
+    </div>
+  </div>
+
+  <h2>Rechnungen in aktueller Filteransicht</h2>
+  {% if invoices %}
+    <table>
+      <thead>
+        <tr>
+          <th>Rechnung</th>
+          <th>Person</th>
+          <th>Datum</th>
+          <th class="text-end">Betrag</th>
+          <th>Status</th>
+          <th>Bezahlart</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in invoices %}
+          {% set inv_no = invoice_display_number(inv) %}
+          {% set _content_csv = invoice_content_status_codes_csv(inv) %}
+          {% set _is_manual_invoice = 'manual' in _content_csv.split(',') %}
+          {% set inv_label = inv.created_at.strftime('%Y') ~ ('-manuell #' if _is_manual_invoice else '-Spruenge #') ~ inv_no %}
+          {% set pm_label = invoice_split_payment_label(inv) or '-' %}
+          <tr>
+            <td>{{ inv_label }}</td>
+            <td>{{ inv.person.full_name }}</td>
+            <td>{{ inv.created_at.strftime('%d.%m.%Y') }}</td>
+            <td class="text-end">{{ '{:,.2f}'.format(inv.total_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} EUR</td>
+            <td {% if not inv.is_paid %}class="status-open"{% endif %}>{% if inv.is_paid %}Bezahlt{% else %}Offen{% endif %}</td>
+            <td>{% if inv.is_paid %}{{ pm_label }}{% else %}-{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="muted">Keine Rechnungen in der aktuellen Filteransicht.</div>
+  {% endif %}
+
+  <h2>Betroffene (noch nicht fakturierte) Personen</h2>
+  {% if billable_rows %}
+    <table>
+      <thead>
+        <tr>
+          <th>Person</th>
+          <th class="text-end">Offene Spruenge</th>
+          <th class="text-end">Vorschau-Betrag EUR</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in billable_rows %}
+          <tr>
+            <td>
+              {{ row.person.last_name }}, {{ row.person.first_name }}
+              {% if row.person.member_number %}
+                <br>
+                <span class="muted">Mitglieds-Nr. {{ row.person.member_number }}</span>
+              {% endif %}
+            </td>
+            <td class="text-end">{{ row.count|default(0) }}</td>
+            <td class="text-end">{{ '{:,.2f}'.format(row.amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} EUR</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="muted">Keine zusaetzlichen offenen Personenbetraege.</div>
+  {% endif %}
+
+  <div class="footer-note">
+    Diese Abrechnungsuebersicht wurde lokal erstellt und nutzt die gleiche Preis-/Vorschau-Logik wie die Rechnungsansichten.
+  </div>
+</body>
+</html>

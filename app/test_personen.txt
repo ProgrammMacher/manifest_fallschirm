@@ -1,0 +1,10 @@
+Kommentar;Feldname;P1;P2;P3
+Vorname;first_name;Anna;Bernd;Claudia
+Nachname;last_name;Müller;Schmidt;Weber
+Telefon;phone;015112345601;015112345602;015112345603
+E-Mail;email;anna@example.com;bernd@example.com;claudia@example.com
+Gewicht [kg];weight_kg;78;92;68
+Mitglied (Ja/Nein);is_member;Ja;Ja;Ja
+Tandemgast (Ja/Nein);is_tandem_guest;Nein;Nein;Nein
+Notfallname;emergency_name;Peter;Sabine;Thomas
+Notfalltelefon;emergency_phone;017012345601;017012345602;017012345603

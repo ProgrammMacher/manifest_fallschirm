@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% if status %}
+    {% set page_title = "Status bearbeiten" %}
+{% else %}
+    {% set page_title = "Neuen Status anlegen" %}
+{% endif %}
+
+{% block title %}{{ page_title }}{% endblock %}
+{% block header %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body">
+        <form method="post">
+            <div class="row g-3">
+
+                {% if not status %}
+                <div class="col-md-3">
+                    <label class="form-label">Code *</label>
+                    <input type="text" name="code" class="form-control" required>
+                    <div class="form-text">z. B. "Verein", "TD", "Video"</div>
+                </div>
+                {% else %}
+                <div class="col-md-3">
+                    <label class="form-label">Code</label>
+                    <input type="text" class="form-control" value="{{ status.code }}" disabled>
+                    <div class="form-text">Code kann bei Versionierung nicht geändert werden.</div>
+                </div>
+                {% endif %}
+
+                <div class="col-md-4">
+                    <label class="form-label">Bezeichnung *</label>
+                    <input type="text" name="label" class="form-control"
+                           value="{{ status.label if status else '' }}" required>
+                </div>
+
+                <div class="col-md-5">
+                    <label class="form-label">Beschreibung</label>
+                    <input type="text" name="beschreibung" class="form-control"
+                           value="{{ status.beschreibung if status else '' }}">
+                </div>
+
+                <div class="col-md-2">
+                    <label class="form-label">Sortierreihenfolge</label>
+                    <input type="number" name="sort_order" class="form-control"
+                           value="{{ status.sort_order if status else 100 }}">
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Preis 1500 m</label>
+                    <input type="text" name="preis_1500" class="form-control"
+                           value="{{ status.preis_1500 if status and status.preis_1500 is not none else '' }}">
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Preis 3000 m</label>
+                    <input type="text" name="preis_3000" class="form-control"
+                           value="{{ status.preis_3000 if status and status.preis_3000 is not none else '' }}">
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Preis 4000 m</label>
+                    <input type="text" name="preis_4000" class="form-control"
+                           value="{{ status.preis_4000 if status and status.preis_4000 is not none else '' }}">
+                </div>
+
+                {% if status %}
+                <div class="col-12">
+                    <label class="form-label">Grund für die Änderung *</label>
+                    <input type="text" name="reason" class="form-control" required>
+                </div>
+                {% endif %}
+
+            </div>
+
+            <div class="mt-4 d-flex justify-content-between">
+                <a href="{{ url_for('settings_status.list_status') }}" class="btn btn-outline-secondary">
+                    Zurück
+                </a>
+                <button type="submit" class="btn btn-primary">
+                    Speichern
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,548 @@
+{% extends "base.html" %}
+{% set is_edit = person and person.id %}
+
+{% macro v(name, fallback='') -%}
+    {{ (form_data.get(name) if form_data else fallback) }}
+{%- endmacro %}
+
+{% macro sel(name, fallback_bool=False) -%}
+    {{ (form_data.get(name) if form_data else ('true' if fallback_bool else 'false')) }}
+{%- endmacro %}
+
+{% block title %}
+    {% if is_edit %}Person bearbeiten{% else %}Neue Person{% endif %}
+{% endblock %}
+
+{% block header %}
+    {% if is_edit %}Person bearbeiten{% else %}Neue Person{% endif %}
+{% endblock %}
+
+{% block content %}
+
+<form method="post"
+      action="{% if is_edit %}{{ url_for('person.edit_person', id=person.id) }}{% else %}{{ url_for('person.new_person') }}{% endif %}"
+      enctype="multipart/form-data"
+      novalidate>
+
+<div class="container">
+
+    <!-- ARCHIV-HINWEIS -->
+    {% if is_edit and person.is_archived %}
+    <div class="alert alert-secondary d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <strong>Diese Person ist archiviert.</strong><br>
+            <strong>Archiviert am:</strong>
+            {{ person.deleted_at.strftime('%d.%m.%Y %H:%M') if person.deleted_at else '–' }}<br>
+            <strong>Grund:</strong>
+            {{ person.deleted_reason or '–' }}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- PERSONENDATEN -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h4 class="fw-bold mb-3">
+                <i class="bi bi-person-fill"></i> Personendaten
+            </h4>
+
+            <div class="row g-3">
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Vorname *</label>
+                    <input type="text" name="first_name"
+                           class="form-control {% if field_errors.get('first_name') %}is-invalid{% endif %}"
+                           value="{{ v('first_name', person.first_name if person else '') }}" required>
+                    {% if field_errors.get('first_name') %}
+                    <div class="invalid-feedback">{{ field_errors.get('first_name') }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Nachname *</label>
+                    <input type="text" name="last_name"
+                           class="form-control {% if field_errors.get('last_name') %}is-invalid{% endif %}"
+                           value="{{ v('last_name', person.last_name if person else '') }}" required>
+                    {% if field_errors.get('last_name') %}
+                    <div class="invalid-feedback">{{ field_errors.get('last_name') }}</div>
+                    {% endif %}
+                </div>
+
+                {% if person and person.original_name %}
+                <div class="col-12">
+                    <div class="alert alert-light border py-2 mb-0 small">
+                        Ursprungsname: <strong>{{ person.original_name }}</strong>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="col-md-6">
+                    <label id="labelPhone" class="form-label fw-bold">Telefon *</label>
+                    <input type="text" name="phone"
+                           class="form-control {% if field_errors.get('phone') %}is-invalid{% endif %}"
+                           value="{{ v('phone', person.phone if person else '') }}" required>
+                    {% if field_errors.get('phone') %}
+                    <div class="invalid-feedback">{{ field_errors.get('phone') }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">E‑Mail <span class="text-muted">(optional)</span></label>
+                    <input type="email" name="email"
+                           class="form-control {% if field_errors.get('email') %}is-invalid{% endif %}"
+                           value="{{ v('email', person.email if person else '') }}"
+                           placeholder="z. B. max@muster.de">
+                    {% if field_errors.get('email') %}
+                    <div class="invalid-feedback">{{ field_errors.get('email') }}</div>
+                    {% endif %}
+                    {% if v('email', person.email if person else '')|length == 0 %}
+                    <div class="form-text text-danger">Keine E‑Mail-Adresse hinterlegt</div>
+                    {% endif %}
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Gewicht [kg] *</label>
+                    <input type="number" name="weight_kg" min="20" max="200"
+                           class="form-control {% if field_errors.get('weight_kg') %}is-invalid{% endif %}"
+                           value="{{ v('weight_kg', person.weight_kg if person and person.weight_kg is not none else '') }}" required>
+                    {% if field_errors.get('weight_kg') %}
+                    <div class="invalid-feedback">{{ field_errors.get('weight_kg') }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Größe [cm]</label>
+                    <input type="number" name="height_cm" min="140" max="220"
+                           class="form-control {% if field_errors.get('height_cm') %}is-invalid{% endif %}"
+                           value="{{ v('height_cm', person.height_cm if person and person.height_cm is not none else '') }}">
+                    {% if field_errors.get('height_cm') %}
+                    <div class="invalid-feedback">{{ field_errors.get('height_cm') }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Geburtstag</label>
+                    <input type="date" name="birthdate"
+                           class="form-control {% if field_errors.get('birthdate') %}is-invalid{% endif %}"
+                           value="{% if form_data %}{{ form_data.get('birthdate','') }}{% elif person and person.birthdate %}{{ person.birthdate.strftime('%Y-%m-%d') }}{% endif %}">
+                    {% if field_errors.get('birthdate') %}
+                    <div class="invalid-feedback">{{ field_errors.get('birthdate') }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Mitglied *</label>
+                    {% set is_member_val = sel('is_member', person.is_member if person else False) %}
+                    <select name="is_member" class="form-select" required>
+                        <option value="false" {% if is_member_val == 'false' %}selected{% endif %}>Nein</option>
+                        <option value="true"  {% if is_member_val == 'true' %}selected{% endif %}>Ja</option>
+                    </select>
+                    {% if field_errors.get('is_member') %}
+                    <div class="invalid-feedback d-block">{{ field_errors.get('is_member') }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Partner-Verein *</label>
+                    {% set is_partner_val = sel('is_partner_verein', person.is_partner_verein if person else False) %}
+                    <select name="is_partner_verein" class="form-select" required>
+                        <option value="false" {% if is_partner_val == 'false' %}selected{% endif %}>Nein</option>
+                        <option value="true"  {% if is_partner_val == 'true' %}selected{% endif %}>Ja</option>
+                    </select>
+                    {% if field_errors.get('is_partner_verein') %}
+                    <div class="invalid-feedback d-block">{{ field_errors.get('is_partner_verein') }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Tandemgast *</label>
+                    {% set is_tandem_val = sel('is_tandem_guest', person.is_tandem_guest if person else False) %}
+                    <select name="is_tandem_guest" class="form-select" required>
+                        <option value="false" {% if is_tandem_val == 'false' %}selected{% endif %}>Nein</option>
+                        <option value="true"  {% if is_tandem_val == 'true' %}selected{% endif %}>Ja</option>
+                    </select>
+                    {% if field_errors.get('is_tandem_guest') %}
+                    <div class="invalid-feedback d-block">{{ field_errors.get('is_tandem_guest') }}</div>
+                    {% endif %}
+                    <div id="tandemGuestHint" class="form-text text-warning d-none">
+                        Bei Tandemgast sind nur Vorname, Nachname und Gewicht Pflicht. Fehlende Telefon-, E-Mail-, Adress- und Notfallkontaktdaten werden als Warnung angezeigt.
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Tandemmaster *</label>
+                    {% set is_tandemmaster_val = sel('is_tandemmaster', person.is_tandemmaster if person else False) %}
+                    <select name="is_tandemmaster" class="form-select" required>
+                        <option value="false" {% if is_tandemmaster_val == 'false' %}selected{% endif %}>Nein</option>
+                        <option value="true"  {% if is_tandemmaster_val == 'true' %}selected{% endif %}>Ja</option>
+                    </select>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Schüler *</label>
+                    {% set is_student_val = sel('is_student', person.is_student if person else False) %}
+                    <select name="is_student" class="form-select" required>
+                        <option value="false" {% if is_student_val == 'false' %}selected{% endif %}>Nein</option>
+                        <option value="true"  {% if is_student_val == 'true' %}selected{% endif %}>Ja</option>
+                    </select>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Video *</label>
+                    {% set is_video_val = sel('is_video', person.is_video if person else False) %}
+                    <select name="is_video" class="form-select" required>
+                        <option value="false" {% if is_video_val == 'false' %}selected{% endif %}>Nein</option>
+                        <option value="true"  {% if is_video_val == 'true' %}selected{% endif %}>Ja</option>
+                    </select>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Schüler-AFF *</label>
+                    {% set is_aff_student_val = sel('is_aff_student', person.is_aff_student if person else False) %}
+                    <select name="is_aff_student" class="form-select" required>
+                        <option value="false" {% if is_aff_student_val == 'false' %}selected{% endif %}>Nein</option>
+                        <option value="true"  {% if is_aff_student_val == 'true' %}selected{% endif %}>Ja</option>
+                    </select>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- ADRESSE -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h4 class="fw-bold mb-3"><i class="bi bi-geo-alt-fill"></i> Adresse</h4>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Straße & Nr.</label>
+                    <input type="text" name="street_and_number" class="form-control"
+                           value="{{ v('street_and_number', person.street_and_number if person else '') }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">PLZ</label>
+                    <input type="text" name="zip_code" class="form-control"
+                           value="{{ v('zip_code', person.zip_code if person else '') }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Ort</label>
+                    <input type="text" name="city" class="form-control"
+                           value="{{ v('city', person.city if person else '') }}">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NOTFALLKONTAKT -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h4 class="fw-bold mb-3"><i class="bi bi-telephone-inbound-fill"></i> Notfallkontakt</h4>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label id="labelEmergencyName" class="form-label fw-bold">Name *</label>
+                    <input type="text" name="emergency_name"
+                           class="form-control {% if field_errors.get('emergency_name') %}is-invalid{% endif %}"
+                           value="{{ v('emergency_name', person.emergency_name if person else '') }}" required>
+                    {% if field_errors.get('emergency_name') %}
+                    <div class="invalid-feedback">{{ field_errors.get('emergency_name') }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Beziehung</label>
+                    <input type="text" name="emergency_relation" class="form-control"
+                           value="{{ v('emergency_relation', person.emergency_relation if person else '') }}">
+                </div>
+
+                <div class="col-md-6">
+                    <label id="labelEmergencyPhone" class="form-label fw-bold">Telefon *</label>
+                    <input type="text" name="emergency_phone"
+                           class="form-control {% if field_errors.get('emergency_phone') %}is-invalid{% endif %}"
+                           value="{{ v('emergency_phone', person.emergency_phone if person else '') }}" required>
+                    {% if field_errors.get('emergency_phone') %}
+                    <div class="invalid-feedback">{{ field_errors.get('emergency_phone') }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">E‑Mail</label>
+                    <input type="email" name="emergency_email"
+                           class="form-control {% if field_errors.get('emergency_email') %}is-invalid{% endif %}"
+                           value="{{ v('emergency_email', person.emergency_email if person else '') }}">
+                    {% if field_errors.get('emergency_email') %}
+                    <div class="invalid-feedback">{{ field_errors.get('emergency_email') }}</div>
+                    {% endif %}
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- LEHRER -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h4 class="fw-bold mb-3"><i class="bi bi-mortarboard-fill"></i> Lehrerstatus</h4>
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Lehrer</label>
+                    {% set is_teacher_val = sel('is_teacher', person.is_teacher if person else False) %}
+                    <select name="is_teacher" class="form-select">
+                        <option value="false" {% if is_teacher_val == 'false' %}selected{% endif %}>Nein</option>
+                        <option value="true"  {% if is_teacher_val == 'true' %}selected{% endif %}>Ja</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">AFF-Lehrer *</label>
+                    {% set is_aff_teacher_val = sel('is_aff_teacher', person.is_aff_teacher if person else False) %}
+                    <select name="is_aff_teacher" class="form-select" required>
+                        <option value="false" {% if is_aff_teacher_val == 'false' %}selected{% endif %}>Nein</option>
+                        <option value="true"  {% if is_aff_teacher_val == 'true' %}selected{% endif %}>Ja</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Ablaufdatum Lehrerlizenz</label>
+                    <input type="date" name="teacher_license_expires"
+                           class="form-control {% if field_errors.get('teacher_license_expires') %}is-invalid{% endif %}"
+                           value="{% if form_data %}{{ form_data.get('teacher_license_expires','') }}{% elif person and person.teacher_license_expires %}{{ person.teacher_license_expires.strftime('%Y-%m-%d') }}{% endif %}">
+                    {% if field_errors.get('teacher_license_expires') %}
+                    <div class="invalid-feedback">{{ field_errors.get('teacher_license_expires') }}</div>
+                    {% endif %}
+                </div>
+
+                {% if person and person.is_teacher and person.teacher_license_expires %}
+                <div class="col-md-12">
+                    {% set color = person.teacher_license_color %}
+                    {% set message = person.teacher_license_message %}
+                    <div style="
+                        padding: 10px;
+                        border-radius: 4px;
+                        margin-top: 10px;
+                        {% if color == 'red' %}
+                            background-color: #ffcccc; border: 1px solid #cc0000;
+                        {% elif color == 'yellow' %}
+                            background-color: #fff3cd; border: 1px solid #e6b800;
+                        {% elif color == 'green' %}
+                            background-color: #d4edda; border: 1px solid #4CAF50;
+                        {% endif %}
+                    ">
+                        {{ message }}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+	<!-- LIZENZ -->
+	<div class="card shadow-sm mb-4">
+	  <div class="card-body">
+		<h4 class="fw-bold mb-3">
+		  <i class="bi bi-award-fill"></i> Lizenz
+		</h4>
+
+		<div class="row g-3">
+		  <div class="col-md-6">
+			<label class="form-label fw-bold">Lizenznummer</label>
+			<input type="text"
+				   name="license_number"
+				   class="form-control"
+				   value="{{ v('license_number', person.license_number if person else '') }}">
+		  </div>
+		</div>
+	  </div>
+	</div>
+
+    <!-- VERSICHERUNG & BANK -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h4 class="fw-bold mb-3"><i class="bi bi-shield-lock-fill"></i> Versicherung & Bank</h4>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Versicherer</label>
+                    <input type="text" name="insurance_provider" class="form-control"
+                           value="{{ v('insurance_provider', person.insurance_provider if person else '') }}">
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Versicherungsnummer</label>
+                    <input type="text" name="insurance_number" class="form-control"
+                           value="{{ v('insurance_number', person.insurance_number if person else '') }}">
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">IBAN</label>
+                    <input type="text" name="iban" class="form-control"
+                           value="{{ v('iban', person.iban if person else '') }}">
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">BIC</label>
+                    <input type="text" name="bic" class="form-control"
+                           value="{{ v('bic', person.bic if person else '') }}">
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Kontoinhaber</label>
+                    <input type="text" name="account_holder" class="form-control"
+                           value="{{ v('account_holder', person.account_holder if person else '') }}">
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Kommentar</label>
+                    <input type="text" name="comment" class="form-control"
+                           value="{{ v('comment', person.comment if person else '') }}">
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label fw-bold">Notizen</label>
+                    <textarea name="notes" class="form-control" rows="3">{{ v('notes', person.notes if person else '') }}</textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ENTHAFTUNG -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h4 class="fw-bold mb-3"><i class="bi bi-file-earmark-check-fill"></i> Enthaftung</h4>
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Enthaftung erteilt *</label>
+
+                    {% if form_data %}
+                        {% set waiver_val = form_data.get('liability_waiver_given','false') %}
+                    {% else %}
+                        {% set waiver_val = 'true' if person and person.liability_waiver_valid else 'false' %}
+                    {% endif %}
+
+                    <select name="liability_waiver_given" class="form-select">
+                        <option value="false" {% if waiver_val == 'false' %}selected{% endif %}>Nein</option>
+                        <option value="true"  {% if waiver_val == 'true' %}selected{% endif %}>Ja</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Datum</label>
+                    <input type="date" name="liability_waiver_date"
+                           class="form-control {% if field_errors.get('liability_waiver_date') %}is-invalid{% endif %}"
+                           value="{% if form_data %}{{ form_data.get('liability_waiver_date','') }}{% elif person and person.liability_waiver_date %}{{ person.liability_waiver_date.strftime('%Y-%m-%d') }}{% endif %}">
+                    {% if field_errors.get('liability_waiver_date') %}
+                    <div class="invalid-feedback">{{ field_errors.get('liability_waiver_date') }}</div>
+                    {% endif %}
+                </div>
+
+                {% if is_edit and person and person.created_at %}
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Erfasst am</label>
+                    <input type="text" class="form-control" readonly
+                           value="{{ person.created_at.strftime('%d.%m.%Y %H:%M') }}">
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- NEWSLETTER-STATUS (nur im Bearbeiten-Modus, manuelle Steuerung mit sicherem Standard) -->
+    {% if is_edit and person %}
+    {% set nl_action = form_data.get('newsletter_opt_out_action', '') if form_data else '' %}
+    <div class="alert {% if person.newsletter_opt_out %}alert-warning{% else %}alert-secondary{% endif %} mb-4 py-3">
+        <div class="mb-2">
+            {% if person.newsletter_opt_out %}
+            <i class="bi bi-bell-slash-fill me-2"></i>
+            <strong>Aktueller Status: Newsletter abbestellt</strong> - Diese Person wird bei Versandart "Newsletter" uebersprungen.
+            {% else %}
+            <i class="bi bi-bell-fill me-2"></i>
+            <strong>Aktueller Status: Newsletter aktiv</strong> - Diese Person kann Newsletter erhalten.
+            {% endif %}
+        </div>
+        <label class="form-label fw-semibold" for="nlOptoutAction">Newsletter manuell steuern</label>
+        <select class="form-select" name="newsletter_opt_out_action" id="nlOptoutAction">
+            <option value="" {% if nl_action == '' %}selected{% endif %}>Keine Aenderung (empfohlen)</option>
+            <option value="set_opt_out" {% if nl_action == 'set_opt_out' %}selected{% endif %}>Person manuell abmelden</option>
+            <option value="clear_opt_out" {% if nl_action == 'clear_opt_out' %}selected{% endif %}>Person wieder anmelden (Abmeldung aufheben)</option>
+        </select>
+        <div class="form-text mt-1">Der Status wird nur geaendert, wenn hier explizit eine Aktion ausgewaehlt wird.</div>
+    </div>
+    {% endif %}
+
+    <!-- FORMULAR-AKTIONEN -->
+    <div class="d-flex justify-content-between mb-5">
+        <a href="{{ url_for('person.list_persons') }}" class="btn btn-secondary">
+            Abbrechen
+        </a>
+
+        {% if is_edit %}
+        <a href="{{ url_for('person.waiver_pdf', id=person.id) }}"
+           class="btn btn-outline-dark"
+           target="_blank"
+           rel="noopener">
+            Enthaftung drucken / PDF
+        </a>
+        {% endif %}
+
+        <button type="submit" class="btn btn-primary">
+            {% if is_edit %}
+                Änderungen speichern
+            {% else %}
+                Person anlegen
+            {% endif %}
+        </button>
+    </div>
+
+</div> <!-- container -->
+
+</form>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const tandemSelect = document.querySelector('select[name="is_tandem_guest"]');
+    const phoneInput = document.querySelector('input[name="phone"]');
+    const emergencyNameInput = document.querySelector('input[name="emergency_name"]');
+    const emergencyPhoneInput = document.querySelector('input[name="emergency_phone"]');
+    const phoneLabel = document.getElementById("labelPhone");
+    const emergencyNameLabel = document.getElementById("labelEmergencyName");
+    const emergencyPhoneLabel = document.getElementById("labelEmergencyPhone");
+    const tandemHint = document.getElementById("tandemGuestHint");
+
+    if (!tandemSelect) {
+        return;
+    }
+
+    function syncRequiredForTandem() {
+        const isTandem = tandemSelect.value === "true";
+
+        if (phoneInput) {
+            phoneInput.required = !isTandem;
+        }
+        if (emergencyNameInput) {
+            emergencyNameInput.required = !isTandem;
+        }
+        if (emergencyPhoneInput) {
+            emergencyPhoneInput.required = !isTandem;
+        }
+        if (tandemHint) {
+            tandemHint.classList.toggle("d-none", !isTandem);
+        }
+        if (phoneLabel) {
+            phoneLabel.innerHTML = isTandem ? "Telefon <span class=\"text-warning\">(wichtig)</span>" : "Telefon *";
+        }
+        if (emergencyNameLabel) {
+            emergencyNameLabel.innerHTML = isTandem ? "Name <span class=\"text-warning\">(wichtig)</span>" : "Name *";
+        }
+        if (emergencyPhoneLabel) {
+            emergencyPhoneLabel.innerHTML = isTandem ? "Telefon <span class=\"text-warning\">(wichtig)</span>" : "Telefon *";
+        }
+    }
+
+    tandemSelect.addEventListener("change", syncRequiredForTandem);
+    syncRequiredForTandem();
+});
+</script>
+
+{% endblock %}

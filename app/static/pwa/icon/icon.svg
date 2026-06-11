@@ -1,0 +1,21 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Fallschirmkuppel -->
+  <path d="M128 448
+           C128 256, 320 128, 512 128
+           C704 128, 896 256, 896 448
+           Z"
+        fill="#D32F2F"/>
+
+  <!-- Segmentlinien -->
+  <path d="M320 448 L320 256" stroke="#8A1F1F" stroke-width="16"/>
+  <path d="M512 448 L512 224" stroke="#8A1F1F" stroke-width="16"/>
+  <path d="M704 448 L704 256" stroke="#8A1F1F" stroke-width="16"/>
+
+  <!-- Seile -->
+  <line x1="320" y1="448" x2="448" y2="768" stroke="#E0E0E0" stroke-width="20"/>
+  <line x1="512" y1="448" x2="512" y2="768" stroke="#E0E0E0" stroke-width="20"/>
+  <line x1="704" y1="448" x2="576" y2="768" stroke="#E0E0E0" stroke-width="20"/>
+
+  <!-- Gurtzeugblock -->
+  <rect x="448" y="768" width="128" height="96" rx="16" fill="#D32F2F"/>
+</svg>

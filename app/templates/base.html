@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}Manifest{% endblock %}</title>
+
+  <!-- PWA Manifest -->
+  {# <link rel="manifest" href="{{ url_for('static', filename='pwa/manifest.json') }}"> #}
+
+  <!-- Bootstrap CSS (lokal) -->
+  <link href="{{ url_for('static', filename='vendor/bootstrap/5.3.3/css/bootstrap.min.css') }}" rel="stylesheet">
+
+  <!-- Bootstrap Icons (lokal) -->
+  <link href="{{ url_for('static', filename='vendor/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css') }}" rel="stylesheet">
+
+  <!-- ✅ PWA / KACHEL / LAYOUT CSS (PFLICHT) -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='pwa/css/styles.css') }}">
+
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+
+    :root {
+      --bg: #f5f6fa;
+      --text: #1f1f1f;
+      --card-bg: #ffffff;
+      --sidebar-bg: #000;
+      --sidebar-text: #fff;
+      --sidebar-hover: #333;
+      --sidebar-active: #2a2a2a;
+      --sidebar-active-marker: #d60000;
+      --table-head-bg: #f0f0f0;
+      --brand-red-base: #d60000;
+      --brand-red-dark: #b30000;
+      --brand-red-light: #ff3333;
+      --brand-red-lighter: #ff6666;
+      --brand-shadow: rgba(214, 0, 0, 0.45);
+    }
+
+    [data-theme="dark"] {
+      --bg: #121212;
+      --text: #eaeaea;
+      --card-bg: #1e1e1e;
+      --sidebar-bg: #000;
+      --sidebar-text: #fff;
+      --sidebar-hover: #222;
+      --sidebar-active: #333;
+      --sidebar-active-marker: #ff3333;
+      --table-head-bg: #2a2a2a;
+      --brand-red-base: #ff3333;
+      --brand-red-dark: #cc0000;
+      --brand-red-light: #ff6666;
+      --brand-red-lighter: #ff9999;
+      --brand-shadow: rgba(255, 80, 80, 0.65);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Inter", system-ui, sans-serif;
+    }
+
+    /* SIDEBAR */
+    #sidebar {
+      width: 240px;
+      min-height: 100vh;
+      background: var(--sidebar-bg);
+      color: var(--sidebar-text);
+      padding: 20px;
+    }
+
+    #sidebar .nav-link {
+      color: var(--sidebar-text);
+      padding: 10px 12px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: relative;
+    }
+
+    #sidebar .nav-link:hover {
+      background: var(--sidebar-hover);
+    }
+
+    #sidebar .nav-link.active {
+      background: var(--sidebar-active);
+      font-weight: 600;
+    }
+
+    #sidebar .nav-link.active i {
+      color: var(--brand-red-base);
+    }
+
+    #sidebar .nav-link.active::before {
+      content: "";
+      position: absolute;
+      left: -12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 4px;
+      height: 60%;
+      background: var(--sidebar-active-marker);
+      border-radius: 2px;
+    }
+
+    #sidebar .nav-section {
+      margin-top: 25px;
+      margin-bottom: 8px;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      opacity: 0.65;
+      letter-spacing: 0.5px;
+    }
+
+    #sidebar .sidebar-brand {
+      margin-bottom: 0.45rem !important;
+    }
+
+    #sidebar .nav-section:first-of-type {
+      margin-top: 4px;
+    }
+
+    #sidebar .nav-section.operation-section {
+      margin-top: 9px;
+    }
+
+    #sidebar .sidebar-admin-link {
+      margin-top: 0.2rem !important;
+    }
+
+    /* HEADER */
+    .content-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 25px;
+    }
+
+    .brand-logo-left {
+      height: 55px;
+      width: auto;
+    }
+
+    /* MOBILE SIDEBAR */
+    @media (max-width: 992px) {
+      #sidebar {
+        position: fixed;
+        left: -260px;
+        top: 0;
+        transition: 0.3s ease;
+        z-index: 2000;
+      }
+      #sidebar.open {
+        left: 0;
+      }
+    }
+
+ 
+  </style>
+</head>
+
+<body>
+
+	<div class="d-flex">
+
+	  <!-- SIDEBAR -->
+	  <div id="sidebar">
+    <h4 class="mb-4 sidebar-brand">
+		  <i class="bi bi-airplane-engines-fill me-2"></i>Manifest
+		</h4>
+
+		<ul class="nav flex-column">
+
+		  <!-- DASHBOARD -->
+		  <div class="nav-section">Dashboard</div>
+		  <li class="nav-item mb-2">
+			{% set active = 'active' if request.endpoint and request.endpoint.startswith('pwa.') else '' %}
+			<a class="nav-link {{ active }}" href="{{ url_for('pwa.pwa_index') }}">
+			  <i class="bi bi-house-door-fill"></i> Start
+			</a>
+		  </li>
+
+
+        <!-- OPERATION -->
+        <div class="nav-section operation-section">Operation</div>
+
+        <li class="nav-item mb-2">
+          {% set active = 'active' if request.endpoint and request.endpoint.startswith('load.') else '' %}
+          <a class="nav-link {{ active }}" href="{{ url_for('load.list_loads') }}">
+			<svg xmlns="http://www.w3.org/2000/svg"
+				 width="30" height="30"
+				 viewBox="0 0 24 24"
+				 fill="currentColor"
+				 style="margin-left:-0.5rem; margin-right:0.5rem;"
+				 aria-hidden="true">
+
+			  <!-- Kappe -->
+			  <path d="M3 12a9 9 0 0 1 18 0H3z"/>
+
+			  <!-- Mittel-Segment -->
+			  <path d="M8 12c0-3 1.8-6 4-6s4 3 4 6H8z"
+					fill="rgba(0,0,0,.15)"/>
+
+			  <!-- Leinen (5 Stück, äußere an Kappenkante) -->
+			  <path d="
+				M4 12   L12 22
+				M7.5 12 L12 22
+				M12 12  L12 22
+				M16.5 12 L12 22
+				M20 12  L12 22
+			  "
+			  stroke="currentColor"
+			  stroke-width="1.4"
+			  stroke-linecap="round"
+			  fill="none"/>
+			</svg>
+
+		Loads
+
+          </a>
+        </li>
+
+        <li class="nav-item mb-2">
+          <a class="nav-link"
+             href="{{ url_for('load.display_view') }}"
+             target="_blank"
+             title="Load-Display (separates Fenster)">
+            <i class="bi bi-display"></i> Display
+          </a>
+        </li>
+
+        <li class="nav-item mb-2">
+          <a class="nav-link"
+             href="{{ url_for('load.display_quer_view') }}"
+             target="_blank"
+             title="Load-Display quer (breiter Monitor)">
+            <i class="bi bi-aspect-ratio"></i> Display&nbsp;quer
+          </a>
+        </li>
+
+
+		<li class="nav-item mb-2">
+		  {% set active = 'active' if request.endpoint and request.endpoint.startswith('pwa.connectivity') else '' %}
+		  <a class="nav-link {{ active }}" href="{{ url_for('pwa.connectivity_ui') }}">
+			<i class="bi bi-qr-code-scan"></i> Mobiler Zugriff
+		  </a>
+		</li>
+
+        <li class="nav-item mb-2">
+          {% set active = 'active' if request.endpoint and request.endpoint.startswith('aircraft.') else '' %}
+          <a class="nav-link {{ active }}" href="{{ url_for('aircraft.list_aircraft') }}">
+            <i class="bi bi-airplane"></i> Flugzeuge
+          </a>
+        </li>
+
+        <!-- ✅ GEÄNDERT: Flugplätze direkt unter Flugzeuge, mit "Landebahn"-Icon -->
+		<li class="nav-item mb-2">
+		  {% set active = 'active' if request.endpoint and request.endpoint.startswith('flugplatz.') else '' %}
+		  <a class="nav-link {{ active }}" href="{{ url_for('flugplatz.list_flugplaetze') }}">
+			<i class="bi bi-pin-map-fill"></i> Flugplätze
+		  </a>
+		</li>
+
+        <li class="nav-item mb-2">
+          {% set active = 'active' if request.endpoint and request.endpoint.startswith('person.') else '' %}
+          <a class="nav-link {{ active }}" href="{{ url_for('person.list_persons') }}">
+            <i class="bi bi-people-fill"></i> Personen
+          </a>
+        </li>
+
+		<!-- Statistik -->
+		<li class="nav-item mb-2">
+		  {% set active = 'active' if request.endpoint == 'load.statistics_view' else '' %}
+		  <a class="nav-link {{ active }}" href="{{ url_for('load.statistics_view') }}">
+			<i class="bi bi-bar-chart-line-fill"></i> Statistik
+		  </a>
+		</li>
+
+        <!-- ABRECHNUNG -->
+        <li class="nav-item mb-2">
+          {% set active = 'active' if request.endpoint and request.endpoint.startswith('billing.') else '' %}
+          <a class="nav-link {{ active }}" href="{{ url_for('billing.overview') }}">
+            <i class="bi bi-currency-euro"></i> Abrechnung
+          </a>
+        </li>
+
+        {% if session.get('is_admin') %}
+        <li class="nav-item mb-2 ms-4">
+          {% set active = 'active' if request.endpoint == 'billing.admin_config_edit' else '' %}
+          <a class="nav-link {{ active }}" href="{{ url_for('billing.admin_config_edit') }}">
+            <i class="bi bi-gear"></i> Rechnungssteller
+          </a>
+        </li>
+        {% endif %}
+
+        {% if session.get('is_admin') or session.get('is_db_admin') %}
+        <li class="nav-item mb-2 ms-4">
+          {% set active = 'active' if request.endpoint and request.endpoint.startswith('email_nl.') else '' %}
+          <a class="nav-link {{ active }}" href="{{ url_for('email_nl.send') }}">
+            <i class="bi bi-send"></i> E-Mail Versand
+          </a>
+        </li>
+        {% endif %}
+
+
+	<li class="nav-item mb-2">
+	  <a class="nav-link" href="{{ url_for('admin_database.index') }}">
+		<i class="bi bi-database"></i> Datenbank
+	  </a>
+	</li>
+
+
+	<!-- Datensicherung ohne Admin -->
+	<li class="nav-item mb-2">
+	  <form method="post"
+			action="{{ url_for('admin_database.backup_public') }}"
+			class="m-0">
+		<button type="button"
+				class="nav-link border-0 bg-transparent text-start w-100"
+				onclick="openBackupConfirm()">
+		  <i class="bi bi-save"></i> Datensicherung
+		</button>
+	  </form>
+	</li>
+
+	<!-- ADMIN / DB-ADMIN LOGIN / LOGOUT -->
+
+	{% if not session.get('is_admin') and not session.get('is_db_admin') %}
+    <a class="nav-link mt-3 sidebar-admin-link" href="{{ url_for('admin_auth.admin_login') }}">
+		<i class="bi bi-shield-lock"></i> Admin Login
+	  </a>
+	{% else %}
+    <form method="post" action="{{ url_for('admin_auth.admin_logout') }}" id="sidebar-logout-form" style="display:none;"></form>
+    <a class="nav-link mt-3 text-danger sidebar-admin-link" href="{{ url_for('admin_auth.admin_logout') }}"
+       onclick="event.preventDefault(); document.getElementById('sidebar-logout-form').submit();">
+		<i class="bi bi-door-closed"></i> Abmelden
+	  </a>
+	{% endif %}
+
+	<button id="themeToggle" class="btn btn-outline-light mt-4">
+	  <i id="themeIcon" class="bi bi-moon-stars"></i>
+	</button>
+
+  <button id="appShutdownButton" class="btn btn-outline-danger mt-2 w-100">
+    <i class="bi bi-power me-2"></i>Beenden
+  </button>
+
+  <div class="mt-2 pt-2 border-top border-secondary-subtle">
+    <div class="small text-light opacity-75">Lizenzstufe</div>
+    <div class="d-flex align-items-center gap-1 mt-1 flex-wrap">
+      <span class="badge text-bg-light">{{ manifest_license_tier or 'Unbekannt' }}</span>
+      {% if manifest_is_dev %}
+      <span class="badge text-bg-warning">Entwicklungsmodus</span>
+      {% endif %}
+    </div>
+    {% if manifest_license_expires_at %}
+    <div class="small text-light opacity-75 mt-1">Gueltig bis: {{ manifest_license_expires_at }}</div>
+    {% else %}
+    <div class="small text-light opacity-75 mt-1">Gueltig bis: unbegrenzt</div>
+    {% endif %}
+  </div>
+	</div>
+
+    <!-- MAIN CONTENT -->
+    <div class="flex-grow-1 p-4">
+
+      <!-- ============================================================
+           Admin-Modus anzeigen (nur im Content-Bereich)
+           ============================================================ -->
+       {% if session.get('is_admin') %}
+        <div id="adminModeBanner"
+             class="alert alert-warning text-center mb-3"
+             style="border-left:8px solid #fd7e14;">
+          <strong>ADMIN‑MODUS</strong>
+        </div>
+      {% elif session.get('is_db_admin') %}
+        <div id="dbAdminModeBanner"
+             class="alert alert-info text-center mb-3"
+             style="border-left:8px solid #0dcaf0;">
+          <strong>DATENBANK-ADMIN-MODUS</strong>
+          <span class="ms-2">(kein Voll-Admin)</span>
+        </div>
+      {% endif %}
+
+      <div class="content-header">
+        <button id="sidebarToggle" class="btn btn-dark d-lg-none">
+          <i class="bi bi-list"></i>
+        </button>
+
+        <h1 class="fw-bold m-0 flex-grow-1 text-nowrap">
+          {% block header %}{% endblock %}
+        </h1>
+
+        <div class="d-flex align-items-center flex-shrink-0">
+          <img src="{{ url_for('static', filename='img/HU_Bleistift.png') }}" class="brand-logo-left" alt="Logo HU">
+          <div class="brand-badge ms-2 me-2">
+            <div class="brand-title">MANIFeST OU</div>
+            <div class="brand-version">Vers. 1.2</div>
+          </div>
+          <img src="{{ url_for('static', filename='img/Logo_DZ.png') }}" alt="Logo DZ">
+        </div>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="mt-2">
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+
+  <!-- Bootstrap JS (lokal) -->
+  <script src="{{ url_for('static', filename='vendor/bootstrap/5.3.3/js/bootstrap.bundle.min.js') }}"></script>
+
+  <!-- Sidebar Toggle -->
+  <script>
+    const sidebar = document.getElementById("sidebar");
+    const sidebarToggle = document.getElementById("sidebarToggle");
+    sidebarToggle?.addEventListener("click", () => {
+      sidebar.classList.toggle("open");
+    });
+  </script>
+
+  <!-- Theme Toggle -->
+  <script>
+    const root = document.documentElement;
+    const toggle = document.getElementById("themeToggle");
+    const icon = document.getElementById("themeIcon");
+    const savedTheme = localStorage.getItem("theme");
+
+    if (savedTheme) {
+      root.setAttribute("data-theme", savedTheme);
+      icon.className = savedTheme === "dark"
+        ? "bi bi-sun-fill"
+        : "bi bi-moon-stars";
+    }
+
+    toggle.addEventListener("click", () => {
+      const isDark = root.getAttribute("data-theme") === "dark";
+      const newTheme = isDark ? "light" : "dark";
+      root.setAttribute("data-theme", newTheme);
+      localStorage.setItem("theme", newTheme);
+      icon.className = newTheme === "dark"
+        ? "bi bi-sun-fill"
+        : "bi bi-moon-stars";
+    });
+  </script>
+
+  <script>
+    (function () {
+      const shutdownButton = document.getElementById("appShutdownButton");
+      let shutdownInProgress = false;
+      let heartbeatIntervalId = null;
+
+      function renderShutdownScreen(message) {
+        document.body.innerHTML = ""
+          + "<div style='display:flex;min-height:100vh;align-items:center;justify-content:center;background:#111;color:#fff;font-family:system-ui,sans-serif;padding:24px;'>"
+          + "  <div style='max-width:640px;text-align:center;'>"
+          + "    <div style='font-size:56px;line-height:1;margin-bottom:12px;'>⏻</div>"
+          + "    <h1 style='margin:0 0 8px 0;'>Anwendung beendet</h1>"
+          + "    <p style='margin:0;opacity:.85;'>" + message + "</p>"
+          + "  </div>"
+          + "</div>";
+      }
+
+      async function shutdownApp() {
+        if (shutdownInProgress) return;
+
+        shutdownInProgress = true;
+        if (shutdownButton) {
+          shutdownButton.disabled = true;
+        }
+        if (heartbeatIntervalId !== null) {
+          clearInterval(heartbeatIntervalId);
+          heartbeatIntervalId = null;
+        }
+
+        try {
+          const response = await fetch("{{ url_for('pwa.runtime_shutdown') }}", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            keepalive: true,
+          });
+
+          if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            shutdownInProgress = false;
+            if (shutdownButton) {
+              shutdownButton.disabled = false;
+            }
+            const msg = payload.error || "Beenden nicht möglich.";
+            showOfflineBanner(msg);
+            return;
+          }
+
+          renderShutdownScreen("Waitress wurde beendet. Du kannst den Browser schließen.");
+        } catch (_) {
+          // Der Server kann bereits heruntergefahren sein; in diesem Fall trotzdem Erfolgsansicht zeigen.
+          renderShutdownScreen("Server wurde gestoppt. Du kannst den Browser schließen.");
+        }
+      }
+
+      shutdownButton?.addEventListener("click", shutdownApp);
+
+      const bannerId = "manifest-server-offline-banner";
+      let heartbeatFailures = 0;
+
+      function ensureOfflineBanner() {
+        let el = document.getElementById(bannerId);
+        if (el) return el;
+        el = document.createElement("div");
+        el.id = bannerId;
+        el.style.cssText = [
+          "position:fixed",
+          "left:12px",
+          "right:12px",
+          "bottom:12px",
+          "z-index:2000",
+          "padding:10px 14px",
+          "border-radius:10px",
+          "background:#b42318",
+          "color:#fff",
+          "font-weight:600",
+          "font-size:14px",
+          "box-shadow:0 8px 24px rgba(0,0,0,.25)",
+          "display:none",
+        ].join(";");
+        el.textContent = "Server nicht erreichbar. Bitte Anwendung neu starten.";
+        document.body.appendChild(el);
+        return el;
+      }
+
+      function showOfflineBanner(text) {
+        const el = ensureOfflineBanner();
+        if (text && String(text).trim()) {
+          el.textContent = String(text).trim();
+        } else {
+          el.textContent = "Server nicht erreichbar. Bitte Anwendung neu starten.";
+        }
+        el.style.display = "block";
+      }
+
+      function hideOfflineBanner() {
+        const el = document.getElementById(bannerId);
+        if (el) el.style.display = "none";
+      }
+
+      function sendHeartbeat() {
+        if (shutdownInProgress) {
+          return;
+        }
+        fetch("{{ url_for('pwa.runtime_heartbeat') }}", {
+          method: "POST",
+          keepalive: true,
+        })
+          .then(() => {
+            heartbeatFailures = 0;
+            hideOfflineBanner();
+          })
+          .catch(() => {
+            heartbeatFailures += 1;
+            if (heartbeatFailures >= 3) {
+              showOfflineBanner();
+            }
+          });
+      }
+
+      sendHeartbeat();
+      heartbeatIntervalId = setInterval(sendHeartbeat, 20000);
+
+      window.addEventListener("beforeunload", () => {
+        if (shutdownInProgress) {
+          return;
+        }
+        try {
+          navigator.sendBeacon("{{ url_for('pwa.runtime_disconnect') }}", new Blob([], { type: "application/octet-stream" }));
+        } catch (_) {
+          // no-op
+        }
+      });
+    })();
+  </script>
+
+  <!-- PWA Scripts -->
+  <script src="{{ url_for('static', filename='pwa/js/navigation.js') }}"></script>
+
+
+  <script src="{{ url_for('static', filename='pwa/js/app.js') }}"></script>
+
+  <!-- Service Worker -->
+  {#
+  <script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register(
+	  "{{ url_for('static', filename='pwa/service-worker.js') }}"
+    );
+  }
+  </script>
+  #}
+
+
+{% if not is_pdf_render %}
+<script>
+function openBackupConfirm() {
+  const modalEl = document.getElementById("backupConfirmModal");
+  if (!modalEl) return;
+  const modal = new bootstrap.Modal(modalEl);
+  modal.show();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const check = document.getElementById("backupConfirmCheck");
+  const okBtn = document.getElementById("backupConfirmBtn");
+
+  if (!check || !okBtn) return;
+
+  check.addEventListener("change", () => {
+    okBtn.disabled = !check.checked;
+  });
+
+  okBtn.addEventListener("click", () => {
+    check.checked = false;
+    okBtn.disabled = true;
+
+    const form = document.querySelector(
+      'form[action="{{ url_for("admin_database.backup_public") }}"]'
+    );
+    if (form) form.submit();
+  });
+});
+</script>
+{% endif %}
+
+<!-- ✅ REPARATUR: ermöglicht Split‑View & Page‑Scripts -->
+{% block scripts %}{% endblock %}
+
+
+{% if not is_pdf_render %}
+<!-- ✅ Datensicherung bestätigen -->
+<div class="modal fade" id="backupConfirmModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi bi-save me-2"></i>Datensicherung
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <p>Jetzt Kopie der Datenbank anlegen?</p>
+
+        <div class="form-check mt-3">
+          <input class="form-check-input"
+                 type="checkbox"
+                 id="backupConfirmCheck">
+          <label class="form-check-label" for="backupConfirmCheck">
+            Ja, ich möchte eine Sicherungskopie erstellen
+          </label>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button"
+                class="btn btn-secondary"
+                data-bs-dismiss="modal">
+          Abbrechen
+        </button>
+
+        <button type="button"
+                class="btn btn-success"
+                id="backupConfirmBtn"
+                disabled>
+          OK
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endif %}
+
+</body>
+</html>

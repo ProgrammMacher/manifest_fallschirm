@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Abrechnung – Dashboard{% endblock %}
+
+{% block header %}
+Abrechnung – Dashboard
+{% endblock %}
+
+{% block content %}
+
+<div class="container">
+
+    <h2 class="fw-bold mb-4">Abrechnungs-Dashboard</h2>
+
+    <!-- Kacheln -->
+    <div class="row g-4 mb-4">
+
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h6 class="text-muted">Offene Sprünge</h6>
+                    <div class="fs-3 fw-bold">{{ open_jump_count }}</div>
+                    <a href="{{ url_for('person.list_persons') }}" class="btn btn-sm btn-outline-primary mt-2">
+                        Personen anzeigen
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h6 class="text-muted">Offene Rechnungen</h6>
+                    <div class="fs-3 fw-bold">{{ open_invoice_count }}</div>
+                    <a href="{{ url_for('billing.invoice_list') }}" class="btn btn-sm btn-outline-primary mt-2">
+                        Rechnungen anzeigen
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h6 class="text-muted">Summe offen (Brutto)</h6>
+                    <div class="fs-3 fw-bold">{{ open_invoice_sum }} €</div>
+                    <small class="text-muted">
+                        inkl. MwSt – Details siehe Rechnung
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h6 class="text-muted">Preismatrix (Dessau)</h6>
+                    <div class="fs-3 fw-bold">
+                        <i class="bi bi-cash-stack"></i>
+                    </div>
+                    <a href="{{ url_for('pricing.pricing_matrix') }}" class="btn btn-sm btn-outline-secondary mt-2">
+                        Öffnen
+                    </a>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Offene Sprünge pro Person -->
+    <h4 class="fw-bold mt-4 mb-3">Offene Sprünge pro Person</h4>
+
+    {% if persons_with_open %}
+    <div class="table-responsive">
+        <table class="table table-striped align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Person</th>
+                    <th>Anzahl Sprünge</th>
+                    <th>Voraussichtlicher Betrag (Brutto)</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in persons_with_open %}
+                <tr>
+                    <td>{{ p.name }}</td>
+                    <td>{{ p.count }}</td>
+                    <td>{{ p.sum }} €</td>
+                    <td class="text-end">
+                        <a href="{{ url_for('billing.person_billing', person_id=p.id) }}"
+                           class="btn btn-sm btn-outline-primary">
+                            Abrechnung öffnen
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <small class="text-muted">
+            Beträge sind unverbindlich. Verbindliche Preise inkl. MwSt werden erst auf der Rechnung festgeschrieben.
+        </small>
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        Es liegen keine offenen Sprünge vor.
+    </div>
+    {% endif %}
+
+</div>
+
+{% endblock %}

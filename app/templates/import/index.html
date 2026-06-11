@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}Daten importieren{% endblock %}
+
+{% block header %}
+Daten importieren
+{% endblock %}
+
+{% block content %}
+
+<div class="container">
+
+    <!-- Orientierung Export / Import -->
+    <div class="card shadow-sm mb-4 border-info">
+        <div class="card-body">
+            <h4 class="fw-bold mb-3 text-info">Orientierung: Export und Import</h4>
+
+            <p class="text-muted mb-3">
+                Diese Übersicht hilft bei der Auswahl der richtigen Funktion:
+                <strong>Backup zurückholen</strong> oder <strong>Daten über Vorlage erfassen</strong>.
+            </p>
+
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-2">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Funktion</th>
+                            <th>Zweck</th>
+                            <th>Quelle</th>
+                            <th>Typischer Einsatz</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="badge bg-primary">Export (Personenliste)</span></td>
+                            <td>Personen als Sicherungs-/Austauschdatei ausgeben</td>
+                            <td>Button „Export" unter Personen</td>
+                            <td>Backup erzeugen, Daten für späteren Rückimport sichern</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge bg-success">Import HORIZONTAL</span></td>
+                            <td>Exportdatei wieder einlesen (auch teilweise)</td>
+                            <td>Horizontale Exportdatei (.xlsx)</td>
+                            <td>Rücksicherung oder Übernahme aus vorhandener Exportdatei</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge bg-primary">Import VERTIKAL</span></td>
+                            <td>Vorlagenbasierte Eingabe neuer/zu ergänzender Daten</td>
+                            <td>Vertikale Importvorlage (.xlsx)</td>
+                            <td>Regelmäßige Datenerfassung über strukturierte Vorlage</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="alert alert-light border mb-0">
+                <strong>Merksatz:</strong>
+                Export-Datei wieder einlesen = <span class="badge bg-success">Horizontal</span> ·
+                Vorlage ausfüllen = <span class="badge bg-primary">Vertikal</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload-Karte: Vertikaler Import -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+
+            <h4 class="fw-bold mb-3 text-primary">Personen-Import VERTIKAL (Vorlage)</h4>
+
+            <p class="text-muted">
+                Bitte lade eine Excel-Datei im Format <strong>.xlsx</strong> hoch.
+                Die Datei muss der <strong>vertikalen Importvorlage</strong> entsprechen.
+                Die Vorlage unterstützt <strong>5 farblich hervorgehobene Personen</strong> und technisch bis zu
+                <strong>25 Personen</strong> (Spalten C–AA).
+            </p>
+
+            <a href="{{ url_for('import_preview.download_template') }}"
+               class="btn btn-outline-primary mb-4">
+                <i class="bi bi-download"></i> Vertikale Importvorlage herunterladen
+            </a>
+
+            <hr>
+
+            <form action="{{ url_for('import_preview.preview') }}" method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="import_mode" value="vertical">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Datei auswählen</label>
+                    <input type="file" name="file" class="form-control" accept=".xlsx" required>
+                </div>
+
+                <button type="submit" class="btn btn-success">
+                    <i class="bi bi-upload"></i> Datei hochladen
+                </button>
+            </form>
+
+            <div class="alert alert-warning border mt-4 mb-0">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                <strong>Manuelle Prüfung nach dem Import erforderlich:</strong><br>
+                Die Felder <strong>Mitglied</strong>, <strong>Partner-Verein</strong>, <strong>Schüler</strong> und <strong>Tandemmaster</strong> werden über die Importvorlage <strong>nicht gesetzt</strong>.
+                Bitte prüfe nach dem Import für jede betroffene Person unter
+                <a href="{{ url_for('person.list_persons') }}" class="alert-link">Personen</a>,
+                ob diese Felder korrekt eingestellt sind.
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Upload-Karte: Horizontaler Backup-Import -->
+    <div class="card shadow-sm mb-4 border-success">
+        <div class="card-body">
+
+            <h4 class="fw-bold mb-3 text-success">Personen-Import HORIZONTAL (Backup/Export)</h4>
+
+            <p class="text-muted">
+                Diese Variante liest die <strong>horizontale Exportdatei</strong> aus dem Personen-Export ein
+                (eine Person pro Zeile). Geeignet für Rücksicherung oder Teil-Rückimport.
+            </p>
+
+            <form action="{{ url_for('import_preview.preview') }}" method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="import_mode" value="horizontal">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Exportdatei auswählen</label>
+                    <input type="file" name="file" class="form-control" accept=".xlsx" required>
+                </div>
+
+                <button type="submit" class="btn btn-success">
+                    <i class="bi bi-upload"></i> Backup-Datei prüfen
+                </button>
+            </form>
+
+        </div>
+    </div>
+
+    <!-- Pflicht- und optionale Felder -->
+    <div class="card shadow-sm">
+        <div class="card-body">
+
+            <h5 class="fw-bold mb-3">Pflichtfelder (gelb hinterlegt, Personen 1–5)</h5>
+
+            <ul>
+                <li><strong>Vorname</strong></li>
+                <li><strong>Nachname</strong></li>
+                <li><strong>Telefon</strong></li>
+                <li><strong>E‑Mail</strong></li>
+                <li><strong>Gewicht [kg]</strong> (nur ganze Zahlen)</li>
+            </ul>
+
+            <p class="text-muted small mb-4">
+                Fehlen Pflichtfelder, wird der Datensatz in der Vorschau mit Fehlern markiert.
+                Der Import läuft trotzdem durch, die betroffenen Werte werden ggf. geleert.
+            </p>
+
+            <h5 class="fw-bold mt-2 mb-3">Optionale Felder (grün hinterlegt, Personen 1–5)</h5>
+
+            <ul>
+                <li>Notfallname</li>
+                <li>Notfalltelefon</li>
+                <li>Notfallbeziehung</li>
+                <li>Notfall‑E‑Mail</li>
+                <li>Größe [cm] (nur ganze Zahlen, 140–220)</li>
+                <li>Geburtstag (TT.MM.JJJJ)</li>
+                <li>Straße & Nr.</li>
+                <li>PLZ (nur Zahlen)</li>
+                <li>Ort</li>
+                <li>Lizenznummer</li>
+                <li>Versicherer</li>
+                <li>Versicherungsnummer</li>
+                <li>IBAN (manuelle Prüfung empfohlen)</li>
+                <li>BIC</li>
+                <li>Kontoinhaber</li>
+                <li>Kommentar</li>
+                <li>Notizen</li>
+            </ul>
+
+            <h5 class="fw-bold mt-4 mb-3">Mitglied / Tandemgast</h5>
+
+            <ul>
+                <li>Felder <strong>Mitglied</strong> und <strong>Tandemgast</strong> besitzen ein <strong>Ja/Nein‑Dropdown</strong> in der Vorlage.</li>
+                <li>Im Import werden diese Felder aktuell <strong>nicht automatisch gesetzt</strong>, sondern immer auf <code>False</code> gesetzt.</li>
+                <li>In der Vorschau werden entsprechende Datensätze mit einem Hinweis
+                    <em>„Vereinsmitgliedschaft manuell prüfen / Tandemstatus manuell prüfen“</em> versehen.</li>
+            </ul>
+
+            <h5 class="fw-bold mt-4 mb-3">Hinweise zur vertikalen Vorlage</h5>
+
+            <ul>
+                <li>Die Eingabe erfolgt <strong>von oben nach unten</strong> pro Person.</li>
+                <li>Spalte <strong>A</strong>: Beschreibung (Pflicht/optional) – ist gesperrt.</li>
+                <li>Spalte <strong>B</strong>: technischer Feldname – ist gesperrt und darf nicht geändert werden.</li>
+                <li>Spalten <strong>C–G</strong>: Personen 1–5 (farblich hervorgehoben, mit Validierungen).</li>
+                <li>Spalten <strong>H–AA</strong>: Personen 6–25 (neutral, ohne Farben, aber beschreibbar).</li>
+                <li>Pflichtfelder werden in der Vorschau <strong>rot markiert</strong>, wenn sie leer oder ungültig sind.</li>
+                <li>Unsinnige Werte (z. B. Größe &lt; 140 cm, Gewicht &gt; 200 kg, ungültige IBAN) werden beim Import
+                    <strong>ignoriert</strong>, der Wert wird geleert und als Hinweis protokolliert.</li>
+                <li>Die Struktur der Vorlage (Zeilen 1–2, Spalten A–B, Feldreihenfolge) darf <strong>nicht verändert</strong> werden.</li>
+            </ul>
+
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

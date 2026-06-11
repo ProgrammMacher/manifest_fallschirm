@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Archivierte Flugplätze{% endblock %}
+{% block header %}Archivierte Flugplätze{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="fw-bold m-0">
+    <i class="bi bi-archive"></i> Archivierte Flugplätze
+  </h4>
+
+  {{ url_for('flugplatz.list_flugplaetze') }}
+    <i class="bi bi-arrow-left"></i> Zurück
+  </a>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+
+    {% if plaetze %}
+      <div class="table-responsive">
+        <table class="table table-hover table-sm align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Name</th>
+              <th>Archiviert am</th>
+              <th>Grund</th>
+              <th class="text-end">Aktion</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for p in plaetze %}
+            <tr>
+              <td>{{ p.name }}</td>
+
+              <td>
+                {% if p.deleted_at %}
+                  {{ p.deleted_at.strftime("%d.%m.%Y %H:%M") }}
+                {% else %}
+                  –
+                {% endif %}
+              </td>
+
+              <td>
+                {{ p.deleted_reason or "–" }}
+              </td>
+
+              <td class="text-end">
+                {% if session.is_admin %}
+
+                  {# ============================
+                     RESTORE
+                     ============================ #}
+                  {{ url_for('flugplatz.restore', id=p.id) }}">
+                    <button class="btn btn-sm btn-success"
+                            onclick="return confirm('Diesen Flugplatz reaktivieren?');">
+                      <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
+                  </form>
+
+                  {# ============================
+                     HARDDELETE (nur wenn erlaubt)
+                     ============================ #}
+                  {% if p.can_hard_delete() and not p.is_home_airfield %}
+                    {{ url_for('flugplatz.hard_delete', id=p.id) }}">
+                      <button class="btn btn-sm btn-danger ms-1"
+                              onclick="return confirm(
+                                'Diesen Flugplatz WIRKLICH endgültig löschen?\n\n' ~
+                                'Dieser Vorgang kann NICHT rückgängig gemacht werden!'
+                              );">
+                        <i class="bi bi-trash-fill"></i>
+                      </button>
+                    </form>
+                  {% endif %}
+
+                  {# ============================
+                     INFO bei Schutz
+                     ============================ #}
+                  {% if p.is_home_airfield or not p.can_hard_delete() %}
+                    <div class="text-muted small mt-1">
+                      <i class="bi bi-info-circle"></i>
+                      {% if p.is_home_airfield %}
+                        Der Heimatflugplatz kann nicht gelöscht werden.
+                      {% else %}
+                        Endgültiges Löschen nicht möglich – es existieren noch zugehörige Daten.
+                      {% endif %}
+                    </div>
+                  {% endif %}
+
+                {% else %}
+
+                  <span class="text-muted small">
+                    <i class="bi bi-eye"></i> Nur Ansicht
+                  </span>
+
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+    {% else %}
+      <p class="text-muted">Keine archivierten Flugplätze vorhanden.</p>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

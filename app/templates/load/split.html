@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div id="load-view-root" data-view="split">
+
+  <!-- LINKS: Liste -->
+  <div id="list-pane">
+    {% include "load/list_inner.html" %}
+  </div>
+
+  <!-- Trennlinie -->
+  <div id="split-divider"></div>
+
+  <!-- RECHTS: Editor / Neuer Load -->
+  <div id="editor-pane">
+
+    {# ========================================================= #}
+    {# ✅ FALL 1: Bestehender Load wird bearbeitet #}
+    {# ========================================================= #}
+    {% if load %}
+      {% include "load/partials/editor_inner.html" %}
+
+    {# ========================================================= #}
+    {# ✅ FALL 2: Neuer Load im Split‑View (new=1) #}
+    {# ========================================================= #}
+    {% elif request.args.get('new') == '1' %}
+
+      <div class="p-4">
+        <h4 class="mb-3">
+          <i class="bi bi-plus-circle"></i> Neuen Load anlegen
+        </h4>
+
+        <form id="new-load-form"
+              method="POST"
+              action="{{ url_for('load.new_load') }}"
+              novalidate>
+
+          <!-- Split-Kontext beibehalten -->
+          <input type="hidden" name="return_to" value="split">
+          <input type="hidden" name="show" value="{{ show }}">
+
+          <!-- ================= Betriebstag / Startzeit ================= -->
+          <div class="card mb-3">
+            <div class="card-body">
+              <div class="row g-3">
+                <div class="col-md-4">
+                  <label class="form-label fw-bold">Betriebstag (Datum)</label>
+                  <input type="date"
+                         name="planned_date"
+                         class="form-control"
+                         id="nl_planned_date">
+                </div>
+
+                <div class="col-md-4">
+                  <label class="form-label fw-bold">Startzeit (Uhrzeit)</label>
+                  <input type="time"
+                         name="planned_start_time"
+                         class="form-control"
+                         id="nl_planned_time">
+                </div>
+
+                <div class="col-md-4">
+                  <label class="form-label fw-bold">Load‑Höhe</label>
+                  <select name="height_m" class="form-select">
+                    {% for h in [1500, 3000, 4000] %}
+                      <option value="{{ h }}" {% if h == 3000 %}selected{% endif %}>
+                        {{ h }} m
+                      </option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ================= Flugplatz / Flugzeug ================= -->
+          <div class="card mb-3">
+            <div class="card-body">
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label fw-bold">Flugplatz</label>
+                  <select name="airfield_id" class="form-select">
+                    {% for af in airfields %}
+                      <option value="{{ af.id }}"
+                              {% if af.id == default_airfield_id %}selected{% endif %}>
+                        {{ af.name }}{% if af.is_home_airfield %} (Heimat){% endif %}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label fw-bold">Flugzeug</label>
+                  <select name="aircraft_id" class="form-select">
+                    {% for ac in aircrafts %}
+                      <option value="{{ ac.id }}"
+                              {% if ac.id == default_aircraft_id %}selected{% endif %}>
+                        {{ ac.registration }} – {{ ac.type }} ({{ ac.seats }} Sitze)
+                      </option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+
+              <div class="mt-3 d-flex justify-content-end gap-2">
+                <a href="{{ url_for('load.split_view', show=show) }}"
+                   class="btn btn-outline-secondary">
+                  Abbrechen
+                </a>
+
+                <!-- ✅ expliziter Submit (robust gegen DOM/JS-Probleme) -->
+                <button type="button"
+                        class="btn btn-success"
+                        onclick="submitNewLoadForm()">
+                  <i class="bi bi-check2"></i> Neuen Load anlegen
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+
+        <!-- ✅ Defaults: heute / jetzt -->
+        <script>
+          (function () {
+            const d = document.getElementById('nl_planned_date');
+            const t = document.getElementById('nl_planned_time');
+            const now = new Date();
+            if (d && !d.value) {
+              const y = now.getFullYear();
+              const mo = String(now.getMonth() + 1).padStart(2, '0');
+              const da = String(now.getDate()).padStart(2, '0');
+              d.value = `${y}-${mo}-${da}`;
+            }
+            if (t && !t.value) t.value = now.toTimeString().slice(0, 5);
+          })();
+
+          function submitNewLoadForm() {
+            const form = document.getElementById('new-load-form');
+            if (!form) {
+              alert("Formular nicht gefunden.");
+              return;
+            }
+            form.submit();
+          }
+        </script>
+      </div>
+
+    {# ========================================================= #}
+    {# ✅ FALL 3: Nichts ausgewählt #}
+    {# ========================================================= #}
+    {% else %}
+      <div class="p-4 text-muted">
+        <em>Load auswählen …</em>
+      </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+  <!-- ✅ Split-View Layout / Divider / Resize -->
+  <script src="{{ url_for('static', filename='load/load_split_view.js') }}?v=20260315_1"></script>
+{% endblock %}

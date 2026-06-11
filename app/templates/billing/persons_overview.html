@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+{% block title %}Abrechnung – Personen{% endblock %}
+{% block header %}
+Abrechnung – Personen
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <h2 class="fw-bold mb-4">Abrechnungsfähige Personen</h2>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <form method="get" class="d-flex gap-2 flex-grow-1" style="max-width: 450px;">
+          <input type="text"
+                 name="search"
+                 value="{{ search|default('') }}"
+                 class="form-control"
+                 placeholder="Suche nach Name, Telefon, E-Mail...">
+
+          <input type="hidden" name="filters" value="{{ filters_str|default('') }}">
+          <input type="hidden" name="sort" value="{{ sort|default('last_name') }}">
+          <input type="hidden" name="direction" value="{{ direction|default('asc') }}">
+
+          <button class="btn btn-primary" type="submit">
+            <i class="bi bi-search"></i>
+          </button>
+        </form>
+
+        <a href="{{ url_for('billing.persons_overview') }}" class="btn btn-outline-secondary">
+          <i class="bi bi-x-circle"></i> Reset
+        </a>
+      </div>
+
+      <div class="mb-1">
+        <form method="get" id="billingFilterForm" class="d-flex flex-wrap gap-3 align-items-start">
+          <input type="hidden" name="search" value="{{ search|default('') }}">
+          <input type="hidden" name="sort" value="{{ sort|default('last_name') }}">
+          <input type="hidden" name="direction" value="{{ direction|default('asc') }}">
+          <div id="billingFiltersContainer" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;"></div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const BILLING_PERSON_FILTERS = [
+      { code: 'members', label: 'Mitglieder' },
+      { code: 'partner', label: 'Partner-Verein' },
+      { code: 'tandem', label: 'Tandemgäste' },
+      { code: 'student', label: 'Schüler' },
+      { code: 'video', label: 'Video' },
+      { code: 'aff_student', label: 'AFF-Schüler' },
+      { code: 'tandemmaster', label: 'Tandemmaster' },
+      { code: 'teacher', label: 'Lehrer' },
+      { code: 'aff_teacher', label: 'AFF-Lehrer' },
+      { code: 'guest', label: 'Gäste' },
+      { code: 'liability_ok', label: 'Enthaftung gültig' },
+      { code: 'liability_bad', label: 'Enthaftung ungültig' },
+      { code: 'weight_bad', label: 'Gewicht außerhalb Norm' },
+    ];
+
+    const BILLING_CURRENT_FILTERS = "{{ filters_str|default('') }}".split(',').map(f => f.trim()).filter(Boolean);
+    const BILLING_IS_ARCHIVED = BILLING_CURRENT_FILTERS.includes('archived');
+
+    function billingApplyFilters(filterCodes) {
+      const form = document.getElementById('billingFilterForm');
+      let input = form.querySelector('input[name="filters"]');
+      if (!input) {
+        input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'filters';
+        form.appendChild(input);
+      }
+      input.value = filterCodes.join(',');
+      form.submit();
+    }
+
+    function billingGetSelectedFilters() {
+      const selected = [];
+      if (BILLING_IS_ARCHIVED) selected.push('archived');
+      BILLING_PERSON_FILTERS.forEach(f => {
+        const cb = document.getElementById(`billing_filter_${f.code}`);
+        if (cb && cb.checked) selected.push(f.code);
+      });
+      return selected;
+    }
+
+    function billingRebuildFilters() {
+      const container = document.getElementById('billingFiltersContainer');
+      if (!container) return;
+      container.innerHTML = '';
+
+      const modeGroup = document.createElement('div');
+      modeGroup.className = 'd-flex gap-1 me-2';
+
+      const activeBtn = document.createElement('button');
+      activeBtn.type = 'button';
+      activeBtn.className = `btn btn-sm ${!BILLING_IS_ARCHIVED ? 'btn-primary' : 'btn-outline-secondary'}`;
+      activeBtn.textContent = 'Aktive';
+      activeBtn.onclick = (e) => {
+        e.preventDefault();
+        billingApplyFilters(BILLING_CURRENT_FILTERS.filter(f => f !== 'archived'));
+      };
+
+      const archiveBtn = document.createElement('button');
+      archiveBtn.type = 'button';
+      archiveBtn.className = `btn btn-sm ${BILLING_IS_ARCHIVED ? 'btn-warning' : 'btn-outline-secondary'}`;
+      archiveBtn.textContent = 'Archiv';
+      archiveBtn.onclick = (e) => {
+        e.preventDefault();
+        if (BILLING_IS_ARCHIVED) {
+          billingApplyFilters(BILLING_CURRENT_FILTERS.filter(f => f !== 'archived'));
+        } else {
+          billingApplyFilters([...BILLING_CURRENT_FILTERS.filter(f => f !== 'archived'), 'archived']);
+        }
+      };
+
+      modeGroup.appendChild(activeBtn);
+      modeGroup.appendChild(archiveBtn);
+      container.appendChild(modeGroup);
+
+      const sep = document.createElement('div');
+      sep.style.cssText = 'width:1px; background:#dee2e6; align-self:stretch; margin: 0 4px;';
+      container.appendChild(sep);
+
+      BILLING_PERSON_FILTERS.forEach(f => {
+        const wrap = document.createElement('div');
+        wrap.style.display = 'flex';
+        wrap.style.alignItems = 'center';
+        wrap.style.gap = '5px';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'form-check-input mt-0';
+        cb.id = `billing_filter_${f.code}`;
+        cb.value = f.code;
+        cb.checked = BILLING_CURRENT_FILTERS.includes(f.code);
+        cb.onchange = () => billingApplyFilters(billingGetSelectedFilters());
+
+        const label = document.createElement('label');
+        label.htmlFor = `billing_filter_${f.code}`;
+        label.className = 'form-check-label mb-0';
+        label.style.cursor = 'pointer';
+        label.textContent = f.label;
+
+        wrap.appendChild(cb);
+        wrap.appendChild(label);
+        container.appendChild(wrap);
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', billingRebuildFilters);
+  </script>
+
+  {% if rows %}
+  {% set s = namespace(total=0) %}
+
+  <div class="table-responsive">
+    <table class="table table-bordered align-middle">
+      <thead class="table-light">
+        <tr>
+          {% set next_dir = 'asc' if not (sort == 'last_name' and direction == 'asc') else 'desc' %}
+          <th>
+            <a class="text-decoration-none"
+               href="{{ url_for('billing.persons_overview', sort='last_name', direction=next_dir, search=search|default(''), filters=filters_str|default('')) }}">
+              Person
+              {% if sort == 'last_name' %}
+                <i class="bi bi-caret-{{ 'up' if direction == 'asc' else 'down' }}-fill text-primary"></i>
+              {% endif %}
+            </a>
+          </th>
+
+          {% set next_dir = 'asc' if not (sort == 'main_status' and direction == 'asc') else 'desc' %}
+          <th>
+            <a class="text-decoration-none"
+               href="{{ url_for('billing.persons_overview', sort='main_status', direction=next_dir, search=search|default(''), filters=filters_str|default('')) }}">
+              Status
+              {% if sort == 'main_status' %}
+                <i class="bi bi-caret-{{ 'up' if direction == 'asc' else 'down' }}-fill text-primary"></i>
+              {% endif %}
+            </a>
+          </th>
+
+          {% set next_dir = 'asc' if not (sort == 'count' and direction == 'asc') else 'desc' %}
+          <th class="text-end">
+            <a class="text-decoration-none"
+               href="{{ url_for('billing.persons_overview', sort='count', direction=next_dir, search=search|default(''), filters=filters_str|default('')) }}">
+              Offene Sprünge
+              {% if sort == 'count' %}
+                <i class="bi bi-caret-{{ 'up' if direction == 'asc' else 'down' }}-fill text-primary"></i>
+              {% endif %}
+            </a>
+          </th>
+
+          {% set next_dir = 'asc' if not (sort == 'amount' and direction == 'asc') else 'desc' %}
+          <th class="text-end">
+            <a class="text-decoration-none"
+               href="{{ url_for('billing.persons_overview', sort='amount', direction=next_dir, search=search|default(''), filters=filters_str|default('')) }}">
+              Vorschau‑Betrag €
+              {% if sort == 'amount' %}
+                <i class="bi bi-caret-{{ 'up' if direction == 'asc' else 'down' }}-fill text-primary"></i>
+              {% endif %}
+            </a>
+          </th>
+
+          <th class="text-center">Aktionen</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for row in rows %}
+        {% set s.total = s.total + row.amount %}
+        <tr>
+          <td>
+            <strong>{{ row.person.last_name }}, {{ row.person.first_name }}</strong>
+            {% if row.person.member_number %}
+              <br>
+              <small class="text-muted">
+                Mitglieds‑Nr. {{ row.person.member_number }}
+              </small>
+            {% endif %}
+          </td>
+
+          <td>
+            <span class="badge text-bg-light border text-dark">{{ row.main_status }}</span>
+            {% if row.secondary_statuses %}
+              <div class="mt-1 d-flex flex-wrap gap-1">
+                {% for status_label in row.secondary_statuses %}
+                  <span class="badge text-bg-light border">{{ status_label }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </td>
+
+          <td class="text-end">
+            {{ row.count }}
+          </td>
+
+          <td class="text-end">
+            {{ "{:,.2f}".format(row.amount)
+               .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+          </td>
+
+          <td class="text-center">
+            <!-- Details / offene Sprünge -->
+            <a href="{{ url_for('billing.person_billing', person_id=row.person.id) }}"
+               class="btn btn-sm btn-outline-secondary me-1">
+              Details
+            </a>
+
+            <!-- Rechnung erzeugen -->
+            <form method="post"
+                  action="{{ url_for('billing.create_invoice_for_person', person_id=row.person.id) }}"
+                  style="display:inline">
+              <button type="submit"
+                      class="btn btn-sm btn-success"
+                      onclick="return confirm('Rechnung für {{ row.person.first_name }} {{ row.person.last_name }} erzeugen?');">
+                Rechnung erzeugen
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+
+      <!-- ✅ Summenzeile -->
+      <tfoot>
+        <tr class="table-light">
+          <th colspan="3" class="text-end">Summe abrechnungsfähig</th>
+          <th class="text-end">
+            {{ "{:,.2f}".format(s.total)
+               .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+          </th>
+          <th></th>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  {% else %}
+  <div class="alert alert-info">
+    Aktuell gibt es keine abrechnungsfähigen Personen.
+  </div>
+  {% endif %}
+
+  <div class="mt-4">
+    <a href="{{ url_for('billing.overview') }}" class="btn btn-outline-secondary">
+      ← Zur Abrechnungsübersicht
+    </a>
+  </div>
+</div>
+{% endblock %}

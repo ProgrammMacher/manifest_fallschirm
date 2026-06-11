@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}Manifest – Startseite{% endblock %}
+{% block header %}Manifest‑Startseite{% endblock %}
+
+{% block content %}
+
+
+
+<div class="container mt-4">
+  <h2 class="fw-bold mb-1">Willkommen</h2>
+  <p class="text-muted mb-4">Wähle ein Modul aus, um fortzufahren.</p>
+
+  <div class="row g-4 app-grid">
+
+    <!-- LOADS -->
+    <div class="col-4 col-sm-3 col-md-3 col-lg-2 text-center">
+      <a href="{{ url_for('load.list_loads') }}"
+         class="text-decoration-none d-block app-tile">
+        <div class="app-icon ios-icon tile-green">
+          <div class="pwa-parachute-icon">
+            {% include "icons/parachute.svg" %}
+          </div>
+        </div>
+        <div class="app-label mt-2">Loads</div>
+      </a>
+    </div>
+
+    <!-- FLUGZEUGE -->
+    <div class="col-4 col-sm-3 col-md-3 col-lg-2 text-center">
+      <a href="{{ url_for('aircraft.list_aircraft') }}"
+         class="text-decoration-none d-block app-tile">
+        <div class="app-icon ios-icon tile-orange">
+          <i class="bi bi-airplane"></i>
+        </div>
+        <div class="app-label mt-2">Flugzeuge</div>
+      </a>
+    </div>
+
+    <!-- FLUGPLÄTZE -->
+    <div class="col-4 col-sm-3 col-md-3 col-lg-2 text-center">
+      <a href="{{ url_for('flugplatz.list_flugplaetze') }}"
+         class="text-decoration-none d-block app-tile">
+        <div class="app-icon ios-icon tile-purple">
+          <i class="bi bi-pin-map-fill"></i>
+        </div>
+        <div class="app-label mt-2">Flugplätze</div>
+      </a>
+    </div>
+
+    <!-- PERSONEN -->
+    <div class="col-4 col-sm-3 col-md-3 col-lg-2 text-center">
+      <a href="{{ url_for('person.list_persons') }}"
+         class="text-decoration-none d-block app-tile">
+        <div class="app-icon ios-icon tile-blue">
+          <i class="bi bi-people-fill"></i>
+        </div>
+        <div class="app-label mt-2">Personen</div>
+      </a>
+    </div>
+
+    <!-- ABRECHNUNG -->
+    <div class="col-4 col-sm-3 col-md-3 col-lg-2 text-center">
+      <a href="{{ url_for('billing.overview') }}"
+         class="text-decoration-none d-block app-tile">
+        <div class="app-icon ios-icon tile-purple">
+          <i class="bi bi-currency-euro"></i>
+        </div>
+        <div class="app-label mt-2">Abrechnung</div>
+      </a>
+    </div>
+
+    {% if session.get('is_admin') or session.get('is_db_admin') %}
+    <!-- E-MAIL VERSAND -->
+    <div class="col-4 col-sm-3 col-md-3 col-lg-2 text-center">
+      <a href="{{ url_for('email_nl.send') }}"
+         class="text-decoration-none d-block app-tile">
+        <div class="app-icon ios-icon tile-teal">
+          <i class="bi bi-send-fill"></i>
+        </div>
+        <div class="app-label mt-2">E-Mail Versand</div>
+      </a>
+    </div>
+    {% endif %}
+
+    <!-- STATISTIK -->
+    <div class="col-4 col-sm-3 col-md-3 col-lg-2 text-center">
+      <a href="{{ url_for('load.statistics_view') }}"
+         class="text-decoration-none d-block app-tile">
+        <div class="app-icon ios-icon tile-blue">
+          <i class="bi bi-bar-chart-line-fill"></i>
+        </div>
+        <div class="app-label mt-2">Statistik</div>
+      </a>
+    </div>
+
+    <!-- DISPLAY -->
+    <div class="col-4 col-sm-3 col-md-3 col-lg-2 text-center">
+      <a href="{{ url_for('load.display_view') }}"
+         class="text-decoration-none d-block app-tile"
+         target="_blank">
+        <div class="app-icon ios-icon tile-teal">
+          <i class="bi bi-display"></i>
+        </div>
+        <div class="app-label mt-2">Display</div>
+      </a>
+    </div>
+
+    <!-- DISPLAY QUER -->
+    <div class="col-4 col-sm-3 col-md-3 col-lg-2 text-center">
+      <a href="{{ url_for('load.display_quer_view') }}"
+         class="text-decoration-none d-block app-tile"
+         target="_blank">
+        <div class="app-icon ios-icon tile-teal">
+          <i class="bi bi-aspect-ratio"></i>
+        </div>
+        <div class="app-label mt-2">Display quer</div>
+      </a>
+    </div>
+
+    <!-- MOBILER ZUGRIFF -->
+    <div class="col-4 col-sm-3 col-md-3 col-lg-2 text-center">
+      <a href="{{ url_for('pwa.connectivity_ui') }}"
+         class="text-decoration-none d-block app-tile">
+        <div class="app-icon ios-icon tile-yellow">
+          <i class="bi bi-qr-code-scan"></i>
+        </div>
+        <div class="app-label mt-2">Mobiler Zugriff</div>
+      </a>
+    </div>
+
+    <!-- DATENBANK -->
+    <div class="col-4 col-sm-3 col-md-3 col-lg-2 text-center">
+      <a href="{{ url_for('admin_database.index') }}"
+         class="text-decoration-none d-block app-tile">
+        <div class="app-icon ios-icon tile-db">
+          <i class="bi bi-database"></i>
+        </div>
+        <div class="app-label mt-2">Datenbank</div>
+      </a>
+    </div>
+
+    <!-- DATENSICHERUNG -->
+    <div class="col-4 col-sm-3 col-md-3 col-lg-2 text-center">
+      <a href="{{ url_for('admin_database.index') }}"
+         class="text-decoration-none d-block app-tile">
+        <div class="app-icon ios-icon tile-backup">
+          <i class="bi bi-save"></i>
+        </div>
+        <div class="app-label mt-2">Datensicherung</div>
+      </a>
+    </div>
+
+    {% if session.get("is_admin") %}
+    <!-- LOGOUT -->
+    <div class="col-4 col-sm-3 col-md-3 col-lg-2 text-center">
+      <form method="post" action="{{ url_for('admin_auth.admin_logout') }}" id="tile-logout-form" style="display:none;"></form>
+      <a href="{{ url_for('admin_auth.admin_logout') }}"
+         class="text-decoration-none d-block app-tile"
+         onclick="event.preventDefault(); document.getElementById('tile-logout-form').submit();">
+        <div class="app-icon ios-icon tile-logout">
+          <i class="bi bi-door-open"></i>
+        </div>
+        <div class="app-label mt-2">Logout</div>
+      </a>
+    </div>
+    {% endif %}
+
+    <!-- BEENDEN -->
+    <div class="col-4 col-sm-3 col-md-3 col-lg-2 text-center">
+      <a href="#"
+         id="pwaShutdownTile"
+         class="text-decoration-none d-block app-tile">
+        <div class="app-icon ios-icon tile-logout">
+          <i class="bi bi-power"></i>
+        </div>
+        <div class="app-label mt-2">Beenden</div>
+      </a>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  (function () {
+    const tile = document.getElementById("pwaShutdownTile");
+    if (!tile) return;
+
+    tile.addEventListener("click", async function (event) {
+      event.preventDefault();
+      const confirmed = window.confirm("Anwendung inkl. Waitress jetzt beenden?");
+      if (!confirmed) return;
+
+      try {
+        const response = await fetch("{{ url_for('pwa.runtime_shutdown') }}", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          keepalive: true,
+        });
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          alert(payload.error || "Beenden nicht möglich.");
+          return;
+        }
+
+        document.body.innerHTML = ""
+          + "<div style='display:flex;min-height:100vh;align-items:center;justify-content:center;background:#111;color:#fff;font-family:system-ui,sans-serif;padding:24px;'>"
+          + "  <div style='max-width:640px;text-align:center;'>"
+          + "    <div style='font-size:56px;line-height:1;margin-bottom:12px;'>⏻</div>"
+          + "    <h1 style='margin:0 0 8px 0;'>Anwendung beendet</h1>"
+          + "    <p style='margin:0;opacity:.85;'>Waitress wurde beendet. Du kannst den Browser schließen.</p>"
+          + "  </div>"
+          + "</div>";
+      } catch (err) {
+        alert("Fehler beim Beenden: " + err.message);
+      }
+    });
+  })();
+</script>
+
+{% endblock %}

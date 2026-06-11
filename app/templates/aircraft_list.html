@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+
+{% block title %}Flugzeuge – Manifest{% endblock %}
+{% block header %}Flugzeuge{% endblock %}
+
+{% block content %}
+
+<style>
+    /* Gemeinsame Spaltenbreiten für alle Tabellen */
+    .aircraft-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+
+    .aircraft-table col:nth-child(1) { width: 22%; }
+    .aircraft-table col:nth-child(2) { width: 18%; }
+    .aircraft-table col:nth-child(3) { width: 10%; }
+    .aircraft-table col:nth-child(4) { width: 15%; }
+    .aircraft-table col:nth-child(5) { width: 25%; }
+    .aircraft-table col:nth-child(6) { width: 10%; }
+
+    /* Nutzung-Spalte stabilisieren */
+    .aircraft-usage {
+        line-height: 1.25;
+    }
+    .aircraft-usage div {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+    }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="fw-bold m-0">Flugzeuge</h3>
+    <a href="{{ url_for('aircraft.new_aircraft') }}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> Neues Flugzeug
+    </a>
+</div>
+
+{% macro aircraft_stats(a) %}
+    {% set loads = a.loads %}
+    {% set count = loads|length %}
+
+    {% if count > 0 %}
+        {% set sorted_loads = loads|sort(attribute='created_at') %}
+        {% set last_load = sorted_loads|last %}
+
+        {% set future = loads
+            |selectattr('scheduled_time')
+            |selectattr('scheduled_time', 'ge', now)
+            |list
+        %}
+        {% set next_load = future|sort(attribute='scheduled_time')|first %}
+    {% else %}
+        {% set last_load = None %}
+        {% set next_load = None %}
+    {% endif %}
+
+    <div class="aircraft-usage small text-muted">
+        <div>
+            <i class="bi bi-graph-up"></i>
+            {{ count }} Load{% if count != 1 %}s{% endif %}
+        </div>
+
+        <div>
+            <i class="bi bi-clock-history"></i>
+            Letzter Load:
+            {% if last_load %}
+                #{{ last_load.load_number }} ({{ last_load.created_at.strftime("%d.%m.%Y") }})
+            {% else %}
+                –
+            {% endif %}
+        </div>
+
+        <div>
+            <i class="bi bi-calendar-event"></i>
+            Nächster geplanter Load:
+            {% if next_load %}
+                {{ next_load.scheduled_time.strftime("%d.%m.%Y %H:%M") }}
+            {% else %}
+                –
+            {% endif %}
+        </div>
+    </div>
+{% endmacro %}
+
+<!-- ===================================================== -->
+<!--   AKTIVE FLUGZEUGE                                    -->
+<!-- ===================================================== -->
+<h5 class="fw-bold mt-4 mb-2 text-success">
+    <i class="bi bi-airplane-engines"></i> Aktive Flugzeuge
+</h5>
+
+{% if aircraft_active %}
+<div class="table-responsive mb-4">
+<table class="table table-hover table-sm align-middle shadow-sm aircraft-table">
+    <colgroup>
+        <col><col><col><col><col><col>
+    </colgroup>
+
+    <thead class="table-light">
+        <tr>
+            <th>Typ</th>
+            <th>Registration</th>
+            <th>Sitze</th>
+            <th>Standardhöhe</th>
+            <th>Nutzung</th>
+            <th class="text-end">Aktionen</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for a in aircraft_active %}
+        <tr>
+            <td>{{ a.type }}</td>
+            <td><span class="badge bg-info text-dark">{{ a.registration }}</span></td>
+            <td>{{ a.seats }}</td>
+            <td>{{ a.default_height }} m</td>
+            <td>{{ aircraft_stats(a) }}</td>
+            <td class="text-end">
+                <div class="btn-group" role="group">
+                    <a href="{{ url_for('aircraft.edit_aircraft', aircraft_id=a.id) }}"
+                       class="btn btn-sm btn-outline-warning" title="Bearbeiten">
+                        <i class="bi bi-pencil-square"></i>
+                    </a>
+                    <form action="{{ url_for('aircraft.archive_aircraft', aircraft_id=a.id) }}"
+                          method="post"
+                          onsubmit="return confirm('Flugzeug wirklich archivieren?');">
+                        <button class="btn btn-sm btn-outline-secondary" title="Archivieren">
+                            <i class="bi bi-archive"></i>
+                        </button>
+                    </form>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p class="text-muted">Keine aktiven Flugzeuge vorhanden.</p>
+{% endif %}
+
+<!-- ===================================================== -->
+<!--   INAKTIVE FLUGZEUGE                                  -->
+<!-- ===================================================== -->
+<h5 class="fw-bold mt-4 mb-2 text-warning">
+    <i class="bi bi-slash-circle"></i> Inaktive Flugzeuge
+</h5>
+
+{% if aircraft_inactive %}
+<div class="table-responsive mb-4">
+<table class="table table-hover table-sm align-middle shadow-sm aircraft-table">
+    <colgroup>
+        <col><col><col><col><col><col>
+    </colgroup>
+
+    <thead class="table-light">
+        <tr>
+            <th>Typ</th>
+            <th>Registration</th>
+            <th>Sitze</th>
+            <th>Standardhöhe</th>
+            <th>Nutzung</th>
+            <th class="text-end">Aktionen</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for a in aircraft_inactive %}
+        <tr>
+            <td>{{ a.type }}</td>
+            <td><span class="badge bg-info text-dark">{{ a.registration }}</span></td>
+            <td>{{ a.seats }}</td>
+            <td>{{ a.default_height }} m</td>
+            <td>{{ aircraft_stats(a) }}</td>
+            <td class="text-end">
+                <div class="btn-group" role="group">
+                    <a href="{{ url_for('aircraft.edit_aircraft', aircraft_id=a.id) }}"
+                       class="btn btn-sm btn-outline-warning" title="Bearbeiten">
+                        <i class="bi bi-pencil-square"></i>
+                    </a>
+                    <form action="{{ url_for('aircraft.archive_aircraft', aircraft_id=a.id) }}"
+                          method="post"
+                          onsubmit="return confirm('Flugzeug wirklich archivieren?');">
+                        <button class="btn btn-sm btn-outline-secondary" title="Archivieren">
+                            <i class="bi bi-archive"></i>
+                        </button>
+                    </form>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p class="text-muted">Keine inaktiven Flugzeuge vorhanden.</p>
+{% endif %}
+
+<!-- ===================================================== -->
+<!--   ARCHIVIERTE FLUGZEUGE                               -->
+<!-- ===================================================== -->
+<h5 class="fw-bold mt-4 mb-2 text-muted">
+    <i class="bi bi-archive-fill"></i> Archivierte Flugzeuge
+</h5>
+
+{% if aircraft_archived %}
+<div class="table-responsive">
+<table class="table table-hover table-sm align-middle shadow-sm aircraft-table">
+    <colgroup>
+        <col><col><col><col><col><col>
+    </colgroup>
+
+    <thead class="table-light">
+        <tr>
+            <th>Typ</th>
+            <th>Registration</th>
+            <th>Sitze</th>
+            <th>Standardhöhe</th>
+            <th>Nutzung</th>
+            <th class="text-end">Aktionen</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for a in aircraft_archived %}
+        <tr>
+            <td>{{ a.type }}</td>
+            <td><span class="badge bg-info text-dark">{{ a.registration }}</span></td>
+            <td>{{ a.seats }}</td>
+            <td>{{ a.default_height }} m</td>
+            <td>{{ aircraft_stats(a) }}</td>
+            <td class="text-end">
+                <div class="btn-group" role="group">
+                    <form action="{{ url_for('aircraft.restore_aircraft', aircraft_id=a.id) }}"
+                          method="post"
+                          onsubmit="return confirm('Flugzeug wiederherstellen?');">
+                        <button class="btn btn-sm btn-outline-success" title="Wiederherstellen">
+                            <i class="bi bi-arrow-counterclockwise"></i>
+                        </button>
+                    </form>
+
+                    {% if is_admin() and a.can_hard_delete() %}
+                    <form action="{{ url_for('aircraft.hard_delete_aircraft', aircraft_id=a.id) }}"
+                          method="post"
+                          onsubmit="return confirm('ENDGÜLTIG löschen? Dieser Vorgang kann NICHT rückgängig gemacht werden.');">
+                        <button class="btn btn-sm btn-outline-danger" title="Endgültig löschen">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </form>
+                    {% elif is_admin() %}
+                        <span class="text-muted ms-1" title="Harddelete nicht möglich">
+                            <i class="bi bi-info-circle"></i>
+                        </span>
+                    {% endif %}
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p class="text-muted">Keine archivierten Flugzeuge vorhanden.</p>
+{% endif %}
+
+{% endblock %}

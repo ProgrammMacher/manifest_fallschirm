@@ -1,0 +1,2138 @@
+{% extends "base.html" %}
+{% set inv_label = invoice.created_at.strftime('%Y') ~ '-Sprünge #' ~ (invoice_display_number if invoice_display_number is defined else (invoice.seq_number if invoice.seq_number is not none else invoice.id)) ~ ' – ' ~ (invoice.person.full_name if invoice.person else '') %}
+
+{% block title %}Rechnung {{ inv_label }}{% endblock %}
+{% block header %}Rechnung {{ inv_label }}{% endblock %}
+
+{% block content %}
+
+
+
+{# -------------------------------------------------- #}
+{# Rechnung speichern #}
+{# -------------------------------------------------- #}
+{% if invoice.stage == 'draft' %}
+<div class="alert alert-warning d-flex align-items-center mb-3">
+  <strong class="me-2">📝 Rechnungsentwurf</strong>
+  <span>
+    Diese Rechnung ist noch <u>nicht gespeichert</u>.
+    Bitte prüfen und anschließend speichern.
+  </span>
+</div>
+{% endif %}
+
+{% if invoice.is_deleted %}
+<div class="alert alert-warning d-flex align-items-center mb-3">
+	<strong class="me-2">Storniert</strong>
+	<span>
+		Diese Rechnung wurde storniert. Anzeige, Druck und erneuter E-Mail-Versand sind nur im Admin-Modus erlaubt.
+	</span>
+</div>
+{% endif %}
+
+{% if not invoice.is_deleted %}
+<div class="no-print mb-3">
+
+	{% if invoice.stage == 'draft' %}
+	<form method="post"
+				action="{{ url_for('billing.invoice_save', invoice_id=invoice.id) }}"
+				class="card p-3" style="max-width: 900px;">
+		<div class="row g-3 align-items-end">
+			<div class="col-md-4">
+				<label for="draftPaymentMethod" class="form-label mb-1">Zahlungsart</label>
+				<input type="hidden" id="draftPaymentMethod" name="payment_method" value="{{ invoice.payment_method or '' }}">
+				<div class="d-flex flex-wrap gap-2" id="draftPaymentButtons">
+					<button type="button"
+									class="btn btn-success btn-sm draft-payment-btn {% if invoice.payment_method == 'cash' %}active{% endif %}"
+									data-method="cash"
+									onclick="selectDraftPaymentMethod(this)">
+						<span class="draft-payment-check {% if invoice.payment_method != 'cash' %}d-none{% endif %}">✔</span> Bar
+					</button>
+					<button type="button"
+									class="btn btn-primary btn-sm draft-payment-btn {% if invoice.payment_method == 'card' %}active{% endif %}"
+									data-method="card"
+									onclick="selectDraftPaymentMethod(this)">
+						<span class="draft-payment-check {% if invoice.payment_method != 'card' %}d-none{% endif %}">✔</span> Karte
+					</button>
+					<button type="button"
+									class="btn btn-secondary btn-sm draft-payment-btn {% if invoice.payment_method == 'transfer' %}active{% endif %}"
+									data-method="transfer"
+									onclick="selectDraftPaymentMethod(this)">
+						<span class="draft-payment-check {% if invoice.payment_method != 'transfer' %}d-none{% endif %}">✔</span> Überweisung
+					</button>
+					<button type="button"
+									class="btn btn-info btn-sm text-dark draft-payment-btn {% if invoice.payment_method == 'wero' %}active{% endif %}"
+									data-method="wero"
+									onclick="selectDraftPaymentMethod(this)">
+						<span class="draft-payment-check {% if invoice.payment_method != 'wero' %}d-none{% endif %}">✔</span> WERO
+					</button>
+				</div>
+			</div>
+
+			<div class="col-md-4">
+				<label for="draftPrepaidVoucherAmount" class="form-label mb-1">Vorkasse / Gutschein (Brutto)</label>
+				<input type="text"
+							 class="form-control"
+							 id="draftPrepaidVoucherAmount"
+							 name="prepaid_voucher_amount"
+							 value="{{ '{:,.2f}'.format(prepaid_voucher_amount).replace(',', 'X').replace('.', ',').replace('X', '.') if prepaid_voucher_amount else '' }}"
+							 placeholder="z. B. 100,00"
+							 {% if not prepaid_allowed %}disabled{% endif %}>
+				{% if prepaid_allowed %}
+					<div class="form-text">Nur Teilbetrag. Der Rest wird später vor Ort bezahlt.</div>
+				{% else %}
+					<div class="form-text text-muted">Nur für Tandemgäste inkl. Mitflieger/Video verfügbar.</div>
+				{% endif %}
+			</div>
+
+			<div class="col-md-4">
+				<div class="small text-muted">Hinweis</div>
+				<div class="text-muted">Die ausgewählte Zahlungsart wird mit der Rechnung gespeichert.</div>
+			</div>
+		</div>
+
+		<div class="d-flex gap-2 mt-3">
+			<button class="btn btn-success">✅ Rechnung speichern</button>
+			<a href="{{ url_for('billing.manual_invoice_new', draft_invoice_id=invoice.id, person_id=invoice.person_id) }}" class="btn btn-outline-primary">✏️ Entwurf bearbeiten</a>
+		</div>
+	</form>
+
+	<form method="post"
+				action="{{ url_for('billing.invoice_discard', invoice_id=invoice.id) }}"
+				class="d-inline-block mt-2"
+				onsubmit="return confirm('Möchtest du diesen Rechnungsentwurf wirklich verwerfen?');">
+		<button class="btn btn-outline-danger">
+			❌ Entwurf verwerfen
+		</button>
+	</form>
+
+	{% elif not invoice.is_paid %}
+	<div class="fw-bold mb-2">Zahlungsart auswählen:</div>
+
+	<div class="d-flex flex-wrap gap-2 mb-2" id="payment-method-buttons">
+
+		<button type="button"
+						class="btn btn-success btn-sm payment-btn"
+						data-method="cash"
+						onclick="selectPaymentMethod(this)">
+			<span class="pm-check d-none">✔</span> Bar
+		</button>
+
+		<button type="button"
+						class="btn btn-primary btn-sm payment-btn"
+						data-method="card"
+						onclick="selectPaymentMethod(this)">
+			<span class="pm-check d-none">✔</span> Karte
+		</button>
+
+		<button type="button"
+						class="btn btn-secondary btn-sm payment-btn"
+						data-method="transfer"
+						onclick="selectPaymentMethod(this)">
+			<span class="pm-check d-none">✔</span> Überweisung
+		</button>
+
+		<button type="button"
+						class="btn btn-info btn-sm text-dark payment-btn"
+						data-method="wero"
+						onclick="selectPaymentMethod(this)">
+			<span class="pm-check d-none">✔</span> WERO
+		</button>
+
+	</div>
+
+	<div class="card mb-2" style="max-width: 520px;">
+		<div class="card-body py-2">
+			<div class="row g-2 align-items-end">
+				<div class="col-md-6">
+					<label for="prepaidVoucherAmountInput" class="form-label mb-1">Vorkasse / Gutschein (Brutto)</label>
+					<input type="text"
+								 id="prepaidVoucherAmountInput"
+								 name="prepaid_voucher_amount"
+								 form="paidOkForm"
+								 class="form-control form-control-sm"
+								 value="{{ '{:,.2f}'.format(prepaid_voucher_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }}"
+								 placeholder="0,00"
+								 {% if not prepaid_allowed %}disabled{% endif %}
+								 oninput="syncPrepaidPreview()">
+						{% if prepaid_allowed %}
+							<div class="form-text">Nur Teilbetrag. Restbetrag wird vor Ort bezahlt.</div>
+						{% else %}
+							<div class="form-text text-muted">Nur für Tandemgäste inkl. Mitflieger/Video möglich.</div>
+						{% endif %}
+				</div>
+				<div class="col-md-6">
+					<div class="small text-muted">Rechnungsbetrag</div>
+					<div class="fw-semibold" id="splitTotalAmountText">{{ '{:,.2f}'.format(invoice.total_amount or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</div>
+					<div class="small text-muted mt-1">Vor Ort zahlbar</div>
+					<div class="fw-semibold text-primary" id="splitOnsiteAmountText">{{ '{:,.2f}'.format(onsite_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<form method="post" id="paidOkForm" class="d-inline-block">
+		<button type="submit"
+						id="markPaidBtn"
+						class="btn btn-danger fw-bold"
+						style="font-weight:900"
+						disabled>
+			Als bezahlt markieren
+		</button>
+	</form>
+
+	<div class="mt-2 small text-muted">
+		Zahlungsart: <strong id="selectedPaymentLabel">—</strong>
+	</div>
+
+	{% else %}
+	<div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+		{% set onsite_method_label = '—' %}
+		{% if invoice.payment_method == 'cash' %}
+			{% set onsite_method_label = 'Bar' %}
+		{% elif invoice.payment_method == 'card' %}
+			{% set onsite_method_label = 'Karte' %}
+		{% elif invoice.payment_method == 'transfer' %}
+			{% set onsite_method_label = 'Überweisung' %}
+		{% elif invoice.payment_method == 'wero' %}
+			{% set onsite_method_label = 'WERO' %}
+		{% endif %}
+		<span class="badge bg-success">Bezahlt</span>
+		{% if prepaid_voucher_amount <= 0 %}
+		<span class="badge bg-secondary">{{ invoice_split_payment_label(invoice) or '–' }}</span>
+		{% endif %}
+		{% if onsite_amount > 0 and onsite_method_label != '—' %}
+		<span class="badge bg-primary">Vor Ort bezahlt mit {{ onsite_method_label }}: {{ '{:,.2f}'.format(onsite_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</span>
+		{% endif %}
+		{% if prepaid_voucher_amount > 0 %}
+		<span class="badge bg-warning text-dark">Vorkasse / Gutschein: {{ '{:,.2f}'.format(prepaid_voucher_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</span>
+		{% if onsite_amount > 0 and onsite_method_label == '—' %}
+		<span class="badge bg-info text-dark">Vor Ort: {{ '{:,.2f}'.format(onsite_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</span>
+		{% endif %}
+		{% endif %}
+	</div>
+	{% endif %}
+</div>
+{% endif %}
+
+{# ----------------------------------------------------- #}
+{# Aktionen nur für gespeicherte Rechnung E-Mail Versand #}
+{# ----------------------------------------------------- #}
+{% if invoice.stage != 'draft' %}
+
+<div class="no-print mb-3 d-flex gap-2 align-items-center">
+
+  <form id="invoiceEmailSendForm" method="post"
+        action="{{ url_for('billing.invoice_send_email', invoice_id=invoice.id) }}"
+        onsubmit="return sendEmailAjax(this, event);">
+		{% if invoice.is_deleted and not is_admin %}
+			<button type="button"
+							class="btn btn-outline-secondary"
+							disabled
+							title="Stornierte Rechnungen dürfen nur im Admin-Modus per E-Mail versendet werden.">
+				📧 E-Mail-Versand nur für Admin
+			</button>
+		{% elif invoice.email_sent_ok and not is_admin %}
+      {# E-Mail bereits versendet & kein Admin: Button disabled #}
+      <button type="button" 
+              class="btn btn-outline-secondary" 
+              disabled
+              title="Diese Rechnung wurde bereits per E-Mail versendet. Nur Admin kann erneut versenden.">
+        📧 E-Mail bereits versendet
+      </button>
+    {% else %}
+      {# Noch nicht versendet ODER Admin: normaler, aktiver Button #}
+      <button class="btn btn-outline-primary">
+        {% if invoice.email_sent_ok and is_admin %}
+          📧 Rechnung erneut versenden (Admin)
+        {% else %}
+          📧 Rechnung per E-Mail senden
+        {% endif %}
+      </button>
+    {% endif %}
+  </form>
+
+  {# ✅ Versand-Zeitstempel anzeigen (Berlin-Zeit) #}
+  {% if invoice.email_sent_ok and invoice.email_sent_at %}
+    <span class="text-muted small ms-4">
+      Versendet: {{ invoice.email_sent_at.strftime('%d.%m.%Y um %H:%M') }}
+    </span>
+  {% endif %}
+
+	{% if is_admin and invoice.email_sent_ok and invoice.email_sent_at and not invoice.email_delivery_confirmed_at %}
+		<form method="post"
+					action="{{ url_for('billing.invoice_confirm_email_delivery', invoice_id=invoice.id) }}">
+			<button class="btn btn-outline-warning btn-sm">
+				Eingang manuell bestätigen
+			</button>
+		</form>
+	{% endif %}
+
+</div>
+
+{% if invoice.email_sent_ok and invoice.email_sent_at %}
+	{% if invoice.email_delivery_confirmed_at %}
+		<div class="alert alert-success no-print py-2">
+			<i class="bi bi-check-circle-fill me-1"></i>
+			<strong>E-Mail-Eingang bestätigt</strong> am {{ invoice.email_delivery_confirmed_at.strftime('%d.%m.%Y um %H:%M') }}
+			{% if invoice.email_delivery_confirmed_by %}durch {{ invoice.email_delivery_confirmed_by }}{% endif %}.
+			{% if invoice.email_last_recipient %} Empfänger: {{ invoice.email_last_recipient }}.{% endif %}
+			{% if invoice.email_last_message_id %} Message-ID: {{ invoice.email_last_message_id }}.{% endif %}
+		</div>
+	{% else %}
+		<div class="alert alert-warning no-print py-2">
+			<i class="bi bi-hourglass-split me-1"></i>
+			<strong>SMTP-Akzeptanz liegt vor</strong>, aber noch keine manuelle Eingangsbestätigung.
+			{% if invoice.email_last_recipient %} Empfänger: {{ invoice.email_last_recipient }}.{% endif %}
+			{% if invoice.email_last_message_id %} Message-ID: {{ invoice.email_last_message_id }}.{% endif %}
+		</div>
+	{% endif %}
+{% endif %}
+
+{% if email_last_error_active %}
+<div class="alert alert-danger no-print py-2" id="emailLastErrorAlert">
+	<i class="bi bi-exclamation-triangle-fill me-1"></i>
+	<strong>Letzter Versandversuch fehlgeschlagen.</strong>
+	{% if invoice.email_last_attempt_at %}
+		({{ invoice.email_last_attempt_at.strftime('%d.%m.%Y um %H:%M') }})
+	{% endif %}
+	<br>
+	<span class="font-monospace small">{{ invoice.email_last_error }}</span>
+</div>
+{% endif %}
+
+{% if email_job_is_live %}
+<div class="alert alert-info no-print py-2 d-flex align-items-center gap-2" id="emailSendingLiveBanner">
+	<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+	<strong>Versand läuft…</strong>
+	<span id="emailSendingLiveStep" class="text-muted small ms-1"></span>
+</div>
+{% endif %}
+
+{# -------------------------------------------------- #}
+{# Zurück zur Rechnungsübersicht
+{# -------------------------------------------------- #}
+
+<div class="no-print mb-3 d-flex gap-2">
+  <a href="{{ url_for('billing.invoice_list') }}"
+     class="btn btn-outline-secondary">
+    <i class="bi bi-arrow-left"></i>
+    Zurück zur Rechnungsübersicht
+  </a>
+  <a href="{{ url_for('billing.persons_overview') }}"
+     class="btn btn-outline-secondary">
+    <i class="bi bi-people"></i>
+    Zurück zur Personenliste
+  </a>
+</div>
+
+{% endif %}
+
+
+{# -------------------------------------------------- #}
+{# Defensive Defaults #}
+{# -------------------------------------------------- #}
+{% set billing_config = billing_config if billing_config is defined else None %}
+{% set is_dev_mode = is_dev_mode if is_dev_mode is defined else false %}
+{% set is_pdf_render = is_pdf_render if is_pdf_render is defined else false %}
+{% set flags = namespace(has_manual=false, has_load=false) %}
+{% for item in invoice.items %}
+	{% if (item.item_source or 'load') == 'manual' %}
+		{% set flags.has_manual = true %}
+	{% endif %}
+	{% if item.load_entry %}
+		{% set flags.has_load = true %}
+	{% endif %}
+{% endfor %}
+{% set is_manual_only = flags.has_manual and not flags.has_load %}
+
+{% set m = namespace(net=0, vat=0, gross=0, found=false) %}
+{% for item in invoice.items %}
+	{% if (item.item_source or 'load') == 'manual' %}
+		{% set m.found = true %}
+		{% set m.net = m.net + (item.net_amount or 0) %}
+		{% set m.vat = m.vat + (item.vat_amount or 0) %}
+		{% set m.gross = m.gross + (item.amount or 0) %}
+	{% endif %}
+{% endfor %}
+
+<!-- =============================== -->
+<!-- RECHNUNGSKOPF (POSITION KORRIGIERT) -->
+<!-- =============================== -->
+
+<div id="invoiceDetailRoot" class="{% if is_pdf_render %}pdf-render-mode{% endif %}">
+<div class="container">
+	<div id="invoice-content" class="{% if invoice.is_deleted %}invoice-cancelled{% endif %}">
+		{% if invoice.is_deleted %}
+		<div class="invoice-watermark">STORNIERT</div>
+		{% endif %}
+    <div class="invoice-header mb-2">
+
+	<!-- PDF-STABILER VERTIKAL-SPACER FÜR FENSTERUMSCHLAG -->
+    <table style="width:100%; border-collapse:collapse;">
+      <tr>
+
+		<!-- LINKS: LOGO + RECHNUNGSEMPFÄNGER -->
+		<td style="width:40%; vertical-align:top;" class="small">
+
+		  {% if billing_config and billing_config.logo_filename %}
+			<div style="margin-top:3mm; margin-bottom:4mm;">
+			  <img src="{{ logo_data_uri or url_for('static', filename='img/' ~ billing_config.logo_filename) }}"
+				   alt="Logo"
+				   class="invoice-logo">
+			</div>
+		  {% endif %}
+
+		  <!-- Empfänger DIREKT unter dem Logo -->
+					<div class="address-window">
+						<strong>Rechnungsempfänger</strong><br>
+						{% if invoice.billing_address_name %}
+							{{ invoice.billing_address_name }}<br>
+							{% if invoice.billing_address_street %}{{ invoice.billing_address_street }}<br>{% endif %}
+							{% if invoice.billing_address_zip or invoice.billing_address_city %}
+								{{ invoice.billing_address_zip or '' }} {{ invoice.billing_address_city or '' }}
+							{% endif %}
+							{% if invoice.billing_address_email %}
+								<br><br>E-Mail: {{ invoice.billing_address_email }}
+							{% endif %}
+						{% else %}
+							{{ invoice.person.full_name }}<br>
+							{{ invoice.person.street_and_number }}<br>
+							{{ invoice.person.zip_code }} {{ invoice.person.city }}
+							{% if invoice.person.email %}
+								<br><br>E-Mail: {{ invoice.person.email }}
+							{% endif %}
+						{% endif %}
+					</div>
+
+		</td>
+
+        <!-- RECHTS: RECHNUNGSSTELLER + META -->
+        <td style="width:60%; vertical-align:top; text-align:right;" class="small">
+          {% if billing_config %}
+
+            <!-- RECHNUNGSSTELLER ganz oben -->
+            <div style="line-height:1.2; margin-top:3mm;">
+              <strong>{{ billing_config.company_name }}</strong><br>
+              {{ billing_config.street }}<br>
+              {{ billing_config.zip_code }} {{ billing_config.city }}<br>
+
+			  {% if billing_config.website %}
+			    Internet:
+			    <a href="{{ billing_config.website }}" target="_blank">
+			 	  {{ billing_config.website }}
+			    </a><br>
+			  {% endif %}
+
+			  {% if billing_config.email %}
+			    E-Mail: {{ billing_config.email }}<br>
+			  {% endif %}
+
+			  {% if billing_config.tax_number %}
+			    <br>
+			    <small class="text-muted">
+				  Steuernummer: {{ billing_config.tax_number }}
+			    </small><br>
+			  {% endif %}
+              </div>
+
+            <!-- Social-QRs direkt unter Adresse -->
+            <div style="margin-top:4mm;">
+              {% if billing_config.qr_instagram_filename %}
+								{% if billing_config.instagram_url %}
+									<a href="{{ billing_config.instagram_url }}" target="_blank" rel="noopener noreferrer">
+										<img src="{{ qr_instagram_data_uri or url_for('static', filename='img/qr/' ~ billing_config.qr_instagram_filename) }}"
+												 class="social-qr" alt="QR Instagram">
+									</a>
+								{% else %}
+									<img src="{{ qr_instagram_data_uri or url_for('static', filename='img/qr/' ~ billing_config.qr_instagram_filename) }}"
+											 class="social-qr" alt="QR Instagram">
+								{% endif %}
+              {% endif %}
+              {% if billing_config.qr_facebook_filename %}
+								{% if billing_config.facebook_url %}
+									<a href="{{ billing_config.facebook_url }}" target="_blank" rel="noopener noreferrer">
+										<img src="{{ qr_facebook_data_uri or url_for('static', filename='img/qr/' ~ billing_config.qr_facebook_filename) }}"
+												 class="social-qr" alt="QR Facebook">
+									</a>
+								{% else %}
+									<img src="{{ qr_facebook_data_uri or url_for('static', filename='img/qr/' ~ billing_config.qr_facebook_filename) }}"
+											 class="social-qr" alt="QR Facebook">
+								{% endif %}
+              {% endif %}
+              {% if billing_config.qr_website_filename %}
+								{% if billing_config.website %}
+									<a href="{{ billing_config.website }}" target="_blank" rel="noopener noreferrer">
+										<img src="{{ qr_website_data_uri or url_for('static', filename='img/qr/' ~ billing_config.qr_website_filename) }}"
+												 class="social-qr" alt="QR Website">
+									</a>
+								{% else %}
+									<img src="{{ qr_website_data_uri or url_for('static', filename='img/qr/' ~ billing_config.qr_website_filename) }}"
+											 class="social-qr" alt="QR Website">
+								{% endif %}
+              {% endif %}
+            </div>
+
+            <!-- RECHNUNGSMETADATEN – auf Höhe der Empfängeradresse -->
+            <div style="margin-top:18mm; font-size:9pt;">
+              <strong>Rechnungsnummer:</strong>
+			  {{ invoice.created_at.strftime('%Y') }}-Sprünge #{{ invoice_display_number if invoice_display_number is defined else (invoice.seq_number if invoice.seq_number is not none else invoice.id) }}<br>
+              <strong>Rechnungsdatum:</strong>
+              {{ invoice.created_at.strftime('%d.%m.%Y') }}
+							{% if invoice.service_date %}
+								<br>
+								<strong>Leistungsdatum:</strong>
+								{{ invoice.service_date.strftime('%d.%m.%Y') }}
+							{% endif %}
+            </div>
+
+          {% endif %}
+        </td>
+      </tr>
+    </table>
+
+    <hr class="my-1">
+
+    <!-- ZAHLUNGSDATEN + EPC-QR -->
+    {% if billing_config %}
+      <table style="width:100%; margin-top:10px;" class="small">
+        <tr>
+
+          <!-- Zahlungsdaten links -->
+          <td style="width:50%; vertical-align:top;">
+            <strong>Zahlung:</strong><br>
+            {{ billing_config.payment_methods_text }}<br><br>
+
+            <strong>Bankverbindung:</strong><br>
+            {{ billing_config.bank_name }}<br>
+            IBAN: {{ billing_config.iban }}<br>
+            {% if billing_config.bic %}
+              BIC: {{ billing_config.bic }}
+            {% endif %}<br><br>
+
+            <strong>Zahlungsbedingung:</strong><br>
+            {{ billing_config.payment_terms }}
+          </td>
+
+          <!-- EPC-Zahlungs-QR rechts -->
+					<td class="epc-qr-cell" style="width:50%; vertical-align:top; text-align:right;">
+            {% if epc_qr_data_uri %}
+							<div class="epc-qr-block">
+								<div class="epc-qr-title" style="font-size:9pt; font-weight:700; margin-bottom:4px;">
+                  Zahlung per QR (EPC-SEPA)
+                </div>
+                <img src="{{ epc_qr_data_uri }}"
+                     class="epc-qr"
+                     alt="Zahlung per QR (EPC)">
+								<div class="epc-qr-note" style="font-size:8pt; color:#555;">
+                  Scan mit Banking-App · Zweck: Rechnungsnr. + Springer
+                </div>
+              </div>
+            {% endif %}
+          </td>
+
+        </tr>
+      </table>
+    {% endif %}
+
+	{# -------------------------
+	   1b) Manuelle Positionen
+	   ------------------------- #}
+	<div class="pdf-hide-zero-section{% if m.gross == 0 %} is-zero{% endif %}">
+	<h5 class="fw-bold mt-3">{{ (invoice.manual_title or 'Manuelle Positionen') }}</h5>
+	<div class="table-responsive mb-2">
+	  <table class="table table-striped align-middle">
+		<thead class="table-light">
+		  <tr>
+			<th>Beschreibung</th>
+			<th class="text-end">Menge</th>
+			<th>Einheit</th>
+			<th class="text-end">Einzelpreis (Brutto) €</th>
+			<th class="text-end col-net">Netto €</th>
+			<th class="text-end col-vat">MwSt €</th>
+			<th class="text-end">Brutto €</th>
+		  </tr>
+		</thead>
+		<tbody>
+		  {% for item in invoice.items %}
+			{% if (item.item_source or 'load') == 'manual' %}
+			  <tr>
+				<td class="desc-wrap">{{ item.description or 'Manuelle Position' }}</td>
+				<td class="text-end">
+				  {{ "{:,.2f}".format(item.quantity or 1).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+				</td>
+				<td>{{ item.manual_unit or '—' }}</td>
+				<td class="text-end">
+				  {{ "{:,.2f}".format(item.unit_price_gross or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+				</td>
+				<td class="text-end col-net">
+				  {{ "{:,.2f}".format(item.net_amount or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+				</td>
+				<td class="text-end col-vat">
+				  <div>
+					{{ "{:,.2f}".format(item.vat_amount or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+				  </div>
+				  <div class="small text-muted">{{ item.vat_rate or 0 }}%</div>
+				</td>
+				<td class="text-end">
+				  {{ "{:,.2f}".format(item.amount or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+				</td>
+			  </tr>
+			{% endif %}
+		  {% endfor %}
+
+		  {% if not m.found %}
+			<tr>
+			  <td colspan="7" class="text-muted">Keine manuellen Positionen vorhanden.</td>
+			</tr>
+		  {% endif %}
+		</tbody>
+		<tfoot>
+		  <tr class="table-light fw-bold">
+			<td colspan="4" class="text-end">Summe manuelle Positionen</td>
+			<td class="text-end col-net col-netvat-foot">{{ "{:,.2f}".format(m.net).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+			<td class="text-end col-vat col-netvat-foot">{{ "{:,.2f}".format(m.vat).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+			<td class="text-end">{{ "{:,.2f}".format(m.gross).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+		  </tr>
+		</tfoot>
+	  </table>
+	</div>
+	</div>
+
+	{# -------------------------
+	   1) Sprungpositionen
+	   ------------------------- #}
+	{% if not is_manual_only %}
+	<h5 class="fw-bold mt-3">
+	  Sprungpositionen
+	  {% if invoice.person and invoice.person.full_name %}
+	    für {{ invoice.person.full_name }}
+	  {% endif %}
+	</h5>
+	{% set j = namespace(net=0, vat=0, gross=0, found=false) %}
+	<div class="table-responsive mb-2">
+	  <table class="table table-striped align-middle">
+		<thead class="table-light">
+		  <tr>
+			<th>Datum</th>
+			<th>Uhrzeit</th>
+			<th>Load</th>
+			<th>Flugplatz</th>
+			<th>Sprungart</th>
+			<th class="text-end">Höhe</th>
+			<th class="text-center">Schirm</th>
+			<th class="text-end col-net">Netto €</th>
+			<th class="text-end col-vat">MwSt €</th>
+			<th class="text-end">Brutto €</th>
+		  </tr>
+		</thead>
+		<tbody>
+		  {% for item in invoice.items %}
+			{% if item.load_entry and item.description and item.description.startswith("Sprung") %}
+			  {% set j.found = true %}
+			  {% set le = item.load_entry %}
+			  {% set ld = le.load %}
+			  {% set dt = (ld.actual_time or ld.scheduled_time or ld.created_at) if ld else None %}
+			  {% set j.net = j.net + (item.net_amount or 0) %}
+			  {% set j.vat = j.vat + (item.vat_amount or 0) %}
+			  {% set j.gross = j.gross + (item.amount or 0) %}
+			  <tr>
+				<td>{{ dt.strftime('%d.%m.%Y') if dt else '–' }}</td>
+				<td>{{ dt.strftime('%H:%M') if dt else '–' }}</td>
+				<td>{% if ld %}Load {{ ld.load_number }}{% else %}–{% endif %}</td>
+				<td class="text-nowrap">
+				  {{ (ld.airfield.name or '').split(' ')[0] if ld and ld.airfield else '–' }}
+				</td>
+				<td>{{ le.status_code }}</td>
+				<td class="text-end">{{ le.height_m }} m</td>
+				<td class="text-center">
+				  {% if le.gear_rental %}
+					<span title="Schirmmiete">🪂 Schirmmiete</span>
+				  {% else %}
+					<span class="text-muted">–</span>
+				  {% endif %}
+				</td>
+
+				<td class="text-end col-net">
+				  {{ "{:,.2f}".format(item.net_amount or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+				</td>
+
+				<td class="text-end col-vat">
+				  <div>
+					{{ "{:,.2f}".format(item.vat_amount or 0)
+					   .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+				  </div>
+				  <div class="small text-muted">
+					{{ item.vat_rate or 0 }}%
+				  </div>
+				</td>
+
+				<td class="text-end">
+				  {{ "{:,.2f}".format(item.amount or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+				</td>
+			  </tr>
+			{% endif %}
+		  {% endfor %}
+		  {% if not j.found %}
+			<tr><td colspan="10" class="text-muted">Keine Sprungpositionen vorhanden.</td></tr>
+		  {% endif %}
+		</tbody>
+		<tfoot>
+		  <tr class="table-light">
+			<th colspan="7">Summe Sprünge</th>
+			<th class="text-end col-net col-netvat-foot">
+			  {{ "{:,.2f}".format(j.net).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			</th>
+			<th class="text-end col-vat col-netvat-foot">
+			  {{ "{:,.2f}".format(j.vat).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			</th>
+			<th class="text-end">
+			  {{ "{:,.2f}".format(j.gross).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			</th>
+		  </tr>
+		</tfoot>
+	  </table>
+	</div>
+
+	{# -------------------------
+	   2) Schirmmiete
+	   ------------------------- #}
+	{% set r_meta = namespace(gross=0) %}
+	{% for item in invoice.items %}
+	  {% if item.description and item.description.startswith("Schirmmiete") %}
+	    {% set r_meta.gross = r_meta.gross + (item.amount or 0) %}
+	  {% endif %}
+	{% endfor %}
+	<div class="pdf-hide-zero-section{% if r_meta.gross == 0 %} is-zero{% endif %}">
+	<h5 class="fw-bold mt-3">Schirmmiete</h5>
+	{% set r = namespace(net=0, vat=0, gross=0, found=false) %}
+	<div class="table-responsive mb-2">
+	  <table class="table table-striped align-middle">
+		<thead class="table-light">
+		  <tr>
+			<th>Beschreibung</th>
+			<th></th> <!-- Dummy: Uhrzeit -->
+			<th></th> <!-- Dummy: Load -->
+			<th></th> <!-- Dummy: Flugplatz -->
+			<th></th> <!-- Dummy: Sprungart -->
+			<th></th> <!-- Dummy: Höhe -->
+			<th></th> <!-- Dummy: Schirm -->
+
+			<th class="text-end col-net">Netto €</th>
+			<th class="text-end col-vat">MwSt €</th>
+			<th class="text-end">Brutto €</th>
+		  </tr>
+		</thead>
+		<tbody>
+		  {% for item in invoice.items %}
+			{% if item.description and item.description.startswith("Schirmmiete") and (not is_pdf_render or (item.amount or 0) != 0) %}
+			  {% set r.found = true %}
+			  {% set r.net = r.net + (item.net_amount or 0) %}
+			  {% set r.vat = r.vat + (item.vat_amount or 0) %}
+			  {% set r.gross = r.gross + (item.amount or 0) %}
+			  <tr>
+				<td class="desc-wrap">{{ item.description }}</td>
+
+				<!-- Dummy-Spalten -->
+				<td></td>
+				<td></td>
+				<td></td>
+				<td></td>
+				<td></td>
+				<td></td>
+
+				<td class="text-end col-net">
+				  {{ "{:,.2f}".format(item.net_amount or 0)
+					 .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+				</td>
+
+				<td class="text-end col-vat">
+				  <div>
+					{{ "{:,.2f}".format(item.vat_amount or 0)
+					   .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+				  </div>
+				  <div class="small text-muted">
+					{{ item.vat_rate or 0 }}%
+				  </div>
+				</td>
+
+				<td class="text-end">
+				  {{ "{:,.2f}".format(item.amount or 0)
+					 .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+				</td>
+			  </tr>
+			{% endif %}
+		  {% endfor %}
+
+		  {% if not r.found %}
+			<tr>
+			  <td colspan="10" class="text-muted">
+				Keine Schirmmiete berechnet.
+			  </td>
+			</tr>
+		  {% endif %}
+		</tbody>
+
+		<tfoot>
+		  <tr class="table-light fw-bold">
+			<td colspan="7" class="text-end">
+			  Summe Schirmmiete
+			</td>
+			<td class="text-end col-net col-netvat-foot">
+			  {{ "{:,.2f}".format(r.net)
+				 .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			</td>
+			<td class="text-end col-vat col-netvat-foot">
+			  {{ "{:,.2f}".format(r.vat)
+				 .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			</td>
+			<td class="text-end">
+			  {{ "{:,.2f}".format(r.gross)
+				 .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			</td>
+		  </tr>
+		</tfoot>
+	  </table>
+	</div>
+	</div>
+
+	{# -------------------------
+	   3) Organisationspauschale
+	   ------------------------- #}
+	{% set o_meta = namespace(gross=0) %}
+	{% for item in invoice.items %}
+	  {% if item.description and item.description.startswith("Organisationspauschale") %}
+	    {% set o_meta.gross = o_meta.gross + (item.amount or 0) %}
+	  {% endif %}
+	{% endfor %}
+	<div class="pdf-hide-zero-section{% if o_meta.gross == 0 %} is-zero{% endif %}">
+	<h5 class="fw-bold mt-3">Organisationspauschale</h5>
+	{% set o = namespace(net=0, vat=0, gross=0, found=false) %}
+	<div class="table-responsive mb-2">
+	  <table class="table table-striped align-middle">
+		<thead class="table-light">
+		  <tr>
+			<th>Beschreibung</th>
+
+			<!-- Dummy-Spalten zur Ausrichtung (wie Loads) -->
+			<th></th> <!-- Uhrzeit -->
+			<th></th> <!-- Load -->
+			<th></th> <!-- Flugplatz -->
+			<th></th> <!-- Sprungart -->
+			<th></th> <!-- Höhe -->
+			<th></th> <!-- Schirm -->
+
+			<th class="text-end col-net">Netto €</th>
+			<th class="text-end col-vat">MwSt €</th>
+			<th class="text-end">Brutto €</th>
+		  </tr>
+		</thead>
+
+		<tbody>
+
+					{% for item in invoice.items %}
+						{% if item.description and item.description.startswith("Organisationspauschale") and (not is_pdf_render or (item.amount or 0) != 0) %}
+							{% set o.found = true %}
+							{% set o.net = o.net + (item.net_amount or 0) %}
+							{% set o.vat = o.vat + (item.vat_amount or 0) %}
+							{% set o.gross = o.gross + (item.amount or 0) %}
+							{% set is_hint = (item.amount == 0 and 'bereits in Rechnung #' in item.description) %}
+							<tr{% if is_hint %} class="text-muted bg-light"{% endif %}>
+								<td class="desc-wrap">
+									{{ item.description }}
+									{% if is_hint %}
+										<div class="small fst-italic">Hinweis: Organisationspauschale wurde bereits in einer anderen Rechnung abgerechnet.</div>
+									{% endif %}
+								</td>
+
+								<!-- Dummy-Spalten -->
+								<td></td>
+								<td></td>
+								<td></td>
+								<td></td>
+								<td></td>
+								<td></td>
+
+								<td class="text-end col-net">
+									{% if is_hint %}–{% else %}
+										{{ "{:,.2f}".format(item.net_amount or 0)
+											 .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+									{% endif %}
+								</td>
+
+								<td class="text-end col-vat">
+									{% if is_hint %}–{% else %}
+									<div>
+										{{ "{:,.2f}".format(item.vat_amount or 0)
+											 .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+									</div>
+									<div class="small text-muted">
+										{{ item.vat_rate or 0 }}%
+									</div>
+									{% endif %}
+								</td>
+
+								<td class="text-end">
+									{% if is_hint %}–{% else %}
+										{{ "{:,.2f}".format(item.amount or 0)
+											 .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+									{% endif %}
+								</td>
+							</tr>
+						{% endif %}
+					{% endfor %}
+
+		  {% if not o.found %}
+			<tr>
+			  <td colspan="10" class="text-muted">
+				Keine Organisationspauschale berechnet.
+			  </td>
+			</tr>
+		  {% endif %}
+		</tbody>
+
+		<tfoot>
+		  <tr class="table-light fw-bold">
+			<td colspan="7" class="text-end">
+			  Summe Organisationspauschale
+			</td>
+			<td class="text-end col-net col-netvat-foot">
+			  {{ "{:,.2f}".format(o.net)
+				 .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			</td>
+			<td class="text-end col-vat col-netvat-foot">
+			  {{ "{:,.2f}".format(o.vat)
+				 .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			</td>
+			<td class="text-end">
+			  {{ "{:,.2f}".format(o.gross)
+				 .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			</td>
+		  </tr>
+		</tfoot>
+	  </table>
+	</div>
+	</div>
+	
+	
+	{# -------------------------
+	   4) Transaktionskosten (PayPal, Karte, etc.)
+	   ------------------------- #}
+	{% if session.get('is_admin') and billing_config %}
+
+	  {# Aktuellen Modus aus vorhandenen Fee-Items ableiten #}
+	  {% set tx = namespace(mode='none') %}
+	  {% for it in invoice.items %}
+		{% if it.description and (it.description.startswith("Transaktionskosten") or it.description.startswith("Transaktionsgebühr")) %}
+		  {% if "Prozent" in it.description %}
+			{% set tx.mode = 'percent' %}
+		  {% elif "Festbetrag" in it.description %}
+			{% set tx.mode = 'fixed' %}
+		  {% else %}
+			{% set tx.mode = 'fixed' %}
+		  {% endif %}
+		{% endif %}
+	  {% endfor %}
+
+	  <div class="no-print mt-3 mb-2" id="tx-fee-controls">
+		<div class="fw-bold mb-1">Transaktionskosten:</div>
+
+		<label class="form-check form-check-inline mb-0">
+		  <input class="form-check-input tx-fee-radio"
+				 type="radio"
+				 name="transaction_fee_mode"
+				 value="none"
+				 {% if tx.mode == 'none' %}checked{% endif %}>
+		  <span class="form-check-label">Keine</span>
+		</label>
+
+		<label class="form-check form-check-inline mb-0">
+		  <input class="form-check-input tx-fee-radio"
+				 type="radio"
+				 name="transaction_fee_mode"
+				 value="fixed"
+				 {% if tx.mode == 'fixed' %}checked{% endif %}>
+		  <span class="form-check-label">
+			Festbetrag ({{ "{:,.2f}".format(billing_config.transaction_fee_fixed_eur or 0)
+			  .replace(',', 'X').replace('.', ',').replace('X', '.') }} €)
+		  </span>
+		</label>
+
+		<label class="form-check form-check-inline mb-0">
+		  <input class="form-check-input tx-fee-radio"
+				 type="radio"
+				 name="transaction_fee_mode"
+				 value="percent"
+				 {% if tx.mode == 'percent' %}checked{% endif %}>
+		  <span class="form-check-label">
+			Prozent ({{ billing_config.transaction_fee_percent or 0 }} %)
+		  </span>
+		</label>
+	  </div>
+
+	{% endif %}
+
+	{% set t_meta = namespace(gross=0) %}
+	{% for item in invoice.items %}
+	  {% if item.description and (item.description.startswith("Transaktionskosten") or item.description.startswith("Transaktionsgebühr")) %}
+	    {% set t_meta.gross = t_meta.gross + (item.amount or 0) %}
+	  {% endif %}
+	{% endfor %}
+	<div class="pdf-hide-zero-section{% if t_meta.gross == 0 %} is-zero{% endif %}">
+	<h5 class="fw-bold mt-3">Transaktionskosten</h5>
+	{% set t = namespace(net=0, vat=0, gross=0, found=false) %}
+	<div class="table-responsive mb-2">
+	  <table class="table table-striped align-middle">
+		<thead class="table-light">
+		  <tr>
+			<th>Beschreibung</th>
+
+			<!-- Dummy-Spalten zur Ausrichtung (wie Loads) -->
+			<th></th> <!-- Uhrzeit -->
+			<th></th> <!-- Load -->
+			<th></th> <!-- Flugplatz -->
+			<th></th> <!-- Sprungart -->
+			<th></th> <!-- Höhe -->
+			<th></th> <!-- Schirm -->
+
+			<th class="text-end col-net">Netto €</th>
+			<th class="text-end col-vat">MwSt €</th>
+			<th class="text-end">Brutto €</th>
+		  </tr>
+		</thead>
+
+		<tbody>
+		  {% for item in invoice.items %}
+			{% if item.description and (item.description.startswith("Transaktionskosten") or item.description.startswith("Transaktionsgebühr")) %}
+			  {% set t.found = true %}
+			  {% set t.net = t.net + (item.net_amount or 0) %}
+			  {% set t.vat = t.vat + (item.vat_amount or 0) %}
+			  {% set t.gross = t.gross + (item.amount or 0) %}
+			  <tr>
+				<td class="desc-wrap">{{ item.description }}</td>
+
+				<!-- Dummy-Spalten -->
+				<td></td>
+				<td></td>
+				<td></td>
+				<td></td>
+				<td></td>
+				<td></td>
+
+				<td class="text-end col-net">
+				  {{ "{:,.2f}".format(item.net_amount or 0)
+					 .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+				</td>
+
+				<td class="text-end col-vat">
+				  <div>
+					{{ "{:,.2f}".format(item.vat_amount or 0)
+					   .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+				  </div>
+				  <div class="small text-muted">
+					{{ item.vat_rate or 0 }}%
+				  </div>
+				</td>
+
+				<td class="text-end">
+				  {{ "{:,.2f}".format(item.amount or 0)
+					 .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+				</td>
+			  </tr>
+			{% endif %}
+		  {% endfor %}
+
+		  {% if not t.found %}
+			<tr>
+			  <td colspan="10" class="text-muted">
+				Keine Transaktionskosten berechnet.
+			  </td>
+			</tr>
+		  {% endif %}
+		</tbody>
+
+		<tfoot>
+		  <tr class="table-light fw-bold">
+			<td colspan="7" class="text-end">
+			  Summe Transaktionskosten
+			</td>
+			<td class="text-end col-net col-netvat-foot">
+			  {{ "{:,.2f}".format(t.net)
+				 .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			</td>
+			<td class="text-end col-vat col-netvat-foot">
+			  {{ "{:,.2f}".format(t.vat)
+				 .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			</td>
+			<td class="text-end">
+			  {{ "{:,.2f}".format(t.gross)
+				 .replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			</td>
+		  </tr>
+		</tfoot>
+	  </table>
+	</div>
+	{% else %}
+	{% set j = namespace(net=0, vat=0, gross=0, found=false) %}
+	{% set r = namespace(net=0, vat=0, gross=0, found=false) %}
+	{% set o = namespace(net=0, vat=0, gross=0, found=false) %}
+	{% set t = namespace(net=0, vat=0, gross=0, found=false) %}
+	{% endif %}
+	</div>
+
+
+
+{# ===============================
+   Zahlung / Bezahlt markieren – Buttons mit sichtbarer Auswahl (Haken)
+   =============================== #}
+
+{% if invoice.stage != 'draft' and not invoice.is_deleted %}
+<div class="no-print mt-2">
+
+{% if false %}
+
+  <div class="fw-bold mb-2">Zahlungsart auswählen:</div>
+
+  <div class="d-flex flex-wrap gap-2 mb-2" id="payment-method-buttons">
+
+    <button type="button"
+            class="btn btn-success btn-sm payment-btn"
+            data-method="cash"
+            onclick="selectPaymentMethod(this)">
+      <span class="pm-check d-none">✔</span> Bar
+    </button>
+
+    <button type="button"
+            class="btn btn-primary btn-sm payment-btn"
+            data-method="card"
+            onclick="selectPaymentMethod(this)">
+      <span class="pm-check d-none">✔</span> Karte
+    </button>
+
+    <button type="button"
+            class="btn btn-secondary btn-sm payment-btn"
+            data-method="transfer"
+            onclick="selectPaymentMethod(this)">
+      <span class="pm-check d-none">✔</span> Überweisung
+    </button>
+
+    <button type="button"
+            class="btn btn-info btn-sm text-dark payment-btn"
+            data-method="wero"
+            onclick="selectPaymentMethod(this)">
+      <span class="pm-check d-none">✔</span> WERO
+    </button>
+
+  </div>
+
+	<div class="card mb-2" style="max-width: 520px;">
+		<div class="card-body py-2">
+			<div class="row g-2 align-items-end">
+				<div class="col-md-6">
+					<label for="prepaidVoucherAmountInput" class="form-label mb-1">Vorkasse / Gutschein (Brutto)</label>
+					<input type="text"
+								 id="prepaidVoucherAmountInput"
+								 name="prepaid_voucher_amount"
+								 form="paidOkForm"
+								 class="form-control form-control-sm"
+								 value="{{ '{:,.2f}'.format(prepaid_voucher_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }}"
+								 placeholder="0,00"
+								 {% if not prepaid_allowed %}disabled{% endif %}
+								 oninput="syncPrepaidPreview()">
+					{% if prepaid_allowed %}
+						<div class="form-text">Nur Teilbetrag. Restbetrag wird vor Ort bezahlt.</div>
+					{% else %}
+						<div class="form-text text-muted">Nur für Tandemgäste inkl. Mitflieger/Video möglich.</div>
+					{% endif %}
+				</div>
+				<div class="col-md-6">
+					<div class="small text-muted">Rechnungsbetrag</div>
+					<div class="fw-semibold" id="splitTotalAmountText">{{ '{:,.2f}'.format(invoice.total_amount or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</div>
+					<div class="small text-muted mt-1">Vor Ort zahlbar</div>
+					<div class="fw-semibold text-primary" id="splitOnsiteAmountText">{{ '{:,.2f}'.format(onsite_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<form method="post" id="paidOkForm" class="d-inline-block">
+		<button type="submit"
+						id="markPaidBtn"
+						class="btn btn-danger fw-bold"
+						style="font-weight:900"
+						disabled>
+			Als bezahlt markieren
+		</button>
+	</form>
+
+	<div class="mt-2 small text-muted">
+		Zahlungsart: <strong id="selectedPaymentLabel">—</strong>
+	</div>
+
+
+{% else %}
+ <div class="d-none d-flex flex-wrap gap-2 align-items-center mb-2">
+  <span class="badge bg-success">Bezahlt</span>
+  <span class="badge bg-secondary">
+		{{ invoice_split_payment_label(invoice) or '–' }}
+  </span>
+	{% if prepaid_voucher_amount > 0 %}
+	<span class="badge bg-warning text-dark">Vorkasse / Gutschein: {{ '{:,.2f}'.format(prepaid_voucher_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</span>
+	<span class="badge bg-info text-dark">Vor Ort: {{ '{:,.2f}'.format(onsite_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</span>
+	{% endif %}
+ </div>
+
+ {% if session.get('is_admin') %}
+ <div class="no-print mt-2 p-3 border rounded bg-light">
+  <div class="fw-bold text-danger mb-2">
+   Admin-Aktionen
+  </div>
+
+  {# Zahlungsart nachträglich ändern #}
+  <form method="post"
+        action="{{ url_for('billing.invoice_set_payment_method', invoice_id=invoice.id) }}"
+        class="mb-2">
+   <label class="form-label mb-1">Zahlungsart ändern</label>
+   <div class="d-flex gap-2">
+    <select name="payment_method" class="form-select form-select-sm">
+     <option value="cash" {% if invoice.payment_method == 'cash' %}selected{% endif %}>Bar</option>
+     <option value="card" {% if invoice.payment_method == 'card' %}selected{% endif %}>Karte</option>
+     <option value="transfer" {% if invoice.payment_method == 'transfer' %}selected{% endif %}>Überweisung</option>
+     <option value="wero" {% if invoice.payment_method == 'wero' %}selected{% endif %}>WERO</option>
+    </select>
+	<input type="text"
+		   name="prepaid_voucher_amount"
+		   class="form-control form-control-sm"
+		   value="{{ '{:,.2f}'.format(prepaid_voucher_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }}"
+		   placeholder="Vorkasse / Gutschein"
+		   {% if not prepaid_allowed %}disabled{% endif %}>
+    <button class="btn btn-outline-primary btn-sm">
+     Speichern
+    </button>
+   </div>
+  </form>
+
+  {# Zahlung zurücksetzen (bezahlt → unbezahlt) #}
+  <form method="post"
+        action="{{ url_for('billing.invoice_unpay', invoice_id=invoice.id) }}"
+        onsubmit="return confirm('Zahlung wirklich zurücksetzen?');">
+   <button class="btn btn-outline-danger btn-sm">
+    Zahlung zurücksetzen (unbezahlt)
+   </button>
+  </form>
+ </div>
+ {% endif %}
+{% endif %}
+{% endif %}
+
+
+
+{# -------------------------------------------------- #}
+{# Zurück zur Rechnungsübersicht                      #}
+{# -------------------------------------------------- #}
+
+</div>
+  <div class="no-print mt-4 mb-3">
+    <a href="{{ url_for('billing.invoice_list') }}"
+       class="btn btn-outline-secondary d-inline-flex align-items-center gap-1">
+      <i class="bi bi-arrow-left"></i>
+      Zurück zur Rechnungsübersicht
+    </a>
+  </div>
+
+
+	<!-- Drucken / PDF -->
+	<div class="d-flex justify-content-end mb-2 no-print">
+	  <button type="button" class="btn btn-outline-primary" onclick="printInvoicePdf()">
+		<i class="bi bi-printer"></i> Drucken / PDF erstellen
+	  </button>
+	</div>
+
+	<!-- Gesamtsumme (Netto/MwSt im Fuß zusammengefasst) -->
+	{% set totals = namespace(net=0, vat=0) %}
+	{% for item in invoice.items %}
+	  {% set totals.net = totals.net + (item.net_amount or 0) %}
+	  {% set totals.vat = totals.vat + (item.vat_amount or 0) %}
+	{% endfor %}
+	{% set total_gross = invoice.total_amount or 0 %}
+
+	{# Automatisch Rechnung / Gutschrift je nach Vorzeichen #}
+	{% set doc_label = 'Gutschrift' if total_gross < 0 else 'Rechnung' %}
+
+
+
+		{# Gesamtsummenblock: PDF-sichere Box mit garantiertem Abstand nach unten #}
+		<div class="card mt-3 invoice-summary-card" style="page-break-inside:avoid;">
+			<div class="card-body d-flex justify-content-between align-items-start invoice-summary-body">
+
+				<!-- LINKS: Verwendungszweck -->
+				<div class="invoice-summary-left" style="max-width:50%;">
+					<div class="text-muted" style="font-size:9pt;">
+						Verwendungszweck bitte bei Überweisung angeben:
+					</div>
+					<div style="font-weight:600; font-size:9.5pt; margin-top:2mm;">
+						{{ invoice_purpose or (doc_label ~ ' ' ~ invoice.created_at.strftime('%Y') ~ '-Spruenge Nr. ' ~ (invoice_display_number if invoice_display_number is defined else (invoice.seq_number if invoice.seq_number is not none else invoice.id)) ~ ' - ' ~ invoice.person.full_name) }}
+					</div>
+
+					{% set summary_onsite_method_label = '—' %}
+					{% if invoice.payment_method == 'cash' %}
+						{% set summary_onsite_method_label = 'Bar' %}
+					{% elif invoice.payment_method == 'card' %}
+						{% set summary_onsite_method_label = 'Karte' %}
+					{% elif invoice.payment_method == 'transfer' %}
+						{% set summary_onsite_method_label = 'Überweisung' %}
+					{% elif invoice.payment_method == 'wero' %}
+						{% set summary_onsite_method_label = 'WERO' %}
+					{% endif %}
+
+					{% if invoice.payment_method or prepaid_voucher_amount > 0 %}
+						<div style="margin-top:3mm; font-size:9pt;">
+							{% if invoice.is_paid %}
+								<span class="text-muted">Bezahlt</span>
+								{% if prepaid_voucher_amount <= 0 and summary_onsite_method_label != '—' %}
+									<div style="margin-top:1mm;">
+										<span class="text-muted">Bezahlart:</span>
+										<strong>{{ summary_onsite_method_label }}</strong>
+									</div>
+								{% endif %}
+							{% elif prepaid_voucher_amount > 0 %}
+								<span class="text-muted">Zahlungsart</span>
+								<strong>Vorkasse / Gutschein</strong>
+							{% endif %}
+							{% if prepaid_voucher_amount > 0 %}
+								<div class="text-muted" style="margin-top:1mm;">
+									{% if onsite_amount > 0 and summary_onsite_method_label != '—' %}
+										Vor Ort bezahlt mit {{ summary_onsite_method_label }}: {{ "{:,.2f}".format(onsite_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €<br>
+									{% elif onsite_amount > 0 %}
+										Vor Ort bezahlt: {{ "{:,.2f}".format(onsite_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €<br>
+									{% endif %}
+									Vorkasse / Gutschein: {{ "{:,.2f}".format(prepaid_voucher_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+								</div>
+							{% endif %}
+						</div>
+					{% endif %}
+				</div>
+
+				<!-- RECHTS: Gesamtsumme -->
+				<div class="text-end invoice-summary-right">
+					<div class="text-muted">Gesamtsumme</div>
+					<div class="fs-4 fw-bold">
+						{{ "{:,.2f}".format(total_gross)
+							 .replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+					</div>
+					<div class="text-muted col-netvat-foot">
+						Netto:
+						{{ "{:,.2f}".format(totals.net)
+							 .replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+						· MwSt:
+						{{ "{:,.2f}".format(totals.vat)
+							 .replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+					</div>
+				</div>
+
+			</div>
+		</div>
+
+
+
+<!-- ================================================= -->
+<!-- Admin-Aktionen: Soft-Delete & Hard-Delete (DEV) -->
+<!-- ================================================= -->
+{% if session.get('is_admin') %}
+  <!-- Soft-Delete (fachlich korrektes Storno) -->
+	{% if not invoice.is_deleted %}
+  <form method="post"
+        action="{{ url_for('billing.invoice_soft_delete', invoice_id=invoice.id) }}"
+        class="no-print d-inline"
+        onsubmit="return confirm('Rechnung wirklich STORNIEREN (Soft-Delete)?');">
+    <button class="btn btn-outline-warning me-2">
+      <i class="bi bi-x-circle"></i> Rechnung stornieren
+    </button>
+  </form>
+	{% endif %}
+
+  <!-- Hard-Delete (DEV only) -->
+  {% if is_dev_mode %}
+  <form method="post"
+        action="{{ url_for('billing.invoice_hard_delete', invoice_id=invoice.id) }}"
+        class="no-print d-inline"
+        onsubmit="return confirm('ACHTUNG: Rechnung endgültig löschen (Hard-Delete, DEV)!');">
+    <button class="btn btn-outline-danger">
+      <i class="bi bi-trash"></i> Rechnung endgültig löschen (DEV)
+    </button>
+  </form>
+  {% endif %}
+{% endif %}
+
+
+	<!-- =============================== -->
+	<!-- DRUCK-/PDF-LAYOUT (DIN-Lang Fensterumschlag) -->
+	<!-- =============================== -->
+	<style>
+	  #invoice-content {
+	    position: relative;
+	  }
+
+	  .invoice-watermark {
+	    display: none;
+	  }
+
+	  .invoice-cancelled .invoice-watermark {
+	    display: block;
+	    position: absolute;
+	    top: 42%;
+	    left: 50%;
+	    transform: translate(-50%, -50%) rotate(-20deg);
+	    font-size: 72px;
+	    font-weight: 800;
+	    letter-spacing: 8px;
+	    color: rgba(190, 30, 30, 0.16);
+	    z-index: 999;
+	    pointer-events: none;
+	    user-select: none;
+	    text-transform: uppercase;
+	    white-space: nowrap;
+	  }
+
+	  /* ==== Rechnung: Logo/QR-Feintuning (Header + Zahlung) ==== */
+	  .invoice-logo { max-height: 75px; width: auto; }
+
+	  /* Social-QRs – HTML-Ansicht */
+	  .social-qr,
+	  .invoice-social-qr .social-qr {
+	    width: 56px;          /* ca. +20 % */
+	    height: 56px;
+	    object-fit: contain;
+	    margin-left: 6mm;     /* Abstand zwischen QRs */
+	  }
+
+	  /* Desktop: Social-QRs bewusst kompakter als mobil */
+	  @media (min-width: 992px) {
+	    .social-qr,
+	    .invoice-social-qr .social-qr {
+	      width: 40px;
+	      height: 40px;
+	      margin-left: 4mm;
+	    }
+	  }
+
+
+	  /* EPC-QR */
+	  .epc-qr {
+		width: 90px;
+		height: 90px;
+		object-fit: contain;
+	  }
+
+	  .epc-qr-cell {
+		padding-right: 8mm;
+	  }
+
+	  .epc-qr-block {
+		display: block;
+		width: 42mm;
+		max-width: 100%;
+		margin-left: auto;
+		text-align: center;
+	  }
+
+	  .epc-qr-title,
+	  .epc-qr-note {
+		overflow-wrap: anywhere;
+		word-break: break-word;
+	  }
+
+	/* ===============================
+	   Rechnungsempfänger – besser lesbar
+	   =============================== */
+	.address-window {
+	  font-size: 10.5pt;
+	  line-height: 1.25;
+	}
+
+	.address-window strong {
+	  font-size: 11pt;
+	}
+
+	/* Deutlich kontrastreicheres Bestätigungs-Kontrollkästchen */
+	.paid-confirm-checkbox.form-check-input {
+	  width: 1.15rem;
+	  height: 1.15rem;
+	  background-color: #d1d5db;
+	  border: 2px solid #4b5563;
+	}
+
+	.paid-confirm-checkbox.form-check-input:checked {
+	  background-color: #4b5563;
+	  border-color: #374151;
+	}
+
+	.paid-confirm-checkbox.form-check-input:focus {
+	  border-color: #1f2937;
+	  box-shadow: 0 0 0 0.2rem rgba(31, 41, 55, 0.25);
+	}
+
+	.desc-wrap {
+	  white-space: pre-wrap;
+	  overflow-wrap: anywhere;
+	  word-break: break-word;
+	}
+
+	#invoiceDetailRoot.pdf-render-mode .pdf-hide-zero-section.is-zero {
+	  display: none !important;
+	}
+
+	  @media print {
+		#invoiceDetailRoot.pdf-render-mode .pdf-hide-zero-section.is-zero {
+		  display: none !important;
+		}
+
+		.invoice-cancelled .invoice-watermark {
+		  color: rgba(190, 30, 30, 0.24) !important;
+		  font-size: 84px !important;
+		}
+
+		/* ===============================
+		   Seitenformat (A4)
+		   =============================== */
+		@page {
+		  size: A4;
+		  margin-left: 20mm;   /* Platz für Fenster + Rand */
+		  margin-right: 15mm;
+		  margin-top: 12mm;    /* fester Seitenrand */
+		  margin-bottom: 14mm;
+		}
+
+		body {
+		  font-size: 8.8pt !important;
+		  line-height: 1.15 !important;
+		  background: #fff !important;
+		  color: #000 !important;
+		}
+
+		/* ===== Fensterumschlag: PDF-stabile Lösung ===== */
+
+		/* KEINE vertikale Verschiebung mehr im Textblock */
+		.address-window {
+		  padding-top: 0 !important;
+		}
+
+		/*
+		  Dieser Spacer bestimmt die Position der Adresse im PDF
+		  Ziel:
+		  12mm @page margin-top
+		+ 38mm Spacer
+		= 50mm (5,0cm)
+		*/
+		/* ===== EINZIGE PDF-WIRKSAME POSITIONIERUNG ===== */
+
+		/* Abstand zwischen Logo (≈1,5cm) und Empfänger (≈5,0cm) */
+		.address-spacer {
+		  height: 32mm !important;
+		}
+
+		/* Empfänger selbst darf NICHT verschieben */
+		.address-window {
+		  margin-top: 0 !important;
+		  padding-top: 0 !important;
+		}
+
+		/* Empfänger selbst darf NICHT verschieben */
+		.address-window {
+		  padding-top: 0 !important;
+		  margin-top: 0 !important;
+		}
+
+		/* ===============================
+		   QR- und Logo-Größen im Druck
+		   =============================== */
+		.invoice-logo {
+		  max-height: 28mm !important;
+		}
+
+		/* Social-QRs – PDF/Druck */
+		.social-qr,
+		.invoice-social-qr .social-qr {
+		  width: 19mm !important;   /* ca. +20 % */
+		  height: 19mm !important;
+		  margin-left: 6mm !important;
+		}
+
+		.epc-qr {
+		  width: 28mm !important;
+		  height: 28mm !important;
+		}
+
+		.epc-qr-cell {
+		  padding-right: 10mm !important;
+		}
+
+		.epc-qr-block {
+		  width: 44mm !important;
+		  margin-left: auto !important;
+		}
+
+		/* ===============================
+		   Container & UI-Elemente
+		   =============================== */
+		.container {
+		  max-width: 100% !important;
+		  padding-left: 0 !important;
+		  padding-right: 0 !important;
+		}
+
+		#sidebar,
+		#adminModeBanner,
+		.content-header,
+		.btn,
+		.nav,
+		.alert,
+		#themeToggle,
+		.form-switch,
+		.no-print {
+		  display: none !important;
+		}
+
+		/* ===============================
+		   Kopf & Typografie
+		   =============================== */
+		.invoice-header {
+		  margin-bottom: 3mm !important;
+		}
+
+		.invoice-header hr {
+		  margin: 2mm 0 !important;
+		}
+
+		h5 {
+		  margin: 2mm 0 1mm 0 !important;
+		  font-size: 9pt !important;
+		}
+
+		/* ===============================
+		   Tabellen (PDF-stabil)
+		   =============================== */
+		table {
+		  width: 100% !important;
+		  border-collapse: collapse !important;
+		  font-size: 8.6pt !important;
+		}
+
+		th,
+		td {
+		  padding: 1.2px 3px !important;
+		  white-space: nowrap;
+		  vertical-align: top !important;
+		}
+
+		.desc-wrap {
+		  white-space: pre-wrap !important;
+		  overflow-wrap: anywhere !important;
+		  word-break: break-word !important;
+		}
+
+		thead {
+		  display: table-header-group;
+		}
+
+		tfoot {
+		  display: table-footer-group;
+		}
+
+		tr,
+		.card {
+		  page-break-inside: avoid;
+		}
+
+		.card-body {
+		  padding: 4px 6px !important;
+		}
+
+		/* Bootstrap Klassen für PDF */
+		.fs-4 {
+		  font-size: 14pt !important;
+		}
+
+		.fw-bold {
+		  font-weight: bold !important;
+		}
+
+	  }
+	</style>
+
+
+		<style>
+		/* PDF-sichere Bootstrap-Kernklassen für Gesamtsummen-Block */
+		@media print {
+			.invoice-summary-card {
+				border: 1.3px solid #b8b8b8 !important;
+				border-radius: 9px !important;
+				background: #f8f9fa !important;
+				box-shadow: 0 2px 10px rgba(0,0,0,0.07) !important;
+				margin-top: 18px !important;
+				margin-bottom: 6px !important;
+				padding-bottom: 2mm !important;
+				page-break-inside: avoid;
+				min-height: 44px;
+			}
+			.invoice-summary-body {
+				display: flex !important;
+				justify-content: space-between !important;
+				align-items: flex-start !important;
+				gap: 14mm !important;
+				padding: 16px 22px 12px 22px !important;
+			}
+			.invoice-summary-left {
+				flex: 1 1 auto;
+				max-width: 60% !important;
+			}
+			.invoice-summary-right {
+				flex: 0 0 36% !important;
+				max-width: 36% !important;
+				margin-left: auto !important;
+				text-align: right !important;
+				border: 1px solid #c8c8c8 !important;
+				border-radius: 8px !important;
+				background: #ffffff !important;
+				padding: 8px 10px !important;
+			}
+			.fs-4 {
+				font-size: 15pt !important;
+			}
+			.fw-bold {
+				font-weight: bold !important;
+			}
+			.text-end {
+				text-align: right !important;
+			}
+			.text-muted {
+				color: #6c757d !important;
+			}
+
+		}
+		</style>
+
+	</div> <!-- /invoiceDetailRoot -->
+
+</div> <!-- /container -->
+
+
+{% if not is_pdf_render %}
+<!-- ========================================================= -->
+<!-- Modal für E-Mail-Versand-Fortschritt (SCHRITT 1)          -->
+<!-- ========================================================= -->
+
+<div class="modal fade"
+		 id="emailProgressModal"
+		 tabindex="-1"
+		 aria-labelledby="emailProgressModalLabel"
+		 aria-hidden="true">
+
+	<div class="modal-dialog modal-dialog-centered">
+		<div class="modal-content">
+
+			<div class="modal-header">
+				<h5 class="modal-title" id="emailProgressModalLabel">
+					E-Mail wird versendet…
+				</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+			</div>
+
+			<div class="modal-body">
+				<p>
+					Die Rechnung wird im Hintergrund per E-Mail versendet.
+					Sie können dieses Fenster schließen – der Versand läuft weiter.
+				</p>
+
+				<div class="progress mb-3">
+					<div class="progress-bar progress-bar-striped progress-bar-animated"
+							 role="progressbar"
+							 aria-valuenow="1"
+							 aria-valuemin="0"
+							 aria-valuemax="100"
+							 style="width: 1%">
+					</div>
+				</div>
+
+				<p class="text-muted small" id="emailProgressStep">
+					Versand wird gestartet…
+				</p>
+			</div>
+
+			<div class="modal-footer">
+				<button type="button" class="btn btn-outline-secondary btn-sm"
+						data-bs-dismiss="modal"
+						id="emailProgressCloseBtn">
+					Im Hintergrund weiterlaufen lassen
+				</button>
+			</div>
+
+		</div>
+	</div>
+</div>
+{% endif %}
+
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+(function () {
+
+	function togglePdfRenderMode(active) {
+		const root = document.getElementById('invoiceDetailRoot');
+		if (!root) return;
+		root.classList.toggle('pdf-render-mode', !!active);
+	}
+
+	window.printInvoicePdf = function () {
+		togglePdfRenderMode(true);
+		window.print();
+		window.setTimeout(() => togglePdfRenderMode(false), 500);
+	};
+
+	window.addEventListener('beforeprint', () => togglePdfRenderMode(true));
+	window.addEventListener('afterprint', () => togglePdfRenderMode(false));
+
+  function bindTxFeeRadios() {
+    const radios = document.querySelectorAll('.tx-fee-radio');
+    if (!radios.length) return;
+
+    radios.forEach(radio => {
+      if (radio.dataset.bound === "1") return;
+      radio.dataset.bound = "1";
+
+      radio.addEventListener('change', async function () {
+        const mode = this.value;
+        const invoiceId = {{ invoice.id }};
+        const scrollY = window.scrollY;
+
+        try {
+          // 1) Fee setzen (AJAX)
+          const res = await fetch(`/billing/invoice/${invoiceId}/transaction_fee`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: new URLSearchParams({ transaction_fee_mode: mode })
+          });
+
+          if (!res.ok) throw new Error('Fehler beim Aktualisieren der Transaktionskosten');
+
+          // 2) Partial Reload (HTML holen)
+          const pageRes = await fetch(window.location.href, {
+            headers: { 'X-Partial': '1' },
+            cache: 'no-store'
+          });
+
+          if (!pageRes.ok) throw new Error('Fehler beim Neuladen der Ansicht');
+
+          const html = await pageRes.text();
+
+          // 3) Nur invoice-content ersetzen (kein Verrutschen/kein kompletter DOM-Replace)
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          const newContent = doc.querySelector('#invoice-content');
+          const curContent = document.querySelector('#invoice-content');
+
+          if (newContent && curContent) {
+            curContent.replaceWith(newContent);
+          }
+
+          // 4) Scrollposition wiederherstellen + Rebind
+          window.scrollTo(0, scrollY);
+          bindTxFeeRadios();
+
+        } catch (e) {
+          console.error(e);
+          window.scrollTo(0, scrollY);
+          alert('Transaktionskosten konnten nicht aktualisiert werden.');
+        }
+      });
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', bindTxFeeRadios);
+
+})();
+</script>
+
+
+<script>
+// ---------------------------------------------------------------
+// E-Mail-Versand: Fortschritts-Banner (kein Modal)
+// ---------------------------------------------------------------
+function updateLiveBanner(step, percent) {
+  const banner = document.getElementById('emailSendingLiveBanner');
+  const stepEl = document.getElementById('emailSendingLiveStep');
+  if (banner) banner.style.display = '';
+  if (stepEl && step) stepEl.textContent = '— ' + step;
+  // Fortschrittsbalken im Modal mitführen falls es offen ist
+  const pb = document.querySelector('#emailProgressModal .progress-bar');
+  if (pb && typeof percent === 'number') {
+    pb.style.width = percent + '%';
+    pb.setAttribute('aria-valuenow', percent);
+  }
+  const modalStep = document.getElementById('emailProgressStep');
+  if (modalStep && step) modalStep.textContent = step;
+}
+
+function hideLiveBanner() {
+  const banner = document.getElementById('emailSendingLiveBanner');
+  if (banner) banner.style.display = 'none';
+}
+
+{% if email_job_is_live %}
+// Seite wurde geladen während ein Versand-Job aktiv war → Banner sofort
+// zeigen und lautlos pollen (kein Modal öffnen)
+document.addEventListener('DOMContentLoaded', function () {
+  pollEmailProgress({{ invoice.id }}, /* silent= */ true);
+});
+{% endif %}
+
+let selectedPaymentMethod = null;
+
+function parseEuroInput(raw) {
+	const text = String(raw || '').trim().replace(/€/g, '').replace(/\s/g, '');
+	if (!text) return 0;
+	const normalized = text.includes(',') ? text.replace(/\./g, '').replace(',', '.') : text;
+	const n = Number(normalized);
+	return Number.isFinite(n) ? Math.max(0, n) : 0;
+}
+
+function formatEuro(n) {
+	return Number(n || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function syncPrepaidPreview() {
+	const input = document.getElementById('prepaidVoucherAmountInput');
+	const totalText = document.getElementById('splitTotalAmountText');
+	const onsiteText = document.getElementById('splitOnsiteAmountText');
+	if (!input || !totalText || !onsiteText) return;
+
+	const total = parseEuroInput(totalText.textContent);
+	let prepaid = parseEuroInput(input.value);
+	if (prepaid >= total) prepaid = Math.max(0, total - 0.01);
+
+	onsiteText.textContent = formatEuro(total - prepaid) + ' €';
+}
+
+function showEmailProgress(form) {
+  try {
+    const modalEl = document.getElementById('emailProgressModal');
+    if (modalEl) {
+      const modal = new bootstrap.Modal(modalEl, {backdrop: true, keyboard: true});
+      modal.show();
+      
+      // Reset progress bar
+      const progressBar = document.querySelector('.progress-bar');
+      if (progressBar) {
+        progressBar.style.width = '1%';
+        progressBar.setAttribute('aria-valuenow', '1');
+      }
+      
+      // Reset step text
+      const stepText = document.getElementById('emailProgressStep');
+      if (stepText) {
+        stepText.textContent = 'Versand wird gestartet...';
+      }
+    }
+  } catch (e) {
+    console.warn('Bootstrap Modal nicht verfügbar:', e);
+    // Fallback: plain JS modal
+    const modalEl = document.getElementById('emailProgressModal');
+    if (modalEl) {
+      modalEl.style.display = 'block';
+      modalEl.classList.add('show');
+      document.body.classList.add('modal-open');
+    }
+  }
+
+  if (form && form.querySelectorAll) {
+    form.querySelectorAll('button, input[type="submit"]').forEach(el => el.disabled = true);
+  }
+
+  return true;
+}
+
+function sendEmailAjax(form, event) {
+  event.preventDefault();
+  showEmailProgress(form);
+
+  const invoiceId = {{ invoice.id }};
+  const formData = new FormData(form);
+  
+  // Starte asynchronen Versand
+  fetch(form.action, {
+    method: 'POST',
+    body: formData,
+    headers: {
+      'X-Requested-With': 'XMLHttpRequest'
+    }
+  })
+  .then(response => response.json())
+  .then(initialData => {
+    if (!initialData.success) {
+      throw new Error(initialData.message || 'Fehler beim Starten des Versands');
+    }
+    
+    // Starte Polling des Status-Endpoints
+    pollEmailProgress(invoiceId, /* silent= */ false);
+  })
+  .catch(error => {
+    console.error('Error:', error);
+    closeEmailProgressModal();
+    alert('Ein Fehler ist aufgetreten: ' + error.message);
+    location.reload();
+  });
+
+  return false;
+}
+
+function pollEmailProgress(invoiceId, silent) {
+  // silent=true: kein Modal öffnen/schließen, nur Banner aktualisieren
+  const statusUrl = `/billing/invoice/${invoiceId}/send_email_status`;
+  let pollCount = 0;
+  const maxPolls = 60; // 30 Sekunden aktives Polling; danach UI freigeben (Backend läuft weiter)
+
+  const pollInterval = setInterval(() => {
+    pollCount++;
+
+    fetch(statusUrl, { cache: 'no-store' })
+      .then(response => response.json())
+      .then(data => {
+        // Defensive Defaults
+        const status = (data && data.status) ? String(data.status) : 'processing';
+        const step = (data && data.step) ? String(data.step) : '';
+        const percentRaw = (data && typeof data.percent !== 'undefined') ? data.percent : null;
+        const pct = (percentRaw !== null && !Number.isNaN(Number(percentRaw))) ? Math.max(0, Math.min(100, Number(percentRaw))) : null;
+
+        // Live-Banner immer aktualisieren
+        updateLiveBanner(step, pct);
+
+        if (!silent) {
+          // Update Modal progress bar
+          const progressBar = document.querySelector('#emailProgressModal .progress-bar');
+          if (progressBar && pct !== null && status !== 'idle') {
+            progressBar.style.width = pct + '%';
+            progressBar.setAttribute('aria-valuenow', String(pct));
+          } else if (progressBar) {
+            const cur = Number(progressBar.getAttribute('aria-valuenow') || 1);
+            if (cur < 5) { progressBar.style.width = '5%'; progressBar.setAttribute('aria-valuenow', '5'); }
+          }
+          const stepText = document.getElementById('emailProgressStep');
+          if (stepText && step) stepText.textContent = step;
+        }
+
+        // Abschluss: completed / error → Seite neu laden
+        if (status === 'completed' || status === 'error') {
+          clearInterval(pollInterval);
+          hideLiveBanner();
+          if (!silent) closeEmailProgressModal();
+          if (status === 'error' && !silent) {
+            alert('Fehler: ' + (step || 'Unbekannter Fehler'));
+          }
+          setTimeout(() => location.reload(), 800);
+          return;
+        }
+
+        // idle → kein Job aktiv, Seite neu laden um DB-Zustand zu zeigen
+        if (status === 'idle') {
+          clearInterval(pollInterval);
+          hideLiveBanner();
+          if (!silent) closeEmailProgressModal();
+          setTimeout(() => location.reload(), 600);
+          return;
+        }
+      })
+      .catch(error => {
+        console.error('Polling error:', error);
+        clearInterval(pollInterval);
+        hideLiveBanner();
+        if (!silent) {
+          closeEmailProgressModal();
+          alert('Fehler beim Abrufen des Status: ' + error.message);
+        }
+        location.reload();
+      });
+
+    // Polling-Limit erreicht: Dialog schließen, aber kein Fehler melden.
+    // Der Backend-Thread läuft weiter; Seitenreload zeigt am Ende den DB-Zustand.
+    if (pollCount >= maxPolls) {
+      clearInterval(pollInterval);
+      closeEmailProgressModal();
+      // Kurz warten, dann Seite neu laden damit DB-Zustand sichtbar wird
+      setTimeout(() => location.reload(), 1200);
+    }
+  }, 500); // Poll every 500ms
+}
+
+function closeEmailProgressModal() {
+  try {
+    const modalEl = document.getElementById('emailProgressModal');
+    if (modalEl) {
+      const modal = bootstrap.Modal.getInstance(modalEl);
+      if (modal) modal.hide();
+    }
+  } catch (e) {
+    // Fallback
+    const modalEl = document.getElementById('emailProgressModal');
+    if (modalEl) {
+      modalEl.style.display = 'none';
+      modalEl.classList.remove('show');
+      document.body.classList.remove('modal-open');
+    }
+  }
+}
+
+function selectPaymentMethod(btn) {
+  selectedPaymentMethod = btn.dataset.method;
+
+  // Haken + active korrekt setzen
+  document.querySelectorAll('#payment-method-buttons .payment-btn').forEach(b => {
+    b.classList.remove('active');
+    const check = b.querySelector('.pm-check');
+    if (check) check.classList.add('d-none');
+  });
+
+  btn.classList.add('active');
+  const myCheck = btn.querySelector('.pm-check');
+  if (myCheck) myCheck.classList.remove('d-none');
+
+  // Label aktualisieren
+  document.getElementById('selectedPaymentLabel').textContent =
+    btn.textContent.replace('✔', '').trim();
+
+  // Roter Button aktivieren
+  document.getElementById('markPaidBtn').disabled = false;
+
+  // OK-Form korrekt setzen
+  const form = document.getElementById('paidOkForm');
+  const tpl = "{{ url_for('billing.invoice_pay', invoice_id=invoice.id, method='__METHOD__') }}";
+  form.action = tpl.replace('__METHOD__', selectedPaymentMethod);
+	syncPrepaidPreview();
+}
+
+function selectDraftPaymentMethod(btn) {
+	const hidden = document.getElementById('draftPaymentMethod');
+	if (hidden) hidden.value = btn.dataset.method || '';
+
+	document.querySelectorAll('.draft-payment-btn').forEach(b => {
+		b.classList.remove('active');
+		const check = b.querySelector('.draft-payment-check');
+		if (check) check.classList.add('d-none');
+	});
+
+	btn.classList.add('active');
+	const myCheck = btn.querySelector('.draft-payment-check');
+	if (myCheck) myCheck.classList.remove('d-none');
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+	syncPrepaidPreview();
+});
+</script>
+
+
+{% endblock %}

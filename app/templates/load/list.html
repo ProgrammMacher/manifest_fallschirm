@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div id="load-view-root"
+     data-view="{% if is_split_view %}split{% else %}list{% endif %}">
+
+  {% include "load/list_inner.html" %}
+
+</div>
+{% endblock %}

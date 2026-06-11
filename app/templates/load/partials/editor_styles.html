@@ -1,0 +1,236 @@
+<!-- C:\manifest_fallschirm\app\templates\load\partials\editor_styles.html -->
+<style>
+/* ========================================================= */
+/* AUTOCOMPLETE */
+/* ========================================================= */
+.autocomplete-container { position: relative; }
+.autocomplete-arrow{
+  position:absolute; right:8px; top:50%;
+  transform:translateY(-50%);
+  cursor:pointer; font-size:.8rem; color:#666;
+  user-select:none;
+}
+.autocomplete-arrow:hover{ color:#000; }
+.autocomplete-list{
+  position:absolute; top:100%; left:0; right:0;
+  background:#fff; border:1px solid #ccc; border-radius:4px;
+  max-height:min(250px, calc(100vh - 120px));
+  overflow-y:auto; z-index:3000;
+  box-shadow:0 4px 8px rgba(0,0,0,0.15);
+}
+.autocomplete-list.open-up{ top:auto; bottom:100%; margin-bottom:4px; }
+.autocomplete-item{ padding:6px 10px; cursor:pointer; font-size:.9rem; }
+.autocomplete-item:hover,.autocomplete-item.active{ background:#e9f2ff; }
+/* Freitext ohne Auswahl sichtbar markieren */
+.invalid-person{
+  border:2px solid #dc3545 !important;
+  background:#fff5f5 !important;
+}
+
+/* ========================================================= */
+/* PAYLOAD */
+/* ========================================================= */
+.payload-neutral{ color:#666; }
+.payload-green{ color:#0a0; font-weight:bold; }
+.payload-yellow{ color:#c90; font-weight:bold; }
+.payload-red{ color:#c00; font-weight:bold; }
+
+/* ========================================================= */
+/* TANDEM-BLÖCKE (1..10) */
+/* ========================================================= */
+.tandem-seat{
+  --tandem-bg:#e8f1ff;
+  --tandem-color:#0d6efd;
+  background:var(--tandem-bg);
+  border-left:6px solid var(--tandem-color);
+}
+.tandem-seat-1{--tandem-bg:#e8f1ff;--tandem-color:#6aa8ff;}
+.tandem-seat-2{--tandem-bg:#e9f9e9;--tandem-color:#7acb7a;}
+.tandem-seat-3{--tandem-bg:#fff7e0;--tandem-color:#e6c463;}
+.tandem-seat-4{--tandem-bg:#ffece5;--tandem-color:#e6a48c;}
+.tandem-seat-5{--tandem-bg:#f3e8ff;--tandem-color:#b79ce6;}
+.tandem-seat-6{--tandem-bg:#e7fbff;--tandem-color:#6fd3e6;}
+.tandem-seat-7{--tandem-bg:#f0ffe8;--tandem-color:#9ad36f;}
+.tandem-seat-8{--tandem-bg:#fff0f7;--tandem-color:#e6a1c4;}
+.tandem-seat-9{--tandem-bg:#f7f7ff;--tandem-color:#9aa8ff;}
+.tandem-seat-10{--tandem-bg:#fff6e8;--tandem-color:#e6b26f;}
+
+/* ========================================================= */
+/* SCHÜLER–LEHRER (INSTRUCTION) BLÖCKE (1..10) */
+/* ========================================================= */
+.instruction-seat{
+  --instr-bg:#fff7e0;
+  --instr-color:#e6c463;
+  background:var(--instr-bg);
+  border-left:6px solid var(--instr-color);
+}
+.instruction-seat-1{--instr-bg:#fff7e0;--instr-color:#e6c463;}
+.instruction-seat-2{--instr-bg:#fff2c7;--instr-color:#e0b84e;}
+.instruction-seat-3{--instr-bg:#fffbe8;--instr-color:#d6c86a;}
+.instruction-seat-4{--instr-bg:#fff3d9;--instr-color:#d9a84e;}
+.instruction-seat-5{--instr-bg:#fff8cc;--instr-color:#d1b100;}
+.instruction-seat-6{--instr-bg:#f0f6ff;--instr-color:#6aa8ff;}
+.instruction-seat-7{--instr-bg:#eef9f0;--instr-color:#6fbf8a;}
+.instruction-seat-8{--instr-bg:#fdf1f7;--instr-color:#e6a1c4;}
+.instruction-seat-9{--instr-bg:#f6f6f6;--instr-color:#9aa0a6;}
+.instruction-seat-10{--instr-bg:#fef6e8;--instr-color:#e6b26f;}
+/* Editor-Zeilen */
+.seat-row.tandem-seat td{
+  background:var(--tandem-bg) !important;
+  border-left:4px solid var(--tandem-color) !important;
+}
+.seat-row.instruction-seat td{
+  background:var(--instr-bg) !important;
+  border-left:4px solid var(--instr-color) !important;
+}
+
+/* ========================================================= */
+/* WARNUNGEN */
+/* ========================================================= */
+.height-too-high td{ background-color:#fff3cd !important; }
+.follow-load-warning{
+  color:#b58900;
+  font-weight:700;
+  font-size:.7rem;
+  margin-top:2px;
+}
+
+/* ========================================================= */
+/* Status-Kürzel rechts im „Person-Icon“ */
+/* ========================================================= */
+.person-meta{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:2px;
+  line-height:1.05;
+}
+.person-status-mini{
+  font-size:0.72rem;
+  font-weight:800;
+  opacity:0.95;
+  text-align:right;
+  white-space:nowrap;
+}
+.person-meta-line{
+  font-size:0.75rem;
+  opacity:0.8;
+  white-space:nowrap;
+}
+
+/* ========================================================= */
+/* Mehrfachauswahl */
+/* ========================================================= */
+.person-select-mode .person-block,
+.person-select-mode tr[data-block-entry="1"]{
+  cursor: pointer;
+}
+.person-selected{
+  outline: 2px solid rgba(13,110,253,0.95);
+  outline-offset: 1px;
+  position: relative;
+}
+.person-selected::after{
+  content: "✓";
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  font-weight: 900;
+  font-size: 0.9rem;
+  color: rgba(13,110,253,0.95);
+  background: rgba(255,255,255,0.9);
+  border-radius: 10px;
+  padding: 0 6px;
+  line-height: 1.2;
+}
+tr.person-selected[data-block-entry="1"] td{
+  background: rgba(13,110,253,0.06) !important;
+  box-shadow: inset 0 0 0 2px rgba(13,110,253,0.35);
+}
+tr.person-selected[data-block-entry="1"] td:first-child{
+  position: relative;
+}
+tr.person-selected[data-block-entry="1"] td:first-child::after{
+  content: "✓";
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  font-weight: 900;
+  font-size: 0.9rem;
+  color: rgba(13,110,253,0.95);
+  background: rgba(255,255,255,0.9);
+  border-radius: 10px;
+  padding: 0 6px;
+  line-height: 1.2;
+}
+
+/* ========================================================= */
+/* Drag&Drop Feedback – VERBESSERT */
+/* ========================================================= */
+.seat-row.drag-over-ok td{
+  outline: 3px solid #4CAF50 !important; /* gruen: passt */
+  background-color: #e8f5e9 !important;
+  transition: background-color 0.15s ease-in-out;
+}
+
+.seat-row.drag-over-warn td{
+  outline: 3px solid #f59e0b !important; /* gelb/orange: teilweise Platz */
+  background-color: #fff7e6 !important;
+  transition: background-color 0.15s ease-in-out;
+}
+
+.seat-row.drag-over-limit td{
+  outline: 3px solid #dc3545 !important; /* rot: Auswahl > freie Sitze */
+  background-color: #fdecea !important;
+  transition: background-color 0.15s ease-in-out;
+}
+
+/* ========================================================= */
+/* Zusatzsitze – LEICHT EINGEFÄRBT */
+/* ========================================================= */
+.seat-row.extra-seat td{
+  background-color:#fff8e1 !important; /* sehr dezentes Gelb */
+}
+
+/* ========================================================= */
+/* OPTIONAL UX */
+/* ========================================================= */
+#multi_select_hint{
+  /* falls Bootstrap fehlt, bleibt es dennoch dezent */
+}
+
+/* ========================================================= */
+/* ✅ FIX 1: Pfeil darf NICHT durch das Autocomplete-Dropdown scheinen */
+/*  - In deinem JS werden z-index inline gesetzt (Arrow > Liste).
+/*  - Daher hier bewusst mit !important überschreiben. */
+/* ========================================================= */
+.autocomplete-list{
+  z-index: 5000 !important;     /* immer über allem in der Zelle */
+}
+.autocomplete-arrow{
+  z-index: 100 !important;      /* immer unter Dropdown */
+}
+
+/* ========================================================= */
+/* ✅ FIX 2: Spaltenbreite im Editor veränderbar (Resize-Handle) */
+/* ========================================================= */
+.resizable-table th{
+  position: relative;
+  user-select: none;
+}
+.resize-handle{
+  position:absolute;
+  top:0;
+  right:-3px;
+  width:6px;
+  height:100%;
+  cursor: col-resize;
+  z-index: 2000;                /* unter Dropdown (5000), über Tabelle */
+  background: transparent;
+}
+.resize-handle:hover{
+  background: rgba(13,110,253,0.15);
+}
+
+</style>
+<!-- EOF -->

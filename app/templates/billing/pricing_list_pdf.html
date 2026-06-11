@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Preisliste</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 8mm 8mm 9mm 8mm;
+    }
+
+    :root {
+      --ink: #172033;
+      --muted: #5b6472;
+      --line: #d8dee8;
+      --panel: #f5f7fa;
+      --panel-strong: #e9eef5;
+      --brand: #a31515;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-size: 9pt;
+      line-height: 1.2;
+      color: var(--ink);
+    }
+
+    h1, h2, h3, p { margin: 0; }
+
+    .header {
+      display: table;
+      width: 100%;
+      margin-bottom: 5px;
+      border: 1px solid var(--line);
+      background: linear-gradient(135deg, #ffffff 0%, #f7fafd 70%, #eef3f8 100%);
+      padding: 3mm 4mm;
+    }
+
+    .header-left,
+    .header-right {
+      display: table-cell;
+      vertical-align: top;
+    }
+
+    .header-left { width: 70%; }
+    .header-right { width: 30%; text-align: right; }
+
+    .logo {
+      max-height: 30px;
+      max-width: 150px;
+      object-fit: contain;
+    }
+
+    h1 {
+      margin: 0 0 1px;
+      font-size: 15pt;
+      line-height: 1.05;
+      color: #111827;
+    }
+
+    .meta {
+      font-size: 8pt;
+      color: #374151;
+      margin: 0;
+    }
+
+    .summary {
+      margin: 4px 0 6px;
+      border: 1px solid var(--line);
+      padding: 2mm 2.5mm;
+      background: var(--panel);
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 7.8pt;
+    }
+
+    .summary-item {
+      white-space: nowrap;
+    }
+
+    .summary-item strong {
+      font-weight: 700;
+    }
+
+    h2 {
+      margin: 6px 0 3px;
+      font-size: 10pt;
+      color: #0f172a;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 4px;
+      table-layout: fixed;
+      font-size: 7.8pt;
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 2px 3px;
+      vertical-align: top;
+      word-break: break-word;
+    }
+
+    th {
+      background: var(--panel-strong);
+      text-align: left;
+      font-weight: 700;
+    }
+
+    tbody tr:nth-child(odd) td {
+      background: #fbfcfe;
+    }
+
+    .text-end { text-align: right; }
+    .text-center { text-align: center; }
+    .small { font-size: 7pt; }
+    .muted { color: var(--muted); }
+
+    .status-cell strong {
+      display: block;
+      margin-bottom: 0;
+    }
+
+    .footer-note {
+      margin-top: 4px;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 3px;
+      font-size: 7pt;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-left">
+      <h1>Preisliste</h1>
+      <div class="meta"><strong>Preisperiode:</strong> {{ selected_period.name }}</div>
+      <div class="meta"><strong>Gueltigkeit:</strong>
+        {{ selected_period.valid_from.strftime('%d.%m.%Y') }}
+        {% if selected_period.valid_to %}
+          bis {{ selected_period.valid_to.strftime('%d.%m.%Y') }}
+        {% else %}
+          bis offen
+        {% endif %}
+      </div>
+      <div class="meta"><strong>Erstellt:</strong> {{ generated_at_local.strftime('%d.%m.%Y %H:%M') }} Uhr</div>
+    </div>
+    <div class="header-right">
+      {% if logo_data_uri %}
+        <img src="{{ logo_data_uri }}" alt="Logo" class="logo">
+      {% elif billing_config and billing_config.company_name %}
+        <strong>{{ billing_config.company_name }}</strong>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="summary">
+    <div class="summary-item">
+      Sprungstatus: <strong>{{ matrix_rows|length }}</strong>
+    </div>
+    <div class="summary-item">
+      Hoehen: <strong>{{ heights|join(', ') }} m</strong>
+    </div>
+    <div class="summary-item">
+      Schirmmiete: <strong>{{ canopy_rent|length }}</strong>
+    </div>
+    <div class="summary-item">
+      Orga-Modus: <strong>{{ orga.mode }}</strong>
+    </div>
+  </div>
+
+  <h2>Sprungpreise (Brutto) und MwSt</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:34%;">Status</th>
+        <th class="text-center" style="width:8%;">Orga</th>
+        {% for h in heights %}
+          <th class="text-end" style="width:11%;">{{ h }} m</th>
+        {% endfor %}
+        <th class="text-end" style="width:14%;">MwSt %</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in matrix_rows %}
+      <tr>
+        <td class="status-cell">
+          <strong>{{ row.label }}</strong>
+          <span class="muted small">{{ row.code }}</span>
+        </td>
+        <td class="text-center">
+          {% if orga_rules.get(row.code, True) %}Ja{% else %}Nein{% endif %}
+        </td>
+        {% for h in heights %}
+          <td class="text-end">{{ '{:,.2f}'.format(row.prices[h]).replace(',', 'X').replace('.', ',').replace('X', '.') }} EUR</td>
+        {% endfor %}
+        <td class="text-end">{{ '{:.2f}'.format(row.vat_rate).replace('.', ',') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Schirmmiete</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Bezeichnung</th>
+        <th class="text-end">Preis pro Sprung</th>
+        <th class="text-end">Max. Berechnung / Tag</th>
+        <th class="text-end">MwSt %</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for _, row in canopy_rent.items() %}
+      <tr>
+        <td>{{ row.label }}</td>
+        <td class="text-end">{{ '{:,.2f}'.format(row.price).replace(',', 'X').replace('.', ',').replace('X', '.') }} EUR</td>
+        <td class="text-end">{{ row.max_count }}</td>
+        <td class="text-end">{{ '{:.2f}'.format(row.vat_rate).replace('.', ',') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Organisationspauschale</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Bezeichnung</th>
+        <th class="text-end">Betrag (Brutto)</th>
+        <th>Geltung</th>
+        <th>MwSt Strategie</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Orga - Organisationspauschale fuer Sprungbetrieb</td>
+        <td class="text-end">{{ '{:,.2f}'.format(orga.amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} EUR</td>
+        <td>{{ orga.mode }}</td>
+        <td>{{ orga.vat_strategy }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="footer-note">
+    Diese Preisliste basiert auf der in der Preismatrix gepflegten Preisperiode und dient als druckfaehige Dokumentation.
+  </div>
+</body>
+</html>

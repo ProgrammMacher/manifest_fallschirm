@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Flugplatz{% endblock %}
+{% block header %}Flugplatz{% endblock %}
+
+{% set readonly = not session.is_admin %}
+
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-body">
+
+    <h4 class="fw-bold mb-3">
+      <i class="bi bi-geo-alt-fill"></i>
+      {% if readonly %}Flugplatz ansehen{% else %}Flugplatz bearbeiten{% endif %}
+    </h4>
+
+    {% if readonly %}
+      <div class="alert alert-secondary">
+        <i class="bi bi-eye"></i>
+        Nur Ansicht – Änderungen sind nur für Administratoren möglich.
+      </div>
+    {% endif %}
+
+    {# ============================================================
+       ARCHIV-HINWEIS
+       ============================================================ #}
+    {% if platz.is_archived %}
+      <div class="alert alert-warning d-flex align-items-start">
+        <i class="bi bi-archive me-3 fs-4"></i>
+        <div>
+          <strong>Dieser Flugplatz ist archiviert.</strong><br>
+          <span class="text-muted">
+            Archiviert am:
+            {{ platz.deleted_at.strftime("%d.%m.%Y %H:%M") if platz.deleted_at else "–" }}<br>
+            Grund: {{ platz.deleted_reason or "–" }}
+          </span>
+
+          {% if session.is_admin and not platz.can_hard_delete() %}
+            <div class="mt-2 small text-muted">
+              <i class="bi bi-info-circle"></i>
+              Harddelete nicht möglich – es existieren noch zugehörige Daten.
+            </div>
+          {% endif %}
+
+          {% if platz.is_home_airfield %}
+            <div class="mt-2 small text-muted">
+              <i class="bi bi-info-circle"></i>
+              Der Heimatflugplatz kann nicht gelöscht werden.
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+
+    {# ============================================================
+       FORMULAR (READ-ONLY ODER EDIT)
+       ============================================================ #}
+    <form method="POST" class="row g-3">
+
+      {# NAME #}
+      <div class="col-md-12">
+        <label class="form-label fw-bold">
+          <i class="bi bi-fonts me-1"></i> Name
+        </label>
+        <input type="text"
+               name="name"
+               class="form-control"
+               value="{{ platz.name }}"
+               {% if readonly %}disabled{% endif %}
+               required>
+      </div>
+
+      {# HEIMATFLUGPLATZ #}
+      <div class="col-md-12">
+        <div class="form-check form-switch mt-2">
+          <input class="form-check-input"
+                 type="checkbox"
+                 name="is_home"
+                 id="is_home"
+                 {% if platz.is_home_airfield %}checked{% endif %}
+                 {% if readonly %}disabled{% endif %}>
+          <label class="form-check-label fw-bold" for="is_home">
+            <i class="bi bi-house-door-fill me-1"></i> Heimatflugplatz
+          </label>
+        </div>
+      </div>
+
+      {# AKTIV / INAKTIV #}
+      <div class="col-md-12">
+        <div class="form-check form-switch mt-2">
+          <input class="form-check-input"
+                 type="checkbox"
+                 name="active"
+                 id="active"
+                 {% if platz.active %}checked{% endif %}
+                 {% if platz.is_archived or readonly %}disabled{% endif %}>
+          <label class="form-check-label fw-bold" for="active">
+            <i class="bi bi-geo-alt me-1"></i> Flugplatz ist aktiv
+          </label>
+        </div>
+        <div class="form-text">
+          Inaktive Flugplätze werden bei der Neuanlage von Loads nicht im Dropdown angeboten.
+        </div>
+      </div>
+
+      {# BUTTONS #}
+      <div class="col-12 mt-4 d-flex justify-content-between">
+        <a href="{{ url_for('flugplatz.list_flugplaetze') }}"
+           class="btn btn-secondary">
+          <i class="bi bi-arrow-left"></i> Zurück
+        </a>
+
+        {% if session.is_admin %}
+          <button class="btn btn-primary">
+            <i class="bi bi-check2-circle"></i> Speichern
+          </button>
+        {% endif %}
+      </div>
+    </form>
+
+    {# ============================================================
+       ADMIN-AKTIONEN: ARCHIV / RESTORE / HARDDELETE
+       ============================================================ #}
+    {% if session.is_admin %}
+      <div class="mt-4 text-end">
+
+        {% if platz.is_archived %}
+
+          {# RESTORE #}
+          <form method="POST"
+                action="{{ url_for('flugplatz.restore', id=platz.id) }}"
+                class="d-inline"
+                onsubmit="return confirm('Diesen Flugplatz wiederherstellen?');">
+            <button class="btn btn-success">
+              <i class="bi bi-arrow-counterclockwise"></i> Wiederherstellen
+            </button>
+          </form>
+
+          {# HARDDELETE #}
+          {% if platz.can_hard_delete() and not platz.is_home_airfield %}
+            <form method="POST"
+                  action="{{ url_for('flugplatz.hard_delete', id=platz.id) }}"
+                  class="d-inline ms-2"
+                  onsubmit="return confirm('Diesen Flugplatz WIRKLICH endgültig löschen?');">
+              <button class="btn btn-danger">
+                <i class="bi bi-trash-fill"></i> Endgültig löschen
+              </button>
+            </form>
+          {% endif %}
+
+        {% else %}
+
+          {# SOFTDELETE #}
+          {% if not platz.is_home_airfield %}
+            <form method="POST"
+                  action="{{ url_for('flugplatz.delete_flugplatz', id=platz.id) }}"
+                  class="d-inline"
+                  onsubmit="return confirm('Diesen Flugplatz wirklich archivieren?');">
+              <button class="btn btn-outline-danger">
+                <i class="bi bi-archive"></i> Archivieren
+              </button>
+            </form>
+          {% else %}
+            <span class="text-muted small ms-2">
+              <i class="bi bi-info-circle"></i>
+              Der Heimatflugplatz kann nicht archiviert werden.
+            </span>
+          {% endif %}
+
+        {% endif %}
+      </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

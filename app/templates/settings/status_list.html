@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Statusdefinitionen{% endblock %}
+{% block header %}Statusdefinitionen{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="card-title mb-0">Statusdefinitionen (aktive Versionen)</h5>
+            <a href="{{ url_for('settings_status.new_status') }}" class="btn btn-primary">
+                <i class="bi bi-plus-lg"></i> Neuer Status
+            </a>
+        </div>
+
+        {% if statuses %}
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Code</th>
+                        <th>Bezeichnung</th>
+                        <th>Beschreibung</th>
+                        <th>Sortierung</th>
+                        <th>Preis 1500</th>
+                        <th>Preis 3000</th>
+                        <th>Preis 4000</th>
+                        <th>Gültig ab</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for s in statuses %}
+                    <tr>
+                        <td>{{ s.code }}</td>
+                        <td>{{ s.label }}</td>
+                        <td>{{ s.beschreibung or "" }}</td>
+                        <td>{{ s.sort_order }}</td>
+                        <td>{{ s.preis_1500 or "" }}</td>
+                        <td>{{ s.preis_3000 or "" }}</td>
+                        <td>{{ s.preis_4000 or "" }}</td>
+                        <td>{{ s.valid_from.strftime("%d.%m.%Y %H:%M") }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('settings_status.edit_status', id=s.id) }}"
+                               class="btn btn-sm btn-outline-secondary">
+                                <i class="bi bi-pencil-square"></i>
+                            </a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+            <p class="mb-0">Noch keine Statusdefinitionen angelegt.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

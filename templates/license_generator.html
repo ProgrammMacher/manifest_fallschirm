@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manifest Fallschirm - Lizenzschlüssel Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        input[type="text"],
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .tier-info {
+            font-size: 12px;
+            color: #999;
+            margin-top: 4px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 30px;
+        }
+
+        button {
+            flex: 1;
+            padding: 14px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-generate {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-generate:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-generate:active {
+            transform: translateY(0);
+        }
+
+        .btn-reset {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-reset:hover {
+            background: #e0e0e0;
+        }
+
+        .btn-reset:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .spinner {
+            border: 3px solid #f0f0f0;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .result {
+            display: none;
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+
+        .result.success {
+            display: block;
+            border-left-color: #4caf50;
+        }
+
+        .result.error {
+            display: block;
+            border-left-color: #f44336;
+            background: #ffebee;
+        }
+
+        .result-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .result-item {
+            margin-bottom: 12px;
+        }
+
+        .result-label {
+            font-size: 12px;
+            color: #999;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .result-value {
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            word-break: break-all;
+            color: #333;
+            position: relative;
+        }
+
+        .result-value.license-key {
+            background: #f5f5f5;
+            border: 1px solid #e0e0e0;
+        }
+
+        .copy-button {
+            position: absolute;
+            right: 8px;
+            top: 8px;
+            padding: 6px 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        .copy-button:hover {
+            background: #764ba2;
+        }
+
+        .copy-button.copied {
+            background: #4caf50;
+        }
+
+        .result-value {
+            padding-right: 70px;
+        }
+
+        .error-message {
+            color: #f44336;
+            font-weight: 600;
+        }
+
+        .success-message {
+            color: #4caf50;
+            font-weight: 600;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #1565c0;
+            margin-bottom: 20px;
+        }
+
+        .info-box strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px;
+            }
+
+            .header h1 {
+                font-size: 22px;
+            }
+
+            button {
+                font-size: 14px;
+                padding: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 Lizenzschlüssel Generator</h1>
+            <p>Manifest Fallschirm</p>
+        </div>
+
+        <div class="info-box">
+            <strong>Wie funktioniert es?</strong>
+            1. Kundenname eingeben<br>
+            2. Fingerprint einfügen (vom Kunden)<br>
+            3. Lizenzstufe wählen<br>
+            4. Generieren & Kopieren
+        </div>
+
+        <form id="licenseForm">
+            <!-- Kundenname -->
+            <div class="form-group">
+                <label for="customerName">Kundenname *</label>
+                <input 
+                    type="text" 
+                    id="customerName" 
+                    name="customer" 
+                    placeholder="z.B. Sprungplatz XYZ" 
+                    required
+                >
+            </div>
+
+            <!-- Fingerprint -->
+            <div class="form-group">
+                <label for="fingerprint">Fingerprint (64 Zeichen) *</label>
+                <input 
+                    type="text" 
+                    id="fingerprint" 
+                    name="fingerprint" 
+                    placeholder="853fcf3de5dac271a32155e0b8fd68cd72b4f3d812144f5db52a758c5ec547dd" 
+                    pattern="[a-fA-F0-9]{64}"
+                    title="Muss 64 Hexadezimal-Zeichen sein"
+                    required
+                >
+                <div class="tier-info">Der Fingerprint wird vom Kunden mit get_machine_fingerprint.bat erzeugt</div>
+            </div>
+
+            <!-- Lizenzstufe -->
+            <div class="form-group">
+                <label for="tier">Lizenzstufe *</label>
+                <select id="tier" name="tier" required>
+                    <option value="">-- Wählen --</option>
+                    <option value="3m">3 Monate (90 Tage)</option>
+                    <option value="12m">12 Monate (365 Tage)</option>
+                    <option value="unlimited">Unbegrenzt</option>
+                </select>
+                <div class="tier-info">Wähle die Gültigkeitsdauer für diese Lizenz</div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="button-group">
+                <button type="submit" class="btn-generate" id="generateBtn">
+                    🔑 Lizenzschlüssel Generieren
+                </button>
+                <button type="reset" class="btn-reset" id="resetBtn">
+                    Zurücksetzen
+                </button>
+            </div>
+        </form>
+
+        <!-- Loading -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p style="margin-top: 10px; color: #999; font-size: 14px;">Generiere Lizenzschlüssel...</p>
+        </div>
+
+        <!-- Ergebnis -->
+        <div class="result" id="result">
+            <div class="result-title" id="resultTitle"></div>
+
+            <div class="result-item">
+                <div class="result-label">🔑 Lizenzschlüssel</div>
+                <div class="result-value license-key" id="licenseKeyValue">
+                    <button class="copy-button" onclick="copyToClipboard('licenseKeyValue')">Kopieren</button>
+                </div>
+            </div>
+
+            <div class="result-item">
+                <div class="result-label">👤 Kundenname</div>
+                <div class="result-value" id="customerValue"></div>
+            </div>
+
+            <div class="result-item">
+                <div class="result-label">📅 Gültig bis</div>
+                <div class="result-value" id="expiryValue"></div>
+            </div>
+
+            <div class="result-item">
+                <div class="result-label">💾 Fingerprint</div>
+                <div class="result-value" id="fingerprintValue"></div>
+            </div>
+
+            <div class="result-item">
+                <div class="result-label">⏰ Generiert am</div>
+                <div class="result-value" id="generatedAtValue"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('licenseForm');
+        const result = document.getElementById('result');
+        const loading = document.getElementById('loading');
+        const generateBtn = document.getElementById('generateBtn');
+
+        // Form Submission
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await generateLicense();
+        });
+
+        async function generateLicense() {
+            const customer = document.getElementById('customerName').value.trim();
+            const fingerprint = document.getElementById('fingerprint').value.trim().toLowerCase();
+            const tier = document.getElementById('tier').value;
+
+            // Validation
+            if (!customer) {
+                showError('Kundenname erforderlich');
+                return;
+            }
+
+            if (!fingerprint) {
+                showError('Fingerprint erforderlich');
+                return;
+            }
+
+            if (fingerprint.length !== 64) {
+                showError('Fingerprint muss 64 Zeichen lang sein');
+                return;
+            }
+
+            if (!tier) {
+                showError('Lizenzstufe erforderlich');
+                return;
+            }
+
+            // Show loading
+            loading.style.display = 'block';
+            result.style.display = 'none';
+            generateBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        customer,
+                        fingerprint,
+                        tier
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showError(data.error || 'Fehler beim Generieren');
+                    return;
+                }
+
+                showSuccess(data);
+            } catch (error) {
+                showError('Netzwerkfehler: ' + error.message);
+            } finally {
+                loading.style.display = 'none';
+                generateBtn.disabled = false;
+            }
+        }
+
+        function showSuccess(data) {
+            document.getElementById('resultTitle').innerHTML = 
+                '<span class="success-message">✅ Lizenzschlüssel erfolgreich generiert!</span>';
+            
+            document.getElementById('licenseKeyValue').textContent = data.license_key;
+            document.getElementById('customerValue').textContent = data.customer;
+            document.getElementById('expiryValue').textContent = data.exp_date;
+            document.getElementById('fingerprintValue').textContent = data.fingerprint;
+            document.getElementById('generatedAtValue').textContent = data.generated_at;
+
+            result.className = 'result success';
+            result.style.display = 'block';
+        }
+
+        function showError(message) {
+            document.getElementById('resultTitle').innerHTML = 
+                `<span class="error-message">❌ Fehler: ${message}</span>`;
+            
+            result.className = 'result error';
+            result.style.display = 'block';
+        }
+
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            const text = element.textContent;
+            
+            navigator.clipboard.writeText(text).then(() => {
+                const button = event.target;
+                const originalText = button.textContent;
+                button.textContent = '✓ Kopiert!';
+                button.classList.add('copied');
+
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.classList.remove('copied');
+                }, 2000);
+            });
+        }
+
+        // Focus auf Kundenname beim Laden
+        document.getElementById('customerName').focus();
+    </script>
+</body>
+</html>

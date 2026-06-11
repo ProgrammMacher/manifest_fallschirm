@@ -1,0 +1,10 @@
+<!-- C:\manifest_fallschirm\app\templates\load\editor.html -->
+{% extends "base.html" %}
+
+{% block content %}
+  {# ✅ Vollseiten-Editor (kein Split-View) #}
+  {% set is_split_view = False %}
+  {% set show = None %}
+
+  {% include "load/partials/editor_inner.html" %}
+{% endblock %}

@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% block title %}E-Mail verfassen &amp; senden{% endblock %}
+{% block header %}E-Mail / Newsletter senden{% endblock %}
+
+{% block content %}
+<div class="container">
+
+  <div class="d-flex gap-2 mb-3">
+    <a href="{{ url_for('email_nl.config_edit') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-gear"></i> E-Mail-Konfiguration
+    </a>
+    <a href="{{ url_for('email_nl.history') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-clock-history"></i> Versand-Übersicht
+    </a>
+  </div>
+
+  <form method="post" enctype="multipart/form-data" id="sendForm">
+
+    <!-- =============================== -->
+    <!-- Versandart                       -->
+    <!-- =============================== -->
+    <div class="row g-2 mb-3">
+      <div class="col-md-4">
+        <label class="form-label fw-bold">Versandart</label>
+        <div>
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="mail_type"
+                   id="type_email" value="email" checked>
+            <label class="form-check-label" for="type_email">
+              <i class="bi bi-envelope"></i> E-Mail
+            </label>
+          </div>
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="mail_type"
+                   id="type_newsletter" value="newsletter">
+            <label class="form-check-label" for="type_newsletter">
+              <i class="bi bi-newspaper"></i> Newsletter
+              <small class="text-muted">(inkl. Abmelde-Link)</small>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4" id="overrideOptoutBlock" style="display:none;">
+        <label class="form-label">&nbsp;</label>
+        <div class="form-check mt-2">
+          <input class="form-check-input" type="checkbox"
+                 name="override_newsletter_optout" id="overrideOptout">
+          <label class="form-check-label" for="overrideOptout">
+            <span class="text-warning fw-semibold">Newsletter-Abmeldungen ignorieren</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- =============================== -->
+    <!-- Block B: Empfänger              -->
+    <!-- =============================== -->
+    <h4><i class="bi bi-people-fill"></i> Empfänger</h4>
+    <div class="alert alert-info py-2 mb-3" role="alert">
+      <i class="bi bi-info-circle me-1"></i>
+      Bei Versandart <strong>Newsletter</strong> sind <strong>abgemeldete Personen</strong> nur auswählbar,
+      wenn <strong>Newsletter-Abmeldungen ignorieren</strong> aktiviert ist.
+    </div>
+
+    <!-- Gruppen-Filter-Buttons -->
+    <div class="d-flex flex-wrap gap-1 mb-3">
+      <span class="text-muted small me-2 align-self-center">Gruppe auswählen:</span>
+      <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectGroup('all')">Alle aktiven</button>
+      <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectGroup('members')">Mitglieder</button>
+      <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectGroup('partner')">Partner-Verein</button>
+      <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectGroup('tandem')">Tandemgäste</button>
+      <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectGroup('student')">Schüler</button>
+      <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectGroup('aff_student')">AFF-Schüler</button>
+      <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectGroup('tandemmaster')">Tandemmaster</button>
+      <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectGroup('teacher')">Lehrer</button>
+      <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectGroup('aff_teacher')">AFF-Lehrer</button>
+      <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectGroup('guest')">Gäste</button>
+      <button type="button" class="btn btn-sm btn-outline-success" onclick="selectGroup('newsletter')">Newsletter (aktiv)</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectGroup('none')">Alle abwählen</button>
+    </div>
+
+    <!-- Person-Liste mit Checkboxen -->
+    <div class="border rounded p-2 mb-3"
+         style="max-height:320px; overflow-y:auto; background:#fafafa;">
+      <div class="d-flex justify-content-between align-items-center mb-1 px-1">
+        <small class="text-muted">
+          <span id="selectedCount">0</span> von {{ all_persons|length }} ausgewählt
+          &nbsp;|&nbsp;
+          <span id="withEmailCount">0</span> mit E-Mail-Adresse
+        </small>
+        <input type="text" class="form-control form-control-sm w-auto"
+               placeholder="Person suchen…" id="personSearch"
+               style="max-width:180px;"
+               oninput="filterPersonList(this.value)">
+      </div>
+      {% for p in all_persons %}
+      <div class="person-row d-flex align-items-center gap-2 py-1 px-2"
+           data-name="{{ (p.first_name ~ ' ' ~ p.last_name)|lower }}"
+           data-members="{{ '1' if p.is_member else '0' }}"
+           data-partner="{{ '1' if p.is_partner_verein else '0' }}"
+           data-tandem="{{ '1' if p.is_tandem_guest else '0' }}"
+           data-student="{{ '1' if p.is_student else '0' }}"
+           data-aff_student="{{ '1' if p.is_aff_student else '0' }}"
+           data-tandemmaster="{{ '1' if p.is_tandemmaster else '0' }}"
+           data-teacher="{{ '1' if p.is_teacher else '0' }}"
+           data-aff_teacher="{{ '1' if p.is_aff_teacher else '0' }}"
+           data-guest="{{ '0' if (p.is_member or p.is_tandem_guest or p.is_partner_verein) else '1' }}"
+           data-newsletter="{{ '0' if p.newsletter_opt_out else '1' }}"
+           data-has_email="{{ '1' if p.email else '0' }}"
+           data-id="{{ p.id }}">
+        <input class="form-check-input person-cb flex-shrink-0"
+               type="checkbox"
+               name="person_ids"
+               value="{{ p.id }}"
+               id="p_{{ p.id }}"
+               {% if p.id in preselected_ids %}checked{% endif %}
+               {% if not p.email %}disabled title="Keine E-Mail-Adresse"{% endif %}
+               onchange="updateCounts()">
+        <label class="mb-0 flex-grow-1 small" for="p_{{ p.id }}"
+               style="{{ 'color:#999;' if not p.email else '' }}">
+          <strong>{{ p.last_name }}, {{ p.first_name }}</strong>
+          {% if p.email %}
+            <span class="text-muted ms-1">{{ p.email }}</span>
+          {% else %}
+            <span class="badge bg-warning text-dark ms-1">keine E-Mail</span>
+          {% endif %}
+          {% if p.newsletter_opt_out %}
+            <span class="badge bg-secondary ms-1" title="Newsletter abbestellt">
+              <i class="bi bi-bell-slash"></i> Abgemeldet
+            </span>
+          {% endif %}
+        </label>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Freie E-Mail-Adressen -->
+    <div class="mb-3">
+      <label class="form-label">Weitere E-Mail-Adressen
+        <small class="text-muted">(komma- oder zeilengetrennt)</small>
+      </label>
+      <textarea class="form-control" name="free_emails" rows="3"
+                placeholder="beispiel1@example.de, beispiel2@example.de"></textarea>
+    </div>
+
+    <hr>
+
+    <!-- =============================== -->
+    <!-- Block D: Inhalt / Compose       -->
+    <!-- =============================== -->
+    <h4><i class="bi bi-envelope-paper"></i> E-Mail-Inhalt</h4>
+
+    <div class="row g-2">
+      <div class="col-md-6">
+        <label class="form-label">Absender-E-Mail-Adresse</label>
+        <input type="email" class="form-control" name="sender_address"
+               value="{{ cfg.mail_sender_address or '' }}"
+               placeholder="absender@meinverein.de">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Betreff <span class="text-danger">*</span></label>
+        <input class="form-control" name="subject"
+               value="{{ cfg.mail_subject_template or '' }}"
+               placeholder="Betreff" required>
+      </div>
+      <div class="col-md-12 mt-2">
+        <label class="form-label">E-Mail-Text <span class="text-danger">*</span></label>
+        <textarea class="form-control" name="body" rows="12" required
+                  placeholder="Lieber {first_name} {last_name},&#10;&#10;...">{{ compose_body }}</textarea>
+        <small class="text-muted d-block mt-1">
+          Platzhalter: <code>{first_name}</code>, <code>{last_name}</code>
+          &nbsp;|&nbsp;
+          HTML wird unterstützt. Für Zeilenumbrüche einfach Enter drücken.
+        </small>
+      </div>
+    </div>
+
+    <div class="mt-3">
+      <label class="form-label">Text über den Bildern (optional)</label>
+      <input type="text" class="form-control" name="inline_images_intro"
+             placeholder="z. B. Hier findet ihr die Fotos vom letzten Sprungtag.">
+      <small class="text-muted">Wird mit einer Leerzeile Abstand direkt über den eingebetteten Bildern angezeigt.</small>
+    </div>
+
+    <!-- Inline-Bilder -->
+    <div class="mt-3">
+      <label class="form-label">
+        <i class="bi bi-image"></i> Bilder / Fotos (werden am Ende der E-Mail eingebettet)
+      </label>
+      <input type="file" class="form-control" name="inline_images"
+                  multiple accept="image/jpeg,image/png,image/gif,image/webp">
+                <small class="text-muted">JPG, PNG, GIF, WebP – werden eingebettet. <strong>Kein HEIC/HEIF</strong> (iPhone-Format) &ndash; bitte vorher in JPG umwandeln.</small>
+    </div>
+
+    <!-- Datei-Anhänge -->
+    <div class="mt-3">
+      <label class="form-label">
+        <i class="bi bi-paperclip"></i> Anhänge (reguläre Datei-Anhänge)
+      </label>
+      <input type="file" class="form-control" name="attachments" multiple>
+      <small class="text-muted">PDF, DOCX, XLSX, Bilder, …</small>
+    </div>
+
+    <hr>
+
+    <!-- Senden -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+      <button type="submit" class="btn btn-primary btn-lg" id="sendBtn">
+        <i class="bi bi-send-fill"></i> E-Mail senden
+      </button>
+      <span class="text-muted small" id="recipientSummary">
+        (Empfänger-Anzahl wird oben angezeigt)
+      </span>
+    </div>
+
+  </form>
+</div>
+
+<script>
+// Personen-Gruppen-Filter (client-seitig via data-Attribute)
+const GROUP_ATTRS = {
+  all:          () => true,
+  members:      r => r.dataset.members === '1',
+  partner:      r => r.dataset.partner === '1',
+  tandem:       r => r.dataset.tandem === '1',
+  student:      r => r.dataset.student === '1',
+  aff_student:  r => r.dataset.aff_student === '1',
+  tandemmaster: r => r.dataset.tandemmaster === '1',
+  teacher:      r => r.dataset.teacher === '1',
+  aff_teacher:  r => r.dataset.aff_teacher === '1',
+  guest:        r => r.dataset.guest === '1',
+  newsletter:   r => r.dataset.newsletter === '1',
+  none:         () => false,
+};
+
+function selectGroup(key) {
+  const fn = GROUP_ATTRS[key] || (() => false);
+  document.querySelectorAll('.person-row').forEach(row => {
+    const cb = row.querySelector('.person-cb');
+    if (!cb || cb.disabled) return;
+    cb.checked = fn(row);
+  });
+  updateCounts();
+}
+
+function updateCounts() {
+  const cbs = document.querySelectorAll('.person-cb:not([disabled])');
+  const checked = [...cbs].filter(c => c.checked).length;
+  const withEmail = document.querySelectorAll('.person-cb:not([disabled])').length;
+  const el = document.getElementById('selectedCount');
+  const elE = document.getElementById('withEmailCount');
+  if (el) el.textContent = checked;
+  if (elE) elE.textContent = withEmail;
+}
+
+function filterPersonList(q) {
+  const s = q.toLowerCase();
+  document.querySelectorAll('.person-row').forEach(row => {
+    const name = row.dataset.name || '';
+    row.style.display = (!s || name.includes(s)) ? '' : 'none';
+  });
+}
+
+function isNewsletterMode() {
+  const nlRadio = document.getElementById('type_newsletter');
+  return !!(nlRadio && nlRadio.checked);
+}
+
+function isOverrideOptoutEnabled() {
+  const overrideCb = document.getElementById('overrideOptout');
+  return !!(overrideCb && overrideCb.checked);
+}
+
+function syncNewsletterSelectionRules() {
+  const newsletterMode = isNewsletterMode();
+  const overrideEnabled = isOverrideOptoutEnabled();
+
+  document.querySelectorAll('.person-row').forEach(row => {
+    const cb = row.querySelector('.person-cb');
+    if (!cb) return;
+
+    const baseDisabled = cb.dataset.baseDisabled === '1';
+    const baseTitle = cb.dataset.baseTitle || '';
+    const isNewsletterOptout = row.dataset.newsletter === '0';
+    const blockByNewsletterRule = newsletterMode && !overrideEnabled && isNewsletterOptout;
+
+    cb.disabled = baseDisabled || blockByNewsletterRule;
+
+    if (blockByNewsletterRule) {
+      cb.checked = false;
+      cb.title = 'Newsletter abgemeldet (nur mit "Newsletter-Abmeldungen ignorieren" auswählbar)';
+      row.classList.add('opacity-75');
+    } else {
+      if (baseTitle) cb.title = baseTitle;
+      else cb.removeAttribute('title');
+      row.classList.remove('opacity-75');
+    }
+  });
+
+  updateCounts();
+}
+
+function syncMailTypeUiState() {
+  const block = document.getElementById('overrideOptoutBlock');
+  if (block) block.style.display = isNewsletterMode() ? '' : 'none';
+  syncNewsletterSelectionRules();
+}
+
+// Basiszustand der Checkboxen merken (z.B. bereits deaktiviert wegen fehlender E-Mail)
+document.querySelectorAll('.person-cb').forEach(cb => {
+  cb.dataset.baseDisabled = cb.disabled ? '1' : '0';
+  cb.dataset.baseTitle = cb.getAttribute('title') || '';
+});
+
+// Newsletter-Override-Block zeigen/verstecken + Auswahlregeln anwenden
+document.querySelectorAll('[name="mail_type"]').forEach(r => {
+  r.addEventListener('change', syncMailTypeUiState);
+});
+const overrideOptout = document.getElementById('overrideOptout');
+if (overrideOptout) {
+  overrideOptout.addEventListener('change', syncNewsletterSelectionRules);
+}
+
+// Initial
+syncMailTypeUiState();
+</script>
+{% endblock %}

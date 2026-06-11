@@ -1,0 +1,17 @@
+{
+  "_last_updated_utc": "2026-06-09T09:47:01",
+  "network_check_disabled": false,
+  "database_operations": {
+    "last_backup": {
+      "created_at_utc": "2026-06-09T09:47:01",
+      "file": "C:\\manifest_fallschirm\\data\\backup\\manifest_2026-06-09_11-47-01.db",
+      "created_by": "user"
+    }
+  },
+  "manual_wifi_config": {
+    "ssid": "FRITZ!Box 6860 EJ",
+    "password": null,
+    "is_open_network": true,
+    "updated_at_utc": "2026-06-07T12:49:20"
+  }
+}

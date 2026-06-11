@@ -1,0 +1,198 @@
+{#
+  C:\manifest_fallschirm\app\templates\load\partials\display_table.html
+
+  DISPLAY / MOBILE READ-ONLY WRAPPER
+  ---------------------------------
+  - kapselt die eigentliche Tabellenlogik aus load/list_inner.html
+  - stellt sicher:
+    • keine Interaktion
+    • keine Einklappen/Ausklappen-Reste
+    • stabil für Auto-Refresh
+#}
+
+{% set display_mode = True %}
+{% set show = show | default("active") %}
+
+<div id="load-view-root"
+     data-view="display"
+     data-display-mode="true">
+
+  {# ===============================
+     ✅ EIGENTLICHE LISTE / TABELLE
+     =============================== #}
+  {% include "load/list_inner.html" %}
+
+</div>
+
+{# ============================================================
+   ✅ DISPLAY-ONLY CSS
+   ============================================================ #}
+<style>
+/* -------------------------------------------------------------
+   Absolute Sicherheit: keine Interaktion
+   ------------------------------------------------------------- */
+#load-view-root .collapse,
+#load-view-root .accordion,
+#load-view-root .accordion-item,
+#load-view-root .accordion-header,
+#load-view-root .accordion-button,
+#load-view-root .person-toggle,
+#load-view-root .toggle,
+#load-view-root .hint,
+#load-view-root .help-text {
+  display: none !important;
+}
+
+#load-view-root * {
+  cursor: default !important;
+}
+
+/* -------------------------------------------------------------
+   ✅ Tabellen-Feinschliff für DISPLAY
+   ------------------------------------------------------------- */
+
+/* Spalte Load / Datum schmaler */
+#load-view-root[data-view="display"] th:nth-child(1),
+#load-view-root[data-view="display"] td:nth-child(1){
+  width: 80px;
+  min-width: 80px;
+}
+
+/* Zeit-Spalte etwas schmaler */
+#load-view-root[data-view="display"] th:nth-child(2),
+#load-view-root[data-view="display"] td:nth-child(2){
+  width: 40px;
+  min-width: 40px;
+  text-align: center;
+}
+
+/* Header: „Nutzlast“ */
+#load-view-root[data-view="display"] th.col-weight::after{
+  content: " (Nutzlast)";
+  font-weight: 400;
+}
+
+
+/* -------------------------------------------------------------
+   ✅ STABILES PERSONEN-LAYOUT (DESKTOP + MOBILE)
+   ------------------------------------------------------------- */
+#load-view-root[data-view="display"] .person-block{
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  column-gap: 14px;
+  align-items: start;
+  padding: 2px 6px;
+  margin-bottom: 2px;
+}
+
+/* Linke Spalte */
+#load-view-root[data-view="display"] .person-block > div:first-child{
+  min-width: 0;
+}
+
+/* ✅ NAME: größer (Display), wie Flugplatz-Bezeichnung */
+#load-view-root[data-view="display"] .person-name{
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+/* ✅ Warnung deutlich kleiner (~25 %) */
+#load-view-root[data-view="display"] .follow-load-warning{
+  display: block;
+  margin-top: 1px;
+  color: #ffc107;
+  font-weight: 700;
+  font-size: 0.58rem;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ✅ Rechte Spalte: STATUS + HÖHE
+   gleiche Schriftgröße wie Name */
+#load-view-root[data-view="display"] .person-meta{
+  justify-self: end;
+  text-align: right;
+  white-space: nowrap;
+  font-size: 0.95rem;   /* identisch zur person-name */
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+/* -------------------------------------------------------------
+   ✅ DISPLAY-ONLY: Zahlungsinfo ausblenden
+   ------------------------------------------------------------- */
+#load-view-root[data-view="display"] .person-meta .payment,
+#load-view-root[data-view="display"] .person-meta .paid,
+#load-view-root[data-view="display"] .person-meta .billed,
+#load-view-root[data-view="display"] .person-meta span[data-payment],
+#load-view-root[data-view="display"] .person-meta small[data-payment]{
+  display: none;
+}
+
+/* -------------------------------------------------------------
+   ✅ BADGES (AKTUELL / NÄCHSTER LOAD)
+   ------------------------------------------------------------- */
+#load-view-root[data-view="display"] .load-badge{
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  white-space: pre-line;
+  line-height: 1.1;
+  padding: 3px 6px;
+  border-radius: 8px;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-align: center;
+}
+
+/* -------------------------------------------------------------
+   ✅ DISPLAY: Logos + QR-Code oben rechts ~50 % größer
+   ------------------------------------------------------------- */
+.display-header .brand-square{
+  width: 144px;   /* vorher 96px */
+  height: 144px;
+  padding: 8px;
+}
+
+.display-header .brand-badge{
+  font-size: 1.05rem;
+}
+
+/* -------------------------------------------------------------
+   ✅ MOBILE: kompakter, Priorität Springer
+   ------------------------------------------------------------- */
+@media (max-width: 576px){
+
+  /* Mobile: Namen & Status wieder kleiner */
+  #load-view-root[data-view="display"] .person-name{
+    font-size: 0.76rem;
+    font-weight: 600;
+  }
+
+  #load-view-root[data-view="display"] .person-meta{
+    font-size: 0.76rem;
+    font-weight: 600;
+  }
+
+  /* Mobile Badges ca. 20 % kleiner */
+  #load-view-root[data-view="display"] .load-badge{
+    font-size: 0.50rem;
+    min-width: 56px;
+    max-width: 80px;
+  }
+
+  /* Mobile Logos NICHT vergrößern */
+  .display-header .brand-square{
+    width: 96px;
+    height: 96px;
+  }
+}
+</style>

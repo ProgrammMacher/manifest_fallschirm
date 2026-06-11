@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}Import – Ergebnis{% endblock %}
+
+{% block header %}
+Import – Ergebnis
+{% endblock %}
+
+{% block content %}
+
+{% set mode_label = 'HORIZONTAL (Backup/Export)' if import_mode == 'horizontal' else 'VERTIKAL (Vorlage)' %}
+{% set mode_badge = 'bg-success' if import_mode == 'horizontal' else 'bg-primary' %}
+
+<div class="container">
+
+    <!-- Zusammenfassung -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+
+            <h4 class="fw-bold mb-3">Import abgeschlossen</h4>
+
+            <div class="mb-3">
+                <span class="badge {{ mode_badge }}">Modus: {{ mode_label }}</span>
+            </div>
+
+            {% if imported == 0 and updated == 0 and skipped == 0 %}
+                <div class="alert alert-info">
+                    Es wurden keine Datensätze verarbeitet.
+                </div>
+            {% endif %}
+
+            {% if imported > 0 %}
+                <div class="alert alert-success">
+                    <strong>{{ imported }}</strong> neue Personen wurden erfolgreich angelegt.
+                </div>
+            {% endif %}
+
+            {% if updated > 0 %}
+                <div class="alert alert-warning">
+                    {% if import_mode == 'horizontal' %}
+                        <strong>{{ updated }}</strong> bestehende Personen wurden aus der Backup-Datei aktualisiert.
+                        Leere Importwerte wurden dabei nicht über bestehende Werte geschrieben.
+                    {% else %}
+                        <strong>{{ updated }}</strong> bestehende Personen wurden ergänzt
+                        (Name und Geburtstag wurden nie überschrieben).
+                    {% endif %}
+                </div>
+            {% endif %}
+
+            {% if skipped > 0 %}
+                <div class="alert alert-secondary">
+                    <strong>{{ skipped }}</strong> komplett leere Personen wurden übersprungen.
+                </div>
+            {% endif %}
+
+            {% if errors|length > 0 %}
+                <div class="alert alert-danger">
+                    <strong>{{ errors|length }}</strong> Einträge enthalten Fehler oder Warnungen.
+                    Details siehe unten.
+                </div>
+            {% endif %}
+
+        </div>
+    </div>
+
+    <!-- Fehlerliste -->
+    {% if errors|length > 0 %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="fw-bold mb-3">Hinweise & Konflikte</h5>
+
+            <p class="text-muted">
+                Diese Einträge wurden verarbeitet, enthalten aber Fehler oder Warnungen.
+                <br>
+                {% if import_mode == 'horizontal' %}
+                    <strong>Im horizontalen Modus</strong> wurden gesetzte Backup-Werte übernommen,
+                    leere Importwerte haben bestehende Daten nicht gelöscht.
+                {% else %}
+                    <strong>Bestehende Werte wurden nie überschrieben</strong> – nur Ergänzungen waren erlaubt.
+                {% endif %}
+            </p>
+
+            <div class="table-responsive">
+                <table class="table table-bordered table-sm align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Quelle</th>
+                            <th>Vorname</th>
+                            <th>Nachname</th>
+                            <th>Telefon</th>
+                            <th>E-Mail</th>
+                            <th>Gewicht</th>
+                            <th>Größe</th>
+                            <th>Geburtstag</th>
+                            <th>IBAN</th>
+                            <th>Mitglied</th>
+                            <th>Tandem</th>
+                            <th>Notfallname</th>
+                            <th>Notfalltelefon</th>
+                            <th>Hinweise</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        {% for row in errors %}
+                        <tr class="table-danger">
+
+                            <!-- Quelle (z. B. Spalte C oder Zeile 12) -->
+                            <td>
+                                <span class="badge bg-secondary">
+                                    {{ row.column }}
+                                </span>
+                            </td>
+
+                            <!-- Basisdaten -->
+                            <td>{{ row.data["first_name"] or "–" }}</td>
+                            <td>{{ row.data["last_name"] or "–" }}</td>
+                            <td>{{ row.data["phone"] or "–" }}</td>
+                            <td>{{ row.data["email"] or "–" }}</td>
+
+                            <!-- Gewicht / Größe -->
+                            <td>{{ row.data["weight_kg"] or "–" }}</td>
+                            <td>{{ row.data["height_cm"] or "–" }}</td>
+
+                            <!-- Geburtstag -->
+                            <td>
+                                {% if row.data["birthdate"] %}
+                                    {{ row.data["birthdate"] }}
+                                {% else %}
+                                    –
+                                {% endif %}
+                            </td>
+
+                            <!-- IBAN -->
+                            <td>{{ row.data["iban"] or "–" }}</td>
+
+                            <!-- Mitglied -->
+                            <td>
+                                {% if row.data["is_member"] %}
+                                    <span class="badge bg-success">Ja</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Nein</span>
+                                {% endif %}
+                            </td>
+
+                            <!-- Tandem -->
+                            <td>
+                                {% if row.data["is_tandem_guest"] %}
+                                    <span class="badge bg-primary">Ja</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Nein</span>
+                                {% endif %}
+                            </td>
+
+                            <!-- Notfallkontakt -->
+                            <td>{{ row.data["emergency_name"] or "–" }}</td>
+                            <td>{{ row.data["emergency_phone"] or "–" }}</td>
+
+                            <!-- Hinweise -->
+                            <td class="text-danger small">
+                                {% if row.notes %}
+                                    {% for note in row.notes %}
+                                        <div>{{ note }}</div>
+                                    {% endfor %}
+                                {% else %}
+                                    <span class="text-muted">–</span>
+                                {% endif %}
+                            </td>
+
+                        </tr>
+                        {% endfor %}
+
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Buttons -->
+    <div class="d-flex justify-content-between mb-5">
+        <a href="{{ url_for('import_preview.index') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Neuer Import
+        </a>
+
+        <a href="{{ url_for('pwa.pwa_index') }}" class="btn btn-primary">
+            <i class="bi bi-house-door-fill"></i> Zurück zur Startseite
+        </a>
+    </div>
+
+</div>
+
+{% endblock %}

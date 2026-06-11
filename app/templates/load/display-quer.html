@@ -1,0 +1,480 @@
+{% extends "base_display.html" %}
+
+{% block title %}Load-Übersicht (Quer){% endblock %}
+
+{% block header %}
+<i class="bi bi-aspect-ratio"></i> Load‑Übersicht
+{% endblock %}
+
+{% block extra_head %}
+{# Farben für Tandem / Lehrer-Schüler (CSS-Klassen tandem-seat-*, instruction-seat-*) #}
+{% include "load/partials/editor_styles.html" %}
+
+<style>
+/* ===============================
+   TOPBAR (Datum / Uhrzeit)
+   =============================== */
+.display-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.85);
+  border: 1px solid rgba(0,0,0,0.06);
+  margin-bottom: 8px;
+}
+
+[data-theme="dark"] .display-topbar {
+  background: rgba(30,30,30,0.80);
+  border-color: rgba(255,255,255,0.10);
+}
+
+.display-now {
+  min-width: 320px;
+}
+
+.display-now .now-title {
+  font-weight: 600;
+}
+
+.display-now #nowText {
+  opacity: 0.75;
+}
+
+/* ===============================
+   QUER-BOARD LAYOUT
+   - kompatibel zu display_auto_refresh.js:
+     .display-list-wrap + .load-list-container
+   =============================== */
+.display-list-wrap {
+  width: 100%;
+}
+
+.load-list-container.display-quer-board {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 8px 4px;
+  max-height: none;
+}
+
+.load-card-wrap {
+  flex: 0 0 360px;
+  display: flex;
+  flex-direction: column;
+}
+
+.load-card-top-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  margin: 0 0 8px 2px;
+}
+
+.load-card-top-label.current {
+  color: #ffffff;
+  background: rgba(13,110,253,0.96);
+  border: 1px solid rgba(13,110,253,1);
+  box-shadow: 0 2px 10px rgba(13,110,253,0.35);
+}
+
+.load-card-top-label.next {
+  color: #ffffff;
+  background: rgba(214,0,0,0.94);
+  border: 1px solid rgba(214,0,0,1);
+  box-shadow: 0 2px 10px rgba(214,0,0,0.32);
+}
+
+/* Jede Load-Karte */
+.load-card {
+  display: flex;
+  flex-direction: column;
+  background: rgba(255,255,255,0.90);
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+[data-theme="dark"] .load-card {
+  background: rgba(30,30,30,0.85);
+  border-color: rgba(255,255,255,0.12);
+}
+
+/* ===============================
+   LOAD HEADER
+   =============================== */
+.load-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.load-title {
+  font-weight: 800;
+  font-size: 1.05rem;
+  line-height: 1.1;
+}
+
+.load-time {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.load-countdown {
+  font-size: 1.25rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+/* ===============================
+   META (Flugzeug / Plätze)
+   =============================== */
+.load-meta {
+  font-size: 0.85rem;
+  line-height: 1.25;
+  margin-bottom: 8px;
+}
+
+.load-meta strong {
+  display: block;
+}
+
+.free-seats {
+  margin-top: 4px;
+  font-weight: 700;
+}
+
+.free-seats-number {
+  font-size: 1.45rem;
+  font-weight: 900;
+  margin-left: 6px;
+}
+
+/* ===============================
+   SPRINGER LISTE
+   =============================== */
+.load-persons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.person-block {
+  padding: 4px 6px;
+  border-radius: 6px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* Name */
+.person-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Folgeload */
+.follow-load-warning {
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+/* Rechte Meta-Spalte */
+.person-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 0.75rem;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+/* ===============================
+   STATUS MARKIERUNG
+   =============================== */
+.load-card.is-current {
+  outline: 4px solid rgba(13,110,253,0.72);
+  background: linear-gradient(180deg, rgba(13,110,253,0.16), rgba(255,255,255,0.90));
+  box-shadow: 0 0 0 1px rgba(13,110,253,0.22);
+}
+
+.load-card.is-next {
+  outline: 4px solid rgba(214,0,0,0.68);
+  background: linear-gradient(180deg, rgba(214,0,0,0.14), rgba(255,255,255,0.90));
+  box-shadow: 0 0 0 1px rgba(214,0,0,0.20);
+}
+
+[data-theme="dark"] .load-card.is-current {
+  background: linear-gradient(180deg, rgba(13,110,253,0.22), rgba(30,30,30,0.85));
+}
+
+[data-theme="dark"] .load-card.is-next {
+  background: linear-gradient(180deg, rgba(214,0,0,0.20), rgba(30,30,30,0.85));
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="display-topbar">
+  <div class="display-now">
+    <div class="now-title">Aktuelles Datum &amp; Uhrzeit</div>
+    <div class="text-muted" id="nowText">–</div>
+  </div>
+</div>
+
+<div id="displayState"
+     data-current="{{ current_load_id|default('') }}"
+     data-next="{{ next_load_id|default('') }}"
+     data-next-start="{{ next_start_iso|default('') }}">
+</div>
+
+<div class="display-list-wrap">
+  <div class="load-list-container display-quer-board">
+
+    {# Erwartung: loads ist bereits in gewünschter Reihenfolge:
+       ältester/aktueller links -> Zukunft weiter rechts #}
+    {% for l in loads %}
+
+      {% set is_current = (l.id == current_load_id) %}
+      {% set is_next = (l.id == next_load_id) %}
+
+      <div class="load-card-wrap" data-load-id="{{ l.id }}">
+        {% if is_current %}
+          <div class="load-card-top-label current">AKTUELL</div>
+        {% elif is_next %}
+          <div class="load-card-top-label next">NÄCHSTER LOAD</div>
+        {% endif %}
+
+        <div class="load-card{% if is_current %} is-current{% endif %}{% if is_next %} is-next{% endif %}"
+           data-start-iso="{{ (l.actual_time or l.scheduled_time).isoformat() if (l.actual_time or l.scheduled_time) else '' }}">
+
+		<div class="load-card-header d-flex align-items-center justify-content-between">
+		  <div class="d-flex align-items-center">
+			<div>
+			  <div class="load-title">Load {{ l.load_number }}</div>
+			  <div class="load-time">
+				{% if l.actual_time %}
+				  {{ l.actual_time.strftime("%d.%m.%Y, %H:%M") }}
+				{% elif l.scheduled_time %}
+				  {{ l.scheduled_time.strftime("%d.%m.%Y, %H:%M") }}
+				{% else %}
+				  –
+				{% endif %}
+			  </div>
+			</div>
+
+			{% if l.fuel_required %}
+			  <!-- ================= TANKEN (Display-quer) ================= -->
+			  <div class="mx-5 text-danger d-flex align-items-center">
+				<i class="bi bi-fuel-pump-fill fs-2"></i>
+			  </div>
+			{% endif %}
+		  </div>
+
+		  <div class="load-countdown">–</div>
+		</div>
+
+        <div class="load-meta">
+          <strong>{{ l.airfield.name }}</strong>
+          {{ l.aircraft.type }} – <strong>{{ l.aircraft.registration }}</strong>
+          <div class="free-seats">
+            freie Plätze:
+            <span class="free-seats-number">{{ l.seats_capacity - l.seats_occupied }}</span>
+          </div>
+        </div>
+
+        {# WICHTIG: Farblogik wie Split/Display über load_blocks_view.js:
+           - data-block-scope="load" am Container
+           - pro Person: data-block-entry="1" + data-seat + data-status + data-person-id + data-height #}
+        <div class="load-persons" data-block-scope="load">
+          {% for e in l.entries %}
+            <div class="person-block"
+                 data-block-entry="1"
+                 data-seat="{{ e.seat }}"
+                 data-status="{{ e.status_code }}"
+                 data-person-id="{{ e.person_id }}"
+                 data-height="{{ e.height_m }}">
+              <div style="min-width:0;">
+                <div class="person-name">{{ e.person.full_name }}</div>
+                {% if e.follow_load_warning %}
+                  <div class="follow-load-warning">Achtung Folgeload</div>
+                {% endif %}
+              </div>
+              <div class="person-meta">
+                <div>{{ e.status_code }}</div>
+                <div>{{ e.height_m }} m</div>
+                {% if e.gear_rental %}
+                  <div>Schirmmiete 🪂</div>
+                {% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+
+      </div>
+      </div>
+    {% endfor %}
+
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  "use strict";
+
+  function getState() {
+    var s = document.getElementById("displayState");
+    return {
+      currentLoadId: s && s.dataset.current ? Number(s.dataset.current) : null,
+      nextLoadId: s && s.dataset.next ? Number(s.dataset.next) : null
+    };
+  }
+
+  function cardByLoadId(loadId) {
+    if (!loadId) return null;
+    var wrap = document.querySelector('.load-card-wrap[data-load-id="' + loadId + '"]');
+    return wrap ? wrap.querySelector(".load-card") : null;
+  }
+
+  function clearCardStatus(card) {
+    if (!card) return;
+    card.classList.remove("is-current", "is-next");
+    var wrap = card.closest(".load-card-wrap");
+    if (wrap) {
+      var topLabel = wrap.querySelector(".load-card-top-label");
+      if (topLabel) topLabel.remove();
+    }
+  }
+
+  function ensureTopLabel(card, type, text) {
+    if (!card) return;
+    var wrap = card.closest(".load-card-wrap");
+    if (!wrap) return;
+    var badge = wrap.querySelector(".load-card-top-label");
+    if (!badge) {
+      badge = document.createElement("div");
+      wrap.insertBefore(badge, card);
+    }
+    badge.className = "load-card-top-label " + type;
+    badge.textContent = text;
+  }
+
+  function applyMarkers() {
+    var state = getState();
+    var cards = document.querySelectorAll(".load-card");
+    for (var i = 0; i < cards.length; i++) clearCardStatus(cards[i]);
+
+    var currentCard = cardByLoadId(state.currentLoadId);
+    var nextCard = cardByLoadId(state.nextLoadId);
+
+    if (currentCard) {
+      currentCard.classList.add("is-current");
+      ensureTopLabel(currentCard, "current", "AKTUELL");
+    }
+    if (nextCard) {
+      nextCard.classList.add("is-next");
+      ensureTopLabel(nextCard, "next", "NÄCHSTER LOAD");
+    }
+  }
+
+  function updateNow() {
+    var now = new Date();
+    var s = now.toLocaleString("de-DE", {
+      weekday: "long",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    });
+    var el = document.getElementById("nowText");
+    if (el) el.textContent = s;
+  }
+
+  function pad2(n){ return String(n).padStart(2,"0"); }
+
+  function fmtSignedMMSS(ms){
+    // Nach Start: ab -60s in Minuten umschalten (-1 Minute, -2 Minuten, ...)
+    if (ms <= -60000) {
+      var absSeconds = Math.floor(Math.abs(ms) / 1000);
+      var minutes = Math.floor(absSeconds / 60);
+      return "-" + minutes + " " + (minutes === 1 ? "Minute" : "Minuten");
+    }
+
+    var sign = (ms < 0) ? "-" : "";
+    var abs = Math.abs(ms);
+    var total = Math.floor(abs / 1000);
+    var m = Math.floor(total / 60);
+    var s = total % 60;
+    return sign + pad2(m) + ":" + pad2(s);
+  }
+
+  function updateCountdowns(){
+    var now = new Date();
+    var cards = document.querySelectorAll(".load-card");
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      var iso = card.getAttribute("data-start-iso") || "";
+      var el = card.querySelector(".load-countdown");
+      if (!el) continue;
+
+      if (!iso) {
+        el.textContent = "–";
+        continue;
+      }
+
+      var start = new Date(iso);
+      var diff = start - now;
+      if (!Number.isFinite(diff)) {
+        el.textContent = "–";
+        continue;
+      }
+      el.textContent = fmtSignedMMSS(diff);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    updateNow();
+    applyMarkers();
+    updateCountdowns();
+    setInterval(updateNow, 1000);
+    setInterval(updateCountdowns, 1000);
+  });
+
+  // Nach Auto-Refresh sofort neu rechnen + Blockfarben neu anwenden
+  document.addEventListener("display:refreshed", function () {
+    updateNow();
+    applyMarkers();
+    updateCountdowns();
+    if (typeof window.refreshLoadBlockColors === "function") {
+      window.refreshLoadBlockColors(document.querySelector(".display-list-wrap") || document);
+    }
+  });
+})();
+</script>
+
+<script src="{{ url_for('static', filename='load/load_blocks_view.js') }}" defer></script>
+<script src="{{ url_for('static', filename='load/display_auto_refresh.js') }}" defer></script>
+{% endblock %}

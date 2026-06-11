@@ -1,0 +1,437 @@
+{% extends "base.html" %}
+{% block title %}Abrechnung – {{ person.full_name }}{% endblock %}
+
+{% block header %}
+Abrechnung – {{ person.full_name }}
+{% endblock %}
+
+{% block content %}
+<div class="container" id="personBillingRoot">
+
+  <!-- Kopfzeile -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="fw-bold mb-0">
+      Abrechnungsdetails – {{ person.full_name }}
+    </h2>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('billing.overview') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Übersicht
+      </a>
+      <a href="{{ url_for('billing.invoice_list') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-receipt"></i> Rechnungen
+      </a>
+    </div>
+  </div>
+
+  <!-- Toggle Netto / MwSt -->
+  <div class="d-flex justify-content-end align-items-center mb-3">
+    <div class="form-check form-switch">
+      <input class="form-check-input" type="checkbox" id="toggleNetVat" checked>
+      <label class="form-check-label" for="toggleNetVat">
+        Netto &amp; MwSt anzeigen
+      </label>
+    </div>
+  </div>
+
+  <!-- Toggle Styles -->
+  <style>
+    #personBillingRoot.hide-netvat .col-net,
+    #personBillingRoot.hide-netvat .col-vat,
+    #personBillingRoot.hide-netvat .col-netvat-foot {
+      display: none !important;
+    }
+  </style>
+
+  <!-- Toggle Logic -->
+  <script>
+    (function () {
+      const root = document.getElementById("personBillingRoot");
+      const cb = document.getElementById("toggleNetVat");
+      const key = "person_billing_show_netvat";
+
+      const saved = localStorage.getItem(key);
+      if (saved === "0") {
+        cb.checked = false;
+        root.classList.add("hide-netvat");
+      }
+
+      cb.addEventListener("change", () => {
+        if (cb.checked) {
+          root.classList.remove("hide-netvat");
+          localStorage.setItem(key, "1");
+        } else {
+          root.classList.add("hide-netvat");
+          localStorage.setItem(key, "0");
+        }
+      });
+    })();
+  </script>
+
+  {% if entry_rows and entry_rows|length > 0 %}
+
+  <!-- ================================================= -->
+  <!-- Sprungpositionen -->
+  <!-- ================================================= -->
+  <div class="table-responsive mb-3">
+    <table class="table table-striped align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Datum</th>
+          <th>Uhrzeit</th>
+          <th>Load</th>
+		  <th>Flugplatz</th>
+          <th>Sprungart</th>
+          <th class="text-end">Höhe</th>
+          <th class="text-center">Schirm</th>
+
+          <th class="text-end col-net">Netto&nbsp;€</th>
+          <th class="text-end col-vat">MwSt&nbsp;€</th>
+          <th class="text-end">Brutto&nbsp;€</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in entry_rows %}
+        <tr>
+          <td>{{ r.date.strftime('%d.%m.%Y') if r.date else '–' }}</td>
+          <td>{{ r.date.strftime('%H:%M') if r.date else '–' }}</td>
+		  <td>{% if r.load_number %}Load {{ r.load_number }}{% else %}–{% endif %}</td>
+
+		  <td class="text-nowrap">
+		   {{ (r.entry.load.airfield.name or '').split(' ')[0] }}
+		  </td>
+
+		  <td>{{ r.status_code | status_label }}</td>
+		  <td class="text-end">{{ r.height_m }} m</td>
+          <td class="text-center">
+            {% if r.entry.gear_rental %}
+              <span title="Schirmmiete">🪂 Schirmmiete</span>
+            {% else %}
+              <span class="text-muted">–</span>
+            {% endif %}
+          </td>
+
+          <!-- Netto -->
+          <td class="text-end col-net">
+            {{ "{:,.2f}".format(r.net).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+          </td>
+
+          <!-- MwSt -->
+          <td class="text-end col-vat">
+            {{ "{:,.2f}".format(r.vat).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+            <small class="text-muted">({{ r.vat_rate }}%)</small>
+          </td>
+
+          <!-- Brutto -->
+          <td class="text-end">
+            {{ "{:,.2f}".format(r.price).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+<!-- ================================================= -->
+<!-- Vorschau: Rechnungsinhalt -->
+<!-- ================================================= -->
+<div class="card mb-3">
+  <div class="card-body">
+
+    <h5 class="fw-bold mb-3">Vorschau – Inhalt der Rechnung</h5>
+
+    <!-- Sprünge – Teilsumme -->
+    <div class="d-flex justify-content-end fw-bold mb-2">
+      Sprünge gesamt:&nbsp;
+      {{ "{:,.2f}".format(total_jump).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+    </div>
+
+    {% if rent_lines %}
+    <h5 class="fw-bold mt-4">Schirmmiete</h5>
+
+    <div class="table-responsive mb-2">
+      <table class="table table-striped align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Datum</th>
+            <th>Kategorie</th>
+            <th>Menge</th>
+            <th class="text-end col-net">Netto €</th>
+            <th class="text-end col-vat">MwSt €</th>
+            <th class="text-end">Brutto €</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rl in rent_lines %}
+          <tr>
+            <td>{{ rl.day.strftime('%d.%m.%Y') }}</td>
+            <td>{{ rl.category }}</td>
+            <td>
+              {{ rl.charged }} ×
+              {{ "{:,.2f}".format(rl.price).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+            </td>
+            <td class="text-end col-net">
+              {{ "{:,.2f}".format(rl.net).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+            </td>
+            <td class="text-end col-vat">
+              {{ "{:,.2f}".format(rl.vat).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+              <small class="text-muted">({{ rl.vat_rate }}%)</small>
+            </td>
+            <td class="text-end">
+              {{ "{:,.2f}".format(rl.subtotal).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+	<!-- Schirmmiete – Teilsumme -->
+	<div class="d-flex justify-content-end fw-bold mb-3">
+	  Schirmmiete gesamt:&nbsp;
+	  {{ "{:,.2f}".format(rent_total).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+	</div>
+	{% endif %}
+
+	{% if orga_lines %}
+	<h5 class="fw-bold mt-4">Organisationspauschale</h5>
+
+	<div class="table-responsive mb-2">
+	  <table class="table table-striped align-middle">
+		<thead class="table-light">
+		  <tr>
+			<th>Datum</th>
+			<th>Beschreibung</th>
+			<th>Menge</th>
+			<th class="text-end col-net">Netto €</th>
+			<th class="text-end col-vat">MwSt €</th>
+			<th class="text-end">Brutto €</th>
+		  </tr>
+		</thead>
+		<tbody>
+		  {% for ol in orga_lines %}
+		  <tr>
+
+			{# =============================== #}
+			{# ✅ Orga – Datum / Zeitraum fachlich korrekt anzeigen #}
+			{# =============================== #}
+
+			<td>
+			 {% if ol.mode == "day" and ol.days %}
+			   {{ ol.days[0].strftime('%d.%m.%Y') }}
+			 {% elif ol.mode == "period" %}
+			   <span class="text-muted">Zeitraum</span>
+			 {% else %}
+			   –
+			 {% endif %}
+			</td>
+
+
+			<!-- ✅ Beschreibung kommt direkt aus dem Backend (wie Rechnung) -->
+            <td>
+             {{ ol.description }}
+             {% if ol.mode == "day" %}
+               <div class="small text-muted">
+                 Pauschale pro Tag
+               </div>
+             {% elif ol.mode == "period" %}
+               <div class="small text-muted">
+                 Einmalig für den Zeitraum
+               </div>
+             {% endif %}
+             {% if ol.gross == 0 %}
+               <div class="small text-danger fw-semibold">
+                 Hinweis: Organisationspauschale wurde bereits in einer anderen Rechnung{% if ol.invoice_nr %} #{{ ol.invoice_nr }}{% endif %} abgerechnet.
+               </div>
+             {% endif %}
+			</td>
+
+			<!-- ✅ Keine Rekonstruktion der Menge im Template -->
+			<td>
+			  –
+			</td>
+
+			{# =============================== #}
+			{# ✅ Orga – Anzeige OHNE Neuberechnung #}
+			{# Netto / MwSt kommen ausschließlich aus dem Backend #}
+			{# =============================== #}
+
+			{# =============================== #}
+			{# ✅ Orga – robuste Anzeige (net/vat optional aus Backend) #}
+			{# Falls net/vat noch nicht geliefert werden, Fallback-Berechnung #}
+			{# =============================== #}
+
+			{% if ol.net is defined and ol.vat is defined %}
+			  {# ✅ Bevorzugt: Werte direkt aus dem Backend #}
+			  <td class="text-end col-net">
+				{{ "{:,.2f}".format(ol.net).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			  </td>
+			  <td class="text-end col-vat">
+				{{ "{:,.2f}".format(ol.vat).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+				<small class="text-muted">({{ ol.vat_rate }}%)</small>
+			  </td>
+			{% else %}
+			  {# ✅ Fallback: bisherige Berechnung (kompatibel) #}
+			  {% set _net = ol.gross / (1 + ol.vat_rate / 100) %}
+			  {% set _vat = ol.gross - _net %}
+			  <td class="text-end col-net">
+				{{ "{:,.2f}".format(_net).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			  </td>
+			  <td class="text-end col-vat">
+				{{ "{:,.2f}".format(_vat).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+				<small class="text-muted">({{ ol.vat_rate }}%)</small>
+			  </td>
+			{% endif %}
+
+			<td class="text-end">
+			  {{ "{:,.2f}".format(ol.gross).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			</td>
+
+		  </tr>
+		  {% endfor %}
+		</tbody>
+	  </table>
+	</div>
+
+
+	<!-- Orga – Teilsumme -->
+	<div class="d-flex justify-content-end fw-bold mb-3">
+	  Organisationspauschale gesamt:&nbsp;
+	  {{ "{:,.2f}".format(orga_total).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+	</div>
+	{% endif %}
+
+	{% if tx_lines %}
+	<h5 class="fw-bold mt-4">Transaktionskosten</h5>
+
+	<div class="table-responsive mb-2">
+	  <table class="table table-striped align-middle">
+		<thead class="table-light">
+		  <tr>
+			<th>Beschreibung</th>
+			<th class="text-end col-net">Netto €</th>
+			<th class="text-end col-vat">MwSt €</th>
+			<th class="text-end">Brutto €</th>
+		  </tr>
+		</thead>
+		<tbody>
+		  {% for tx in tx_lines %}
+		  <tr>
+			<td>{{ tx.label }}</td>
+			<td class="text-end col-net">
+			  {{ "{:,.2f}".format(tx.net).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			</td>
+			<td class="text-end col-vat">
+			  {{ "{:,.2f}".format(tx.vat).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			  <small class="text-muted">({{ tx.vat_rate }}%)</small>
+			</td>
+			<td class="text-end">
+			  {{ "{:,.2f}".format(tx.gross).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			</td>
+		  </tr>
+		  {% endfor %}
+		</tbody>
+	  </table>
+	</div>
+
+
+    <!-- Transaktionskosten – Teilsumme -->
+    <div class="d-flex justify-content-end fw-bold mb-3">
+      Transaktionskosten gesamt:&nbsp;
+      {{ "{:,.2f}".format(tx_total).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+    </div>
+    {% endif %}
+
+    <hr>
+
+
+<!-- Gesamtbetrag – rechtsbündig -->
+<div class="d-flex justify-content-end">
+  <div class="text-end">
+    <div class="fw-bold fs-5">
+      Gesamt (Brutto):
+      {{ "{:,.2f}".format(total_preview).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+    </div>
+
+    <div class="text-muted col-netvat-foot">
+      Netto:
+      {{ "{:,.2f}".format(total_net_preview).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+      &nbsp;·&nbsp;
+      MwSt:
+      {{ "{:,.2f}".format(total_vat_preview).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+    </div>
+
+    <small class="text-muted">
+      Vorschau – verbindlich wird erst bei Rechnungserstellung.
+    </small>
+  </div>
+</div>
+
+
+  <!-- Formular für abweichende Rechnungsanschrift und E-Mail -->
+  <form method="post" action="{{ url_for('billing.create_invoice_for_person', person_id=person.id) }}" class="mb-4">
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="fw-bold mb-3">Abweichende Rechnungsanschrift (optional)</h5>
+        <div class="row g-2 mb-2">
+          <div class="col-md-6">
+            <label for="billing_address_name" class="form-label">Empfänger (Name/Firma)</label>
+            <input type="text" class="form-control" id="billing_address_name" name="billing_address_name" placeholder="Name oder Firma">
+          </div>
+          <div class="col-md-6">
+            <label for="billing_address_email" class="form-label">E-Mail-Adresse</label>
+            <input type="email" class="form-control" id="billing_address_email" name="billing_address_email" placeholder="E-Mail-Adresse">
+          </div>
+        </div>
+        <div class="row g-2 mb-2">
+          <div class="col-md-6">
+            <label for="billing_address_street" class="form-label">Straße und Hausnummer</label>
+            <input type="text" class="form-control" id="billing_address_street" name="billing_address_street" placeholder="Straße und Hausnummer">
+          </div>
+          <div class="col-md-3">
+            <label for="billing_address_zip" class="form-label">PLZ</label>
+            <input type="text" class="form-control" id="billing_address_zip" name="billing_address_zip" placeholder="PLZ">
+          </div>
+          <div class="col-md-3">
+            <label for="billing_address_city" class="form-label">Ort</label>
+            <input type="text" class="form-control" id="billing_address_city" name="billing_address_city" placeholder="Ort">
+          </div>
+        </div>
+        <div class="form-text mb-2">
+          Wenn ausgefüllt, wird die Rechnung mit dieser Anschrift und E-Mail-Adresse erstellt und versendet. Die Personendaten bleiben unverändert.
+        </div>
+
+        <div class="row g-2 mb-2">
+          <div class="col-md-4">
+            <label for="prepaid_voucher_amount" class="form-label">Vorkasse / Gutschein (Brutto)</label>
+            <input type="text"
+                   class="form-control"
+                   id="prepaid_voucher_amount"
+                   name="prepaid_voucher_amount"
+                   value=""
+                   placeholder="z. B. 100,00"
+                   {% if not prepaid_allowed %}disabled{% endif %}>
+            {% if prepaid_allowed %}
+              <div class="form-text">Nur Teilbetrag. Der Rest wird später vor Ort bezahlt.</div>
+            {% else %}
+              <div class="form-text text-muted">Nur für Tandemgäste inkl. Mitflieger/Video verfügbar.</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <button type="submit"
+            class="btn btn-primary"
+            onclick="return confirm('Rechnung für {{ person.full_name }} erzeugen?');">
+      <i class="bi bi-file-earmark-plus"></i>
+      Rechnung erstellen
+    </button>
+  </form>
+
+  {% else %}
+    <div class="alert alert-info">
+      Für diese Person liegen aktuell keine offenen Sprünge vor.
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

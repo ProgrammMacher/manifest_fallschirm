@@ -1,0 +1,332 @@
+{% extends "base.html" %}
+
+{% block title %}Person – Details{% endblock %}
+{% block header %}Person – Details{% endblock %}
+
+{% block content %}
+
+<div class="card shadow-sm">
+    <div class="card-body">
+
+        <!-- HEADER -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3 class="mb-0 fw-bold">
+                {{ person.full_name }}
+
+                {% if person.is_archived %}
+                    <span class="badge bg-secondary ms-2">Archiviert</span>
+                {% endif %}
+            </h3>
+
+            <div class="d-flex gap-2">
+
+                <!-- EDIT -->
+                <a href="{{ url_for('person.edit_person', id=person.id) }}"
+                   class="btn btn-primary">
+                    <i class="bi bi-pencil-square"></i> Bearbeiten
+                </a>
+
+                <!-- ARCHIVE -->
+                {% if person.is_active %}
+                <form method="post"
+                      action="{{ url_for('person.archive_person', id=person.id) }}"
+                      onsubmit="return confirm('Person wirklich archivieren?');">
+                    <button class="btn btn-warning" type="submit">
+                        <i class="bi bi-archive"></i> Archivieren
+                    </button>
+                </form>
+                {% endif %}
+
+                <!-- RESTORE -->
+                {% if person.is_archived %}
+                <form method="post"
+                      action="{{ url_for('person.restore_person', id=person.id) }}"
+                      onsubmit="return confirm('Person wiederherstellen?');">
+                    <button class="btn btn-info" type="submit">
+                        <i class="bi bi-arrow-counterclockwise"></i> Wiederherstellen
+                    </button>
+                </form>
+                {% endif %}
+
+                <!-- HARD DELETE (ADMIN ONLY + allowed) -->
+                {% if is_admin() and person.can_hard_delete() %}
+                <form method="post"
+                      action="{{ url_for('person.hard_delete_person', id=person.id) }}"
+                      onsubmit="return confirm('ENDGÜLTIG löschen? Dieser Vorgang kann NICHT rückgängig gemacht werden.');">
+                    <button class="btn btn-danger" type="submit">
+                        <i class="bi bi-trash"></i> Löschen
+                    </button>
+                </form>
+                {% endif %}
+
+                <!-- INFO-ICON wenn Harddelete NICHT möglich -->
+                {% if is_admin() and not person.can_hard_delete() %}
+                    <span class="text-muted ms-1"
+                          title="Harddelete nicht möglich: Person war in Loads oder hat Rechnungen.">
+                        <i class="bi bi-info-circle"></i>
+                    </span>
+                {% endif %}
+
+            </div>
+        </div>
+
+        <!-- ARCHIVE INFO -->
+        {% if person.is_archived %}
+        <div class="alert alert-secondary d-flex justify-content-between align-items-center">
+            <div>
+                <strong>Archiviert am:</strong>
+                {{ person.deleted_at.strftime('%d.%m.%Y %H:%M') if person.deleted_at else '–' }}
+                <br>
+                <strong>Grund:</strong>
+                {{ person.deleted_reason or '–' }}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- STATUS BADGES -->
+        <div class="mb-4">
+
+            {% if person.is_member %}
+                <span class="badge bg-success me-1">Mitglied</span>
+            {% endif %}
+
+            {% if person.is_partner_verein %}
+                <span class="badge bg-info text-dark me-1">Partner-Verein</span>
+            {% endif %}
+
+            {% if person.is_tandem_guest %}
+                <span class="badge bg-warning text-dark me-1">Tandemgast</span>
+            {% endif %}
+
+            {% if not person.is_member and not person.is_tandem_guest and not person.is_partner_verein %}
+                <span class="badge bg-secondary me-1">Sonstige</span>
+            {% endif %}
+
+            {% if person.liability_waiver_valid %}
+                <span class="badge bg-success me-1">Enthaftung gültig</span>
+            {% else %}
+                <span class="badge bg-danger me-1">Enthaftung ungültig</span>
+            {% endif %}
+
+            {% set w = person.weight_kg %}
+            {% if person.is_tandem_guest %}
+                {% set min = 40 %}{% set max = 90 %}
+            {% else %}
+                {% set min = 50 %}{% set max = 100 %}
+            {% endif %}
+
+            {% if w < min or w > max %}
+                <span class="badge bg-danger me-1">Gewicht außerhalb Norm</span>
+            {% endif %}
+
+            {% if person.newsletter_opt_out %}
+                <span class="badge bg-secondary me-1"
+                      title="Diese Person hat den Newsletter abbestellt">
+                    <i class="bi bi-bell-slash-fill"></i> Newsletter abbestellt
+                </span>
+            {% endif %}
+        </div>
+
+        <!-- NEWSLETTER OPT-OUT HINWEIS (nur wenn abbestellt) -->
+        {% if person.newsletter_opt_out %}
+        <div class="alert alert-warning d-flex justify-content-between align-items-center mb-3 py-2">
+            <div>
+                <i class="bi bi-bell-slash-fill me-2"></i>
+                <strong>Newsletter abbestellt</strong> – Diese Person erhält bei Versandart „Newsletter" keine E-Mails.
+                Bei Versandart „E-Mail" kann sie weiterhin angeschrieben werden (falls Opt-out ignoriert wird).
+            </div>
+            {% if is_admin() or session.get('is_db_admin') %}
+            <form method="post"
+                  action="{{ url_for('person.reset_newsletter_optout', id=person.id) }}"
+                  onsubmit="return confirm('Newsletter-Abmeldung zurücksetzen? Person empfängt dann wieder Newsletter.');"
+                  class="ms-3 flex-shrink-0">
+                <button class="btn btn-sm btn-outline-warning" type="submit">
+                    <i class="bi bi-bell-fill"></i> Abmeldung zurücksetzen
+                </button>
+            </form>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- GRID -->
+        <div class="row g-4">
+
+            <!-- KONTAKT -->
+            <div class="col-md-6">
+                <h5 class="fw-bold border-bottom pb-2">
+                    <i class="bi bi-person-lines-fill"></i> Kontakt
+                </h5>
+
+                <p><strong>Telefon:</strong>
+                    {% if person.phone %}
+                        <a href="tel:{{ person.phone }}">{{ person.phone }}</a>
+                    {% else %}
+                        –
+                    {% endif %}
+                </p>
+
+                <p><strong>E‑Mail:</strong>
+                    {% if person.email %}
+                        <a href="mailto:{{ person.email }}">{{ person.email }}</a>
+                    {% else %}
+                        –
+                    {% endif %}
+                </p>
+
+                <p><strong>Adresse:</strong><br>
+                    {% if person.street_and_number %}
+                        {{ person.street_and_number }}<br>
+                        {{ person.zip_code }} {{ person.city }}
+                    {% else %}
+                        –
+                    {% endif %}
+                </p>
+            </div>
+
+            <!-- PERSÖNLICHE DATEN -->
+            <div class="col-md-6">
+                <h5 class="fw-bold border-bottom pb-2">
+                    <i class="bi bi-person-badge-fill"></i> Persönliche Daten
+                </h5>
+
+                <p><strong>Geburtstag:</strong>
+                    {% if person.birthdate %}
+                        <span class="badge bg-secondary">
+                            {{ person.birthdate.strftime('%d.%m.%Y') }}
+                        </span>
+                    {% else %}
+                        –
+                    {% endif %}
+                </p>
+
+                <p><strong>Ursprungsname:</strong>
+                    {% if person.original_name %}
+                        <span class="badge bg-light text-dark border">{{ person.original_name }}</span>
+                    {% else %}
+                        –
+                    {% endif %}
+                </p>
+
+                <p><strong>Gewicht:</strong>
+                    <span class="badge {{ 'bg-danger' if w < min or w > max else 'bg-success' }}">
+                        {{ person.weight_kg }} kg
+                    </span>
+                </p>
+
+                <p><strong>Größe:</strong>
+                    {% if person.height_cm %}
+                        <span class="badge bg-secondary">{{ person.height_cm }} cm</span>
+                    {% else %}
+                        –
+                    {% endif %}
+                </p>
+
+                <p><strong>Enthaftung:</strong>
+                    {% if person.liability_waiver_date %}
+                        {% if person.liability_waiver_valid %}
+                            <span class="badge bg-success">
+                                {{ person.liability_waiver_date.strftime('%d.%m.%Y') }}
+                            </span>
+                        {% else %}
+                            <span class="badge bg-danger">
+                                {{ person.liability_waiver_date.strftime('%d.%m.%Y') }} abgelaufen
+                            </span>
+                        {% endif %}
+                    {% else %}
+                        <span class="badge bg-danger">fehlt</span>
+                    {% endif %}
+                </p>
+            </div>
+
+            <!-- NOTFALLKONTAKT -->
+            <div class="col-md-6">
+                <h5 class="fw-bold border-bottom pb-2">
+                    <i class="bi bi-telephone-inbound-fill"></i> Notfallkontakt
+                </h5>
+
+                <p><strong>Name:</strong> {{ person.emergency_name or "–" }}</p>
+                <p><strong>Beziehung:</strong> {{ person.emergency_relation or "–" }}</p>
+
+                <p><strong>Telefon:</strong>
+                    {% if person.emergency_phone %}
+                        <a href="tel:{{ person.emergency_phone }}">{{ person.emergency_phone }}</a>
+                    {% else %}
+                        –
+                    {% endif %}
+                </p>
+
+                <p><strong>E‑Mail:</strong>
+                    {% if person.emergency_email %}
+                        <a href="mailto:{{ person.emergency_email }}">{{ person.emergency_email }}</a>
+                    {% else %}
+                        –
+                    {% endif %}
+                </p>
+            </div>
+
+            <!-- VERSICHERUNG -->
+            <div class="col-md-6">
+                <h5 class="fw-bold border-bottom pb-2">
+                    <i class="bi bi-shield-lock-fill"></i> Versicherung
+                </h5>
+
+                <p><strong>Versicherer:</strong> {{ person.insurance_provider or "–" }}</p>
+                <p><strong>Nummer:</strong> {{ person.insurance_number or "–" }}</p>
+
+                {% if person.insurance_file %}
+                <a href="{{ url_for('person.download_insurance', id=person.id) }}"
+                   class="btn btn-sm btn-outline-primary mt-2">
+                    <i class="bi bi-download"></i> Versicherung herunterladen
+                </a>
+                {% endif %}
+            </div>
+
+            <!-- LIZENZ -->
+            <div class="col-md-6">
+                <h5 class="fw-bold border-bottom pb-2">
+                    <i class="bi bi-award-fill"></i> Lizenz
+                </h5>
+
+                <p><strong>Lizenznummer:</strong> {{ person.license_number or "–" }}</p>
+
+                {% if person.license_file %}
+                <a href="{{ url_for('person.download_license', id=person.id) }}"
+                   class="btn btn-sm btn-outline-primary mt-2">
+                    <i class="bi bi-download"></i> Lizenz herunterladen
+                </a>
+                {% endif %}
+            </div>
+
+            <!-- BANK & SONSTIGES -->
+            <div class="col-md-6">
+                <h5 class="fw-bold border-bottom pb-2">
+                    <i class="bi bi-bank"></i> Bank & Sonstiges
+                </h5>
+
+                <p><strong>IBAN:</strong> {{ person.iban or "–" }}</p>
+                <p><strong>BIC:</strong> {{ person.bic or "–" }}</p>
+                <p><strong>Kontoinhaber:</strong> {{ person.account_holder or "–" }}</p>
+
+                <p><strong>Kommentar:</strong><br>
+                    {% if person.comment %}
+                        <span class="badge bg-info text-dark">{{ person.comment }}</span>
+                    {% else %}
+                        –
+                    {% endif %}
+                </p>
+
+                <p><strong>Notizen:</strong><br>
+                    {% if person.notes %}
+                        <pre class="bg-light p-2 rounded">{{ person.notes }}</pre>
+                    {% else %}
+                        –
+                    {% endif %}
+                </p>
+            </div>
+
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}

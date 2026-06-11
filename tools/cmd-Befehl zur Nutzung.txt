@@ -1,0 +1,13 @@
+Im neuen CMD-Fenster die beiden Zeilen reinkopieren:
+
+
+cd C:\manifest_fallschirm
+python tools\find_unused_modules.py --root C:\manifest_fallschirm --entry run.py --entry app\__init__.py
+
+
+
+
+
+cd C:\manifest_fallschirm
+venv\Scripts\activate
+python tools\analyze_venv.py
