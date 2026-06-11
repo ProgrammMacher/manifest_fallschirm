@@ -26,5 +26,5 @@ Section "Uninstall"
   RMDir "$SMPROGRAMS\manifest_fallschirm"
   Delete "$INSTDIR\README.md"
   Delete "$INSTDIR\uninstall.exe"
-  RMDir /r "$INSTDIR"
+  RMDir "$INSTDIR"
 SectionEnd
