@@ -30,13 +30,29 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup -y
 
-      # ✅ StageDir vorbereiten (wichtig für deine .iss!)
-      - name: Prepare stage directory
+      # ✅ StageDir vorbereiten + INHALT (WICHTIG!)
+      - name: Prepare stage directory with files
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force build\inno_stage
 
-      # ✅ KORRIGIERT: richtiger Pfad zu deiner ISS
+          # EXE kopieren
+          Copy-Item dist\run.exe build\inno_stage\ -Force
+
+          # Startskript kopieren
+          Copy-Item start_manifest_prod.vbs build\inno_stage\ -Force -ErrorAction SilentlyContinue
+
+          # App-Ordner kopieren (falls vorhanden)
+          if (Test-Path app) {
+            Copy-Item app build\inno_stage\ -Recurse -Force
+          }
+
+          # Tools kopieren (falls gebraucht)
+          if (Test-Path tools) {
+            Copy-Item tools build\inno_stage\ -Recurse -Force
+          }
+
+      # ✅ Richtiger Pfad zu deiner ISS
       - name: Build Installer
         shell: powershell
         run: |
@@ -49,7 +65,7 @@ jobs:
             exit 1
           }
 
-      # ✅ Version automatisch aus Dateiname
+      # ✅ Version automatisch erkennen
       - name: Extract version
         id: version
         shell: powershell
@@ -85,7 +101,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ✅ Optional zusätzlich als Artefakt
+      # ✅ Optional: Artifact
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
