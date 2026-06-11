@@ -32,35 +32,63 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup -y
 
-      - name: Prepare stage directory with files
+      - name: Prepare stage directory with full content
         shell: powershell
         run: |
-          New-Item -ItemType Directory -Force build\inno_stage
+          $stage = "build\inno_stage"
+          New-Item -ItemType Directory -Force $stage | Out-Null
 
-          # EXE kopieren
-          Copy-Item dist\run.exe build\inno_stage\ -Force
-
-          # Startskript kopieren
-          Copy-Item start_manifest_prod.vbs build\inno_stage\ -Force -ErrorAction SilentlyContinue
-
-          # App-Ordner kopieren (falls vorhanden)
-          if (Test-Path app) {
-            Copy-Item app build\inno_stage\ -Recurse -Force
+          function Copy-IfExists {
+            param(
+              [string]$Source,
+              [string]$Destination
+            )
+            if (Test-Path $Source) {
+              Copy-Item $Source $Destination -Recurse -Force
+            }
           }
 
-          # Tools kopieren (falls gebraucht)
-          if (Test-Path tools) {
-            Copy-Item tools build\inno_stage\ -Recurse -Force
+          function Copy-FileIfExists {
+            param(
+              [string]$Source,
+              [string]$Destination
+            )
+            if (Test-Path $Source) {
+              Copy-Item $Source $Destination -Force
+            }
           }
 
-          # Weitere wichtige Ordner optional mitnehmen
-          if (Test-Path runtime) {
-            Copy-Item runtime build\inno_stage\ -Recurse -Force
-          }
+          # Haupt-EXE
+          Copy-FileIfExists "dist\run.exe" "$stage\run.exe"
 
-          if (Test-Path templates) {
-            Copy-Item templates build\inno_stage\ -Recurse -Force
-          }
+          # Root-Start- und Hilfsdateien
+          Copy-FileIfExists "start_manifest_prod.vbs" "$stage\start_manifest_prod.vbs"
+          Copy-FileIfExists "start_manifest_prod.bat" "$stage\start_manifest_prod.bat"
+          Copy-FileIfExists "setup_start_manifest.bat" "$stage\setup_start_manifest.bat"
+          Copy-FileIfExists "run.py" "$stage\run.py"
+          Copy-FileIfExists "requirements.txt" "$stage\requirements.txt"
+          Copy-FileIfExists "server_pid.txt" "$stage\server_pid.txt"
+
+          # Wichtige Ordner für Offline-/Vollinstallation
+          Copy-IfExists "app" "$stage\app"
+          Copy-IfExists "tools" "$stage\tools"
+          Copy-IfExists "runtime" "$stage\runtime"
+          Copy-IfExists "templates" "$stage\templates"
+          Copy-IfExists "uploads" "$stage\uploads"
+          Copy-IfExists "session_data" "$stage\session_data"
+
+          # venv explizit mitnehmen, falls vorhanden
+          Copy-IfExists "venv" "$stage\venv"
+          Copy-IfExists ".venv" "$stage\.venv"
+
+          # Optional weitere Projektordner, falls vorhanden
+          Copy-IfExists "static" "$stage\static"
+          Copy-IfExists "tests" "$stage\tests"
+          Copy-IfExists "installer" "$stage\installer"
+
+          # Stage-Inhalt zur Kontrolle ausgeben
+          Write-Host "Stage-Verzeichnis vorbereitet:"
+          Get-ChildItem $stage -Force
 
       - name: Build Installer
         shell: powershell
@@ -87,7 +115,6 @@ jobs:
 
           $file = $files | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           $name = $file.BaseName
-
           $numbers = $name -split '_' | Where-Object { $_ -match '^\d+$' }
 
           if ($numbers.Count -lt 2) {
@@ -96,7 +123,7 @@ jobs:
           }
 
           $version = "$($numbers[-2]).$($numbers[-1]).0"
-          echo "VERSION=$version" >> $env:GITHUB_ENV
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
 
           Write-Host "Installer: $($file.Name)"
           Write-Host "Version: $version"
