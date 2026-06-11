@@ -17,10 +17,12 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt pyinstaller
 
+      # ✅ FIX: PowerShell-kompatibel
       - name: Clean build
+        shell: powershell
         run: |
-          if exist build rmdir /s /q build
-          if exist dist rmdir /s /q dist
+          if (Test-Path build) { Remove-Item -Recurse -Force build }
+          if (Test-Path dist) { Remove-Item -Recurse -Force dist }
 
       - name: Build EXE
         run: pyinstaller --clean --onefile --noconfirm run.py
@@ -28,14 +30,16 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup -y
 
+      # ✅ FIX: PowerShell-kompatibel
       - name: Build Installer
+        shell: powershell
         run: |
-          if exist installer.iss (
-            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
-          ) else (
-            echo "installer.iss fehlt"
-            exit /b 1
-          )
+          if (Test-Path installer.iss) {
+            & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+          } else {
+            Write-Error "installer.iss fehlt"
+            exit 1
+          }
 
       # ✅ ROBUSTE VERSION (neueste Datei + flexible Erkennung)
       - name: Extract version (robust)
@@ -49,12 +53,9 @@ jobs:
             exit 1
           }
 
-          # Neueste Datei wählen (falls mehrere existieren)
           $file = $files | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-
           $name = $file.BaseName
 
-          # Zahlen aus Dateiname extrahieren (z.B. manifest_ou_1_2 -> 1,2)
           $numbers = $name -split '_' | Where-Object { $_ -match '^\d+$' }
 
           if ($numbers.Count -lt 2) {
@@ -62,7 +63,6 @@ jobs:
             exit 1
           }
 
-          # Version bilden (SemVer-kompatibel)
           $major = $numbers[-2]
           $minor = $numbers[-1]
           $version = "$major.$minor.0"
@@ -72,7 +72,7 @@ jobs:
           Write-Host "Installer: $($file.Name)"
           Write-Host "Version: $version"
 
-      # ✅ Release sicher erstellen
+      # ✅ Release
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
