@@ -18,12 +18,10 @@ Section "Install"
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
   CreateDirectory "$SMPROGRAMS\manifest_fallschirm"
-  CreateShortcut "$SMPROGRAMS\manifest_fallschirm\manifest_fallschirm.lnk" "$INSTDIR\README.md"
   CreateShortcut "$SMPROGRAMS\manifest_fallschirm\Uninstall manifest_fallschirm.lnk" "$INSTDIR\uninstall.exe"
 SectionEnd
 
 Section "Uninstall"
-  Delete "$SMPROGRAMS\manifest_fallschirm\manifest_fallschirm.lnk"
   Delete "$SMPROGRAMS\manifest_fallschirm\Uninstall manifest_fallschirm.lnk"
   RMDir "$SMPROGRAMS\manifest_fallschirm"
 

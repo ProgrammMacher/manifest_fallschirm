@@ -7,6 +7,8 @@ name: Build installer
 
 jobs:
   build-installer:
+    permissions:
+      contents: read
     runs-on: windows-latest
 
     steps:
