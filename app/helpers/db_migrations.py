@@ -769,6 +769,62 @@ def ensure_email_send_log_table() -> None:
     db.session.commit()
 
 
+def ensure_sepa_export_tables() -> None:
+    """Erstellt SEPA-Exporthistorie-Tabellen inkl. Indizes, falls nicht vorhanden."""
+    if not _table_exists("sepa_export"):
+        db.session.execute(text("""
+            CREATE TABLE sepa_export (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                export_code VARCHAR(20) NOT NULL UNIQUE,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_by VARCHAR(100) NOT NULL,
+                invoice_count INTEGER NOT NULL DEFAULT 0,
+                total_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+                file_name VARCHAR(255) NOT NULL,
+                file_path VARCHAR(1024) NOT NULL,
+                status VARCHAR(30) NOT NULL DEFAULT 'created',
+                xml_version VARCHAR(30) NOT NULL DEFAULT 'infra-v1',
+                selection_scope VARCHAR(30) NOT NULL DEFAULT 'manual',
+                submitted_at DATETIME,
+                submitted_by VARCHAR(100),
+                executed_at DATETIME,
+                executed_by VARCHAR(100),
+                file_deleted_at DATETIME,
+                file_deleted_by VARCHAR(100)
+            )
+        """))
+
+    db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_sepa_export_created_at ON sepa_export (created_at)"))
+    db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_sepa_export_status ON sepa_export (status)"))
+
+    if not _table_exists("sepa_export_invoice"):
+        db.session.execute(text("""
+            CREATE TABLE sepa_export_invoice (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                export_id INTEGER NOT NULL,
+                invoice_id INTEGER NOT NULL,
+                invoice_number_snapshot VARCHAR(50) NOT NULL,
+                invoice_total_snapshot NUMERIC(10,2) NOT NULL DEFAULT 0,
+                person_name_snapshot VARCHAR(200) NOT NULL,
+                iban_snapshot VARCHAR(34),
+                mandate_reference_snapshot VARCHAR(32),
+                payment_method_snapshot VARCHAR(20),
+                payment_state_snapshot VARCHAR(20) NOT NULL,
+                load_date_from DATE,
+                load_date_to DATE,
+                load_dates_text VARCHAR(500),
+                UNIQUE(export_id, invoice_id),
+                FOREIGN KEY(export_id) REFERENCES sepa_export(id) ON DELETE CASCADE,
+                FOREIGN KEY(invoice_id) REFERENCES invoice(id) ON DELETE RESTRICT
+            )
+        """))
+
+    db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_sepa_export_invoice_export_id ON sepa_export_invoice (export_id)"))
+    db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_sepa_export_invoice_invoice_id ON sepa_export_invoice (invoice_id)"))
+
+    db.session.commit()
+
+
 def run_startup_migrations() -> None:
     """
     Sammelpunkt für alle Startup-Migrationen.
@@ -793,3 +849,4 @@ def run_startup_migrations() -> None:
     ensure_person_newsletter_columns()
     ensure_email_config_table()
     ensure_email_send_log_table()
+    ensure_sepa_export_tables()

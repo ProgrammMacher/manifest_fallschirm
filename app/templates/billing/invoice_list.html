@@ -196,6 +196,93 @@
     </div>
   </div>
 
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+          <h5 class="mb-1">SEPA-Export (Infrastruktur)</h5>
+          <div class="text-muted small">
+            Exportiert werden nur Rechnungen mit Status <strong>SEPA vorgemerkt</strong>. Aktuell auswählbar: {{ sepa_pending_count }}.
+          </div>
+        </div>
+        <form id="sepaExportForm" method="post" action="{{ url_for('billing.invoice_sepa_export') }}"></form>
+        <div class="d-flex flex-wrap gap-2">
+          <button type="button" id="sepaSelectAllBtn" class="btn btn-outline-primary btn-sm">Alle SEPA-vorgemerkten auswählen</button>
+          <button type="button" id="sepaSelectNoneBtn" class="btn btn-outline-secondary btn-sm">Alle abwählen</button>
+          <button type="submit"
+                  id="sepaExportSubmitBtn"
+                  form="sepaExportForm"
+                  class="btn btn-primary btn-sm"
+                  {% if not can_execute_sepa_export %}disabled{% endif %}>
+            SEPA XML erzeugen & herunterladen
+          </button>
+        </div>
+      </div>
+      {% if not can_execute_sepa_export %}
+      <div class="alert alert-warning mt-2 mb-0 py-2">
+        Sichtbar für alle Benutzer. Ausführen dürfen nur Admin und DB-Admin.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body">
+      <h5 class="mb-2">SEPA-Exporthistorie</h5>
+      {% if sepa_exports %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Export-ID</th>
+              <th>Zeitpunkt</th>
+              <th>Benutzer</th>
+              <th class="text-end">Anzahl</th>
+              <th class="text-end">Gesamtsumme</th>
+              <th>Datei</th>
+              <th>Status</th>
+              <th>Rechnungen</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for exp in sepa_exports %}
+            {% set inv_labels = exp.invoices|map(attribute='invoice_number_snapshot')|list %}
+            <tr>
+              <td><strong>{{ exp.export_code }}</strong></td>
+              <td>{{ exp.created_at.strftime('%d.%m.%Y %H:%M') if exp.created_at else '—' }}</td>
+              <td>{{ exp.created_by or '—' }}</td>
+              <td class="text-end">{{ exp.invoice_count }}</td>
+              <td class="text-end">{{ "{:,.2f}".format(exp.total_amount or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</td>
+              <td>{{ exp.file_name }}</td>
+              <td><span class="badge bg-secondary">{{ exp.status }}</span></td>
+              <td>
+                {% if inv_labels %}
+                  {{ inv_labels|join(', ') }}
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                {% if can_execute_sepa_export %}
+                <a class="btn btn-outline-primary btn-sm" href="{{ url_for('billing.invoice_sepa_export_download', export_id=exp.id) }}">
+                  Download
+                </a>
+                {% else %}
+                <span class="text-muted small">Kein Zugriff</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-muted">Noch keine SEPA-Exporthistorie vorhanden.</div>
+      {% endif %}
+    </div>
+  </div>
+
   {% if invoices %}
 
     <!-- =============================== -->
@@ -321,6 +408,7 @@
       <table class="table table-striped align-middle" id="invoiceTable">
         <thead class="table-light">
           <tr>
+            <th class="text-center" style="width:48px;">SEPA</th>
             <th role="button" class="sortable" data-sort-key="inv_id">
               Rechnungsnr. <span class="sort-indicator"></span>
             </th>
@@ -425,6 +513,19 @@
               data-content-status="{{ _content_csv }}"
               data-content-status-sort="{{ invoice_content_status_sort_key(inv) }}"
               data-email-ts="{% if inv.email_sent_ok and inv.email_sent_at %}{{ inv.email_sent_at.timestamp() }}{% elif inv.email_last_attempt_at %}{{ inv.email_last_attempt_at.timestamp() }}{% else %}0{% endif %}">
+
+            <td class="text-center">
+              {% if pstate == 'sepa_pending' %}
+                <input type="checkbox"
+                       class="form-check-input sepa-select-checkbox"
+                       name="invoice_ids"
+                       value="{{ inv.id }}"
+                       form="sepaExportForm"
+                       aria-label="Rechnung {{ inv_label }} für SEPA-Export auswählen">
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
 
             <td><strong>{{ inv_label }}</strong></td>
             <td>
@@ -540,9 +641,9 @@
         </tbody>
         <tfoot>
           <tr class="table-light fw-bold" id="invoiceSubtotalRow">
-            <td colspan="3" class="text-end">Teilsumme (gefilterte Ansicht)</td>
+            <td colspan="4" class="text-end">Teilsumme (gefilterte Ansicht)</td>
             <td class="text-end" id="invoiceSubtotalAmount">0,00 €</td>
-            <td colspan="6"></td>
+            <td colspan="7"></td>
           </tr>
         </tfoot>
       </table>
@@ -810,6 +911,11 @@
   const billableRowsBody = $("#billableRowsBody");
   const filterBillableContentStatus = $("#filterBillableContentStatus");
   const sortBillableBy = $("#sortBillableBy");
+  const sepaSelectAllBtn = $("#sepaSelectAllBtn");
+  const sepaSelectNoneBtn = $("#sepaSelectNoneBtn");
+  const sepaExportSubmitBtn = $("#sepaExportSubmitBtn");
+  const sepaCheckboxes = $$(".sepa-select-checkbox");
+  const canExecuteSepaExport = {{ 'true' if can_execute_sepa_export else 'false' }};
 
   const thSortable = $$("th.sortable");
 
@@ -855,7 +961,7 @@
     rows.forEach(r => {
       const id = (r.dataset.personId || "").trim();
       if (!id) return;
-      const cell = r.querySelector("td:nth-child(2)");
+      const cell = r.querySelector("td:nth-child(3)");
       const label = cell ? cell.textContent.trim() : "";
       if (!label) return;
       map.set(id, label);
@@ -1306,6 +1412,12 @@
     updatePdfLink();
   }
 
+  function syncSepaExportSubmitState() {
+    if (!sepaExportSubmitBtn) return;
+    const checkedCount = sepaCheckboxes.filter(cb => cb.checked).length;
+    sepaExportSubmitBtn.disabled = (!canExecuteSepaExport) || checkedCount === 0;
+  }
+
   // Autocomplete input
   inputPerson.addEventListener("input", () => {
       updatePdfLink();
@@ -1406,6 +1518,24 @@
     });
   }
 
+  if (sepaSelectAllBtn) {
+    sepaSelectAllBtn.addEventListener("click", () => {
+      sepaCheckboxes.forEach(cb => { cb.checked = true; });
+      syncSepaExportSubmitState();
+    });
+  }
+
+  if (sepaSelectNoneBtn) {
+    sepaSelectNoneBtn.addEventListener("click", () => {
+      sepaCheckboxes.forEach(cb => { cb.checked = false; });
+      syncSepaExportSubmitState();
+    });
+  }
+
+  sepaCheckboxes.forEach(cb => {
+    cb.addEventListener("change", syncSepaExportSubmitState);
+  });
+
   inputText.addEventListener("input", applyFilters);
   selectStatus.addEventListener("change", applyFilters);
   selectPay.addEventListener("change", applyFilters);
@@ -1458,6 +1588,7 @@
   updateFilteredSubtotal();
   updateDeltaPanel();
   updatePdfLink();
+  syncSepaExportSubmitState();
 })();
 </script>
 

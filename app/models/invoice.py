@@ -122,6 +122,13 @@ class Invoice(db.Model):
         lazy="selectin"
     )
 
+    sepa_exports = db.relationship(
+        "SepaExportInvoice",
+        back_populates="invoice",
+        lazy="selectin",
+        cascade="save-update, merge",
+    )
+
     # ---------------------------------------------------------
     # Status der Rechnung
     # ---------------------------------------------------------

@@ -7,7 +7,9 @@ import base64
 import io
 import csv
 import time
+from xml.sax.saxutils import escape as xml_escape
 from sqlalchemy import or_, and_, func
+from sqlalchemy.exc import IntegrityError
 
 from flask import (
     Blueprint, render_template, redirect, url_for,
@@ -25,11 +27,13 @@ from app.models.invoice_item import InvoiceItem
 from app.models.billing_config import BillingConfig, MANUAL_MAIL_BODY_TEMPLATE_DEFAULT
 from app.models.load_entry import LoadEntry
 from app.models.load import Load  # ✅ benötigt für Load.status Filter in invoice_list()
+from app.models.sepa_export import SepaExport, SepaExportInvoice
 from app.services.billing_service import BillingService, _image_to_data_uri, _invoice_payment_label
 from app.services.mailer_service import MailerService
 from app.services.pdf_service import generate_pdf_from_html
 from app.models.billing_config import BillingOrgaRule
 from app.helpers.status_code import normalize_status_code
+from app.security.credentials import get_runtime_home_dir
 from app.constants import TANDEM_GUEST_STATUSES, TM_STATUSES, VIDEO_STATUSES
 from app.constants import (
     INVOICE_PAYMENT_STATE_OPEN,
@@ -233,6 +237,118 @@ def _full_admin_required(redirect_endpoint: str, **redirect_values):
         flash("Voll-Admin-Rechte erforderlich. Bitte mit dem Admin-Passwort anmelden.", "danger")
 
     return redirect(url_for(redirect_endpoint, **redirect_values))
+
+
+def _admin_or_db_admin_required(redirect_endpoint: str, **redirect_values):
+    if session.get("is_admin") or session.get("is_db_admin"):
+        return None
+
+    flash("Admin- oder Datenbank-Admin-Rechte erforderlich.", "warning")
+    return redirect(url_for(redirect_endpoint, **redirect_values))
+
+
+def _can_manage_sepa_exports() -> bool:
+    return bool(session.get("is_admin") or session.get("is_db_admin"))
+
+
+def _current_admin_actor_label() -> str:
+    if session.get("is_admin"):
+        return "admin"
+    if session.get("is_db_admin"):
+        return "db_admin"
+    return "user"
+
+
+def _sepa_export_storage_dir() -> str:
+    root = get_runtime_home_dir()
+    path = os.path.join(root, "data", "sepa_exports")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _invoice_load_snapshot(invoice: Invoice) -> tuple[date | None, date | None, str]:
+    load_dates: list[date] = []
+
+    for item in list(getattr(invoice, "items", []) or []):
+        le = getattr(item, "load_entry", None)
+        if not le:
+            continue
+        ld = getattr(le, "load", None)
+        if not ld:
+            continue
+
+        op_date = getattr(ld, "operation_date", None)
+        if op_date is None:
+            dt = getattr(ld, "actual_time", None) or getattr(ld, "scheduled_time", None) or getattr(ld, "created_at", None)
+            if dt is not None:
+                op_date = dt.date()
+
+        if isinstance(op_date, date):
+            load_dates.append(op_date)
+
+    if not load_dates:
+        return None, None, "Manuelle Rechnung"
+
+    unique_sorted = sorted(set(load_dates))
+    from_d = unique_sorted[0]
+    to_d = unique_sorted[-1]
+    dates_txt = ", ".join(d.strftime("%d.%m.%Y") for d in unique_sorted)
+    return from_d, to_d, dates_txt
+
+
+def _next_sepa_export_code() -> tuple[str, int]:
+    year = now_berlin().year
+    prefix = f"{year}-"
+    rows = (
+        db.session.query(SepaExport.export_code)
+        .filter(SepaExport.export_code.like(f"{prefix}%"))
+        .all()
+    )
+
+    max_no = 0
+    for (code,) in rows:
+        try:
+            n = int(str(code).split("-", 1)[1])
+            if n > max_no:
+                max_no = n
+        except Exception:
+            continue
+
+    next_no = max_no + 1
+    return f"{year}-{next_no:04d}", next_no
+
+
+def _build_export_file_name(created_at: datetime, export_seq_no: int) -> str:
+    return f"SEPA_{created_at.strftime('%Y-%m-%d_%H%M%S')}_Export{export_seq_no:04d}.xml"
+
+
+def _build_sepa_export_placeholder_xml(export_code: str, created_at: datetime, rows: list[dict]) -> bytes:
+    lines = [
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+        f"<sepa_export export_code=\"{xml_escape(export_code)}\" generated_at=\"{created_at.isoformat()}\" version=\"infra-v1\">",
+        "  <invoices>",
+    ]
+
+    for r in rows:
+        lines.append(
+            "    <invoice"
+            f" id=\"{int(r['invoice_id'])}\""
+            f" number=\"{xml_escape(r['invoice_number'])}\""
+            f" amount=\"{Decimal(str(r['amount'])):.2f}\""
+            f" payment_method=\"{xml_escape(r['payment_method'] or '')}\""
+            f" payment_state=\"{xml_escape(r['payment_state'])}\""
+            f" person=\"{xml_escape(r['person_name'])}\""
+            f" iban=\"{xml_escape(r['iban'] or '')}\""
+            f" mandate_reference=\"{xml_escape(r['mandate_reference'] or '')}\""
+            f" load_date_from=\"{r['load_date_from'].isoformat() if r['load_date_from'] else ''}\""
+            f" load_date_to=\"{r['load_date_to'].isoformat() if r['load_date_to'] else ''}\""
+            f" load_dates_text=\"{xml_escape(r['load_dates_text'] or '')}\""
+            " />"
+        )
+
+    lines.append("  </invoices>")
+    lines.append("</sepa_export>")
+    return ("\n".join(lines) + "\n").encode("utf-8")
 
 
 WAIVER_TEXT_SKYDIVER_DEFAULT = """Erklärung und Haftungsverzicht
@@ -3959,6 +4075,201 @@ def admin_config_test_email():
     return render_template("billing/admin/config_edit.html", cfg=cfg, smtp_test_to_email=test_to_email)
 
 
+def _load_recent_sepa_exports(limit: int = 20) -> list[SepaExport]:
+    try:
+        return (
+            SepaExport.query
+            .options(selectinload(SepaExport.invoices))
+            .order_by(SepaExport.created_at.desc(), SepaExport.id.desc())
+            .limit(limit)
+            .all()
+        )
+    except Exception:
+        return []
+
+
+@bp.route("/invoices/sepa/export", methods=["POST"])
+def invoice_sepa_export():
+    deny = _admin_or_db_admin_required("billing.invoice_list")
+    if deny:
+        return deny
+
+    raw_ids = request.form.getlist("invoice_ids")
+    invoice_ids: list[int] = []
+    seen: set[int] = set()
+    for raw in raw_ids:
+        try:
+            val = int(str(raw).strip())
+        except Exception:
+            continue
+        if val > 0 and val not in seen:
+            seen.add(val)
+            invoice_ids.append(val)
+
+    if not invoice_ids:
+        flash("Bitte mindestens eine SEPA-vorgemerkte Rechnung auswählen.", "warning")
+        return redirect(request.referrer or url_for("billing.invoice_list"))
+
+    invoices = (
+        Invoice.query
+        .options(
+            joinedload(Invoice.person),
+            selectinload(Invoice.items)
+            .joinedload(InvoiceItem.load_entry)
+            .joinedload(LoadEntry.load),
+        )
+        .filter(
+            Invoice.id.in_(invoice_ids),
+            Invoice.stage == "final",
+            Invoice.is_deleted.is_(False),
+        )
+        .all()
+    )
+
+    valid_invoices: list[Invoice] = []
+    for inv in invoices:
+        if _invoice_payment_state(inv) == INVOICE_PAYMENT_STATE_SEPA_PENDING:
+            valid_invoices.append(inv)
+
+    skipped_count = max(0, len(invoice_ids) - len(valid_invoices))
+    if not valid_invoices:
+        flash("Keine gültigen SEPA-vorgemerkten Rechnungen für den Export gefunden.", "warning")
+        return redirect(request.referrer or url_for("billing.invoice_list"))
+
+    actor = _current_admin_actor_label()
+    created_at = now_berlin().replace(tzinfo=None)
+    storage_dir = _sepa_export_storage_dir()
+
+    file_path_written = None
+    for _attempt in range(1, 6):
+        try:
+            export_code, export_seq_no = _next_sepa_export_code()
+            file_name = _build_export_file_name(created_at, export_seq_no)
+
+            file_path = os.path.join(storage_dir, file_name)
+            if os.path.exists(file_path):
+                suffix = 1
+                while os.path.exists(file_path):
+                    file_name = _build_export_file_name(created_at, export_seq_no).replace(".xml", f"_{suffix}.xml")
+                    file_path = os.path.join(storage_dir, file_name)
+                    suffix += 1
+
+            export = SepaExport(
+                export_code=export_code,
+                created_at=created_at,
+                created_by=actor,
+                file_name=file_name,
+                file_path=file_path,
+                status="created",
+                xml_version="infra-v1",
+                selection_scope="manual",
+            )
+            db.session.add(export)
+            db.session.flush()
+
+            snapshot_rows: list[dict] = []
+            total_amount = Decimal("0.00")
+
+            for inv in valid_invoices:
+                person = getattr(inv, "person", None)
+                load_date_from, load_date_to, load_dates_text = _invoice_load_snapshot(inv)
+                invoice_number = str(_invoice_display_number_for_detail(inv))
+                invoice_amount = Decimal(str(inv.total_amount or "0.00"))
+                payment_state_code = _invoice_payment_state(inv)
+
+                sepa_link = SepaExportInvoice(
+                    export_id=export.id,
+                    invoice_id=inv.id,
+                    invoice_number_snapshot=invoice_number,
+                    invoice_total_snapshot=invoice_amount,
+                    person_name_snapshot=((person.full_name if person else "") or "").strip(),
+                    iban_snapshot=((getattr(person, "iban", "") or "").replace(" ", "").strip() or None),
+                    mandate_reference_snapshot=((getattr(person, "sepa_mandate_reference", "") or "").strip() or None),
+                    payment_method_snapshot=((inv.payment_method or "").strip() or None),
+                    payment_state_snapshot=payment_state_code,
+                    load_date_from=load_date_from,
+                    load_date_to=load_date_to,
+                    load_dates_text=load_dates_text,
+                )
+                db.session.add(sepa_link)
+
+                snapshot_rows.append({
+                    "invoice_id": inv.id,
+                    "invoice_number": invoice_number,
+                    "amount": invoice_amount,
+                    "payment_method": inv.payment_method or "",
+                    "payment_state": payment_state_code,
+                    "person_name": ((person.full_name if person else "") or "").strip(),
+                    "iban": (getattr(person, "iban", "") or "").replace(" ", "").strip(),
+                    "mandate_reference": (getattr(person, "sepa_mandate_reference", "") or "").strip(),
+                    "load_date_from": load_date_from,
+                    "load_date_to": load_date_to,
+                    "load_dates_text": load_dates_text,
+                })
+                total_amount += invoice_amount
+
+            export.invoice_count = len(valid_invoices)
+            export.total_amount = total_amount
+
+            xml_bytes = _build_sepa_export_placeholder_xml(export_code, created_at, snapshot_rows)
+
+            with open(file_path, "wb") as f:
+                f.write(xml_bytes)
+            file_path_written = file_path
+
+            for inv in valid_invoices:
+                _set_invoice_payment_state(inv, INVOICE_PAYMENT_STATE_SEPA_EXPORTED)
+
+            db.session.commit()
+
+            msg = f"SEPA-Export {export_code} erstellt ({len(valid_invoices)} Rechnung(en))."
+            if skipped_count:
+                msg += f" {skipped_count} Auswahl(en) waren nicht mehr exportierbar und wurden übersprungen."
+            flash(msg, "success")
+
+            response = make_response(xml_bytes)
+            response.headers["Content-Type"] = "application/xml; charset=utf-8"
+            response.headers["Content-Disposition"] = f'attachment; filename="{file_name}"'
+            return response
+
+        except IntegrityError:
+            db.session.rollback()
+            continue
+        except Exception as exc:
+            db.session.rollback()
+            if file_path_written and os.path.exists(file_path_written):
+                try:
+                    os.remove(file_path_written)
+                except Exception:
+                    pass
+            flash(f"SEPA-Export fehlgeschlagen: {exc}", "danger")
+            return redirect(request.referrer or url_for("billing.invoice_list"))
+
+    flash("SEPA-Export konnte wegen kollidierender Exportnummern nicht abgeschlossen werden.", "danger")
+    return redirect(request.referrer or url_for("billing.invoice_list"))
+
+
+@bp.route("/invoices/sepa/export/<int:export_id>/download", methods=["GET"])
+def invoice_sepa_export_download(export_id):
+    deny = _admin_or_db_admin_required("billing.invoice_list")
+    if deny:
+        return deny
+
+    export = SepaExport.query.get_or_404(export_id)
+    file_path = (export.file_path or "").strip()
+    if not file_path or not os.path.exists(file_path):
+        flash("Exportdatei wurde nicht gefunden.", "warning")
+        return redirect(request.referrer or url_for("billing.invoice_list"))
+
+    with open(file_path, "rb") as f:
+        xml_bytes = f.read()
+
+    response = make_response(xml_bytes)
+    response.headers["Content-Type"] = "application/xml; charset=utf-8"
+    response.headers["Content-Disposition"] = f'attachment; filename="{export.file_name}"'
+    return response
+
+
 # ---------------------------------------------------------
 # Liste aller Rechnungen inkl. Zeitfilter + Delta  (SQL-optimiert)
 # ---------------------------------------------------------
@@ -4166,6 +4477,9 @@ def _build_invoice_list_context(
         else "gesamter Zeitraum"
     )
 
+    sepa_pending_count = sum(1 for inv in invoices if _invoice_payment_state(inv) == INVOICE_PAYMENT_STATE_SEPA_PENDING)
+    sepa_exports = _load_recent_sepa_exports(limit=30)
+
     return {
         "invoices": invoices,
         "invoice_display_number": _invoice_display_number_for_detail,
@@ -4187,6 +4501,10 @@ def _build_invoice_list_context(
         "to_date": to_str,
         "invoice_from_date": invoice_from_str,
         "invoice_to_date": invoice_to_str,
+        "sepa_pending_count": sepa_pending_count,
+        "sepa_exports": sepa_exports,
+        "can_execute_sepa_export": _can_manage_sepa_exports(),
+        "is_dev_mode": is_dev_mode(),
     }
 
 
