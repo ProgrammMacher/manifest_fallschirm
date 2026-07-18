@@ -488,7 +488,7 @@
             <th class="sortable text-end col-net{% if not show_col_net %} d-none{% endif %}" data-type="price">Netto</th>
             <th class="sortable text-end col-vat{% if not show_col_vat %} d-none{% endif %}" data-type="price">MwSt</th>
             <th class="sortable text-end col-vatrate{% if not show_col_vatrate %} d-none{% endif %}" data-type="number">MwSt‑Satz</th>
-            <th class="sortable col-payment{% if not show_col_payment %} d-none{% endif %}" data-type="text">Zahlart</th>
+            <th class="sortable col-payment{% if not show_col_payment %} d-none{% endif %}" data-type="text">Zahlart / Zahlungsstatus</th>
             <th class="sortable col-invoice-number{% if not show_col_invoice_number %} d-none{% endif %}" data-type="text">Rechnungsnummer</th>
             <th class="sortable text-end col-gross{% if not show_col_gross %} d-none{% endif %}" data-type="price">Brutto</th>
           </tr>
@@ -516,7 +516,14 @@
               {{ "{:,.2f}".format(r.vat_rate).replace(',', 'X').replace('.', ',').replace('X', '.') }} %
             </td>
             <td class="col-payment{% if not show_col_payment %} d-none{% endif %}">
-              {{ r.payment_method if r.payment_method else "–" }}
+              {% if r.payment_method %}
+                {{ r.payment_method }}
+              {% else %}
+                –
+              {% endif %}
+              {% if r.invoice_status %}
+                <div class="small text-muted">{{ r.invoice_status }}</div>
+              {% endif %}
             </td>
             <td class="col-invoice-number{% if not show_col_invoice_number %} d-none{% endif %}">
               {{ r.invoice_number if r.invoice_number else "–" }}

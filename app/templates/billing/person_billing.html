@@ -40,6 +40,18 @@ Abrechnung – {{ person.full_name }}
     #personBillingRoot.hide-netvat .col-netvat-foot {
       display: none !important;
     }
+
+    #personBillingRoot .ku-position-note {
+      display: none;
+      font-size: 0.8rem;
+      color: #6c757d;
+      line-height: 1.2;
+      margin-top: 2px;
+    }
+
+    #personBillingRoot .ku-position-note.is-visible {
+      display: block;
+    }
   </style>
 
   <!-- Toggle Logic -->
@@ -91,7 +103,12 @@ Abrechnung – {{ person.full_name }}
       </thead>
       <tbody>
         {% for r in entry_rows %}
-        <tr>
+        <tr class="js-entry-row"
+            data-gross="{{ '{:.2f}'.format(r.price or 0).replace(',', '.') }}"
+            data-base-vat-rate="{{ '{:.2f}'.format(r.base_vat_rate or 0).replace(',', '.') }}"
+          data-is-tm="{{ 1 if r.is_tandemmaster_jump else 0 }}"
+          data-is-video="{{ 1 if r.is_video_jump else 0 }}"
+          data-ku-eligible="{{ 1 if r.ku_eligible else 0 }}">
           <td>{{ r.date.strftime('%d.%m.%Y') if r.date else '–' }}</td>
           <td>{{ r.date.strftime('%H:%M') if r.date else '–' }}</td>
 		  <td>{% if r.load_number %}Load {{ r.load_number }}{% else %}–{% endif %}</td>
@@ -100,7 +117,10 @@ Abrechnung – {{ person.full_name }}
 		   {{ (r.entry.load.airfield.name or '').split(' ')[0] }}
 		  </td>
 
-		  <td>{{ r.status_code | status_label }}</td>
+		  <td>
+            <div>{{ r.status_code | status_label }}</div>
+            <div class="ku-position-note js-ku-position-note{% if r.ku_notice %} is-visible{% endif %}">Kleinunternehmerregelung gem. § 19 UStG</div>
+          </td>
 		  <td class="text-end">{{ r.height_m }} m</td>
           <td class="text-center">
             {% if r.entry.gear_rental %}
@@ -112,13 +132,13 @@ Abrechnung – {{ person.full_name }}
 
           <!-- Netto -->
           <td class="text-end col-net">
-            {{ "{:,.2f}".format(r.net).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+            <span class="js-entry-net-val">{{ "{:,.2f}".format(r.net).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span>
           </td>
 
           <!-- MwSt -->
           <td class="text-end col-vat">
-            {{ "{:,.2f}".format(r.vat).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-            <small class="text-muted">({{ r.vat_rate }}%)</small>
+            <span class="js-entry-vat-val">{{ "{:,.2f}".format(r.vat).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span>
+            <small class="text-muted">(<span class="js-entry-vatrate-val">{{ "{:.2f}".format(r.vat_rate or 0).replace(',', '.') }}</span>%)</small>
           </td>
 
           <!-- Brutto -->
@@ -354,10 +374,10 @@ Abrechnung – {{ person.full_name }}
 
     <div class="text-muted col-netvat-foot">
       Netto:
-      {{ "{:,.2f}".format(total_net_preview).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+      <span id="previewTotalNet">{{ "{:,.2f}".format(total_net_preview).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span> €
       &nbsp;·&nbsp;
       MwSt:
-      {{ "{:,.2f}".format(total_vat_preview).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+      <span id="previewTotalVat">{{ "{:,.2f}".format(total_vat_preview).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span> €
     </div>
 
     <small class="text-muted">
@@ -401,6 +421,28 @@ Abrechnung – {{ person.full_name }}
         </div>
 
         <div class="row g-2 mb-2">
+          {% if person.is_tandemmaster %}
+          <div class="col-md-4">
+            <label for="invoice_is_tandem_kleinunternehmer" class="form-label">Kleinunternehmer (§ 19 UStG)</label>
+            <select class="form-select" id="invoice_is_tandem_kleinunternehmer" name="invoice_is_tandem_kleinunternehmer">
+              <option value="false" {% if not default_tandem_kleinunternehmer %}selected{% endif %}>Nein (Regelbesteuerung)</option>
+              <option value="true" {% if default_tandem_kleinunternehmer %}selected{% endif %}>Ja (kein USt-Ausweis für Tandemsprung)</option>
+            </select>
+            <div class="form-text">Voreinstellung aus Stammdaten. Gilt nur für diese Rechnung und nur für Tandemsprung-Positionen.</div>
+          </div>
+          {% endif %}
+
+          {% if person.is_video %}
+          <div class="col-md-4">
+            <label for="invoice_is_video_kleinunternehmer" class="form-label">Kleinunternehmer (§ 19 UStG)</label>
+            <select class="form-select" id="invoice_is_video_kleinunternehmer" name="invoice_is_video_kleinunternehmer">
+              <option value="false" {% if not default_video_kleinunternehmer %}selected{% endif %}>Nein (Regelbesteuerung)</option>
+              <option value="true" {% if default_video_kleinunternehmer %}selected{% endif %}>Ja (kein USt-Ausweis für Video-Sprung)</option>
+            </select>
+            <div class="form-text">Voreinstellung aus Stammdaten. Gilt nur für diese Rechnung und nur für Video-Sprungpositionen.</div>
+          </div>
+          {% endif %}
+
           <div class="col-md-4">
             <label for="prepaid_voucher_amount" class="form-label">Vorkasse / Gutschein (Brutto)</label>
             <input type="text"
@@ -426,6 +468,97 @@ Abrechnung – {{ person.full_name }}
       Rechnung erstellen
     </button>
   </form>
+
+  {% if person.is_tandemmaster or person.is_video %}
+  <script>
+    (function () {
+      const tandemKuSelect = document.getElementById("invoice_is_tandem_kleinunternehmer");
+      const videoKuSelect = document.getElementById("invoice_is_video_kleinunternehmer");
+      if (!tandemKuSelect && !videoKuSelect) {
+        return;
+      }
+
+      const entryRows = Array.from(document.querySelectorAll("#personBillingRoot .js-entry-row"));
+      if (entryRows.length === 0) {
+        return;
+      }
+
+      const fixedNet = Number("{{ '{:.2f}'.format(fixed_net_preview or 0).replace(',', '.') }}") || 0;
+      const fixedVat = Number("{{ '{:.2f}'.format(fixed_vat_preview or 0).replace(',', '.') }}") || 0;
+      const totalNetEl = document.getElementById("previewTotalNet");
+      const totalVatEl = document.getElementById("previewTotalVat");
+
+      function round2(value) {
+        return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+      }
+
+      function formatMoneyDe(value) {
+        return round2(value).toFixed(2).replace(".", ",");
+      }
+
+      function splitGross(gross, vatRate) {
+        const g = Number(gross) || 0;
+        const r = Number(vatRate) || 0;
+        if (r <= 0) {
+          return { net: round2(g), vat: 0 };
+        }
+        const factor = 1 + (r / 100);
+        const net = round2(g / factor);
+        const vat = round2(g - net);
+        return { net, vat };
+      }
+
+      function recalculatePreview() {
+        const tandemKuActive = tandemKuSelect && String(tandemKuSelect.value || "").toLowerCase() === "true";
+        const videoKuActive = videoKuSelect && String(videoKuSelect.value || "").toLowerCase() === "true";
+        let entryNetSum = 0;
+        let entryVatSum = 0;
+
+        entryRows.forEach((row) => {
+          const gross = Number(row.dataset.gross || "0") || 0;
+          const baseVatRate = Number(row.dataset.baseVatRate || "0") || 0;
+          const isTm = String(row.dataset.isTm || "0") === "1";
+          const isVideo = String(row.dataset.isVideo || "0") === "1";
+          const kuActiveForRow = (tandemKuActive && isTm) || (videoKuActive && isVideo);
+          const effectiveVatRate = kuActiveForRow ? 0 : baseVatRate;
+          const split = splitGross(gross, effectiveVatRate);
+
+          entryNetSum += split.net;
+          entryVatSum += split.vat;
+
+          const netEl = row.querySelector(".js-entry-net-val");
+          if (netEl) netEl.textContent = formatMoneyDe(split.net);
+
+          const vatEl = row.querySelector(".js-entry-vat-val");
+          if (vatEl) vatEl.textContent = formatMoneyDe(split.vat);
+
+          const rateEl = row.querySelector(".js-entry-vatrate-val");
+          if (rateEl) rateEl.textContent = round2(effectiveVatRate).toFixed(2);
+
+          const noteEl = row.querySelector(".js-ku-position-note");
+          if (noteEl) {
+            noteEl.classList.toggle("is-visible", kuActiveForRow);
+          }
+        });
+
+        if (totalNetEl) {
+          totalNetEl.textContent = formatMoneyDe(entryNetSum + fixedNet);
+        }
+        if (totalVatEl) {
+          totalVatEl.textContent = formatMoneyDe(entryVatSum + fixedVat);
+        }
+      }
+
+      if (tandemKuSelect) {
+        tandemKuSelect.addEventListener("change", recalculatePreview);
+      }
+      if (videoKuSelect) {
+        videoKuSelect.addEventListener("change", recalculatePreview);
+      }
+      recalculatePreview();
+    })();
+  </script>
+  {% endif %}
 
   {% else %}
     <div class="alert alert-info">

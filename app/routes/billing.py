@@ -30,9 +30,163 @@ from app.services.mailer_service import MailerService
 from app.services.pdf_service import generate_pdf_from_html
 from app.models.billing_config import BillingOrgaRule
 from app.helpers.status_code import normalize_status_code
-from app.constants import TANDEM_GUEST_STATUSES
+from app.constants import TANDEM_GUEST_STATUSES, TM_STATUSES, VIDEO_STATUSES
+from app.constants import (
+    INVOICE_PAYMENT_STATE_OPEN,
+    INVOICE_PAYMENT_STATE_SEPA_PENDING,
+    INVOICE_PAYMENT_STATE_SEPA_EXPORTED,
+    INVOICE_PAYMENT_STATE_PAID,
+    INVOICE_PAYMENT_STATE_SEPA_RETURNED,
+    INVOICE_PAYMENT_STATES,
+)
 
 bp = Blueprint("billing", __name__, url_prefix="/billing")
+
+
+PAYMENT_STATE_LABELS = {
+    INVOICE_PAYMENT_STATE_OPEN: "Offen",
+    INVOICE_PAYMENT_STATE_SEPA_PENDING: "SEPA vorgemerkt",
+    INVOICE_PAYMENT_STATE_SEPA_EXPORTED: "SEPA exportiert",
+    INVOICE_PAYMENT_STATE_PAID: "Bezahlt",
+    INVOICE_PAYMENT_STATE_SEPA_RETURNED: "Rücklastschrift",
+}
+
+_TANDEM_GUEST_STATUS_CODES = {
+    normalize_status_code(code) for code in TANDEM_GUEST_STATUSES
+}
+
+
+def _person_allows_sepa(person: Person | None) -> bool:
+    if not person:
+        return False
+    if bool(getattr(person, "is_tandem_guest", False)):
+        return False
+    if not bool(getattr(person, "sepa_enabled", False)):
+        return False
+    if not (getattr(person, "iban", "") or "").strip():
+        return False
+    if not (getattr(person, "account_holder", "") or "").strip():
+        return False
+    if getattr(person, "sepa_mandate_date", None) is None:
+        return False
+    return True
+
+
+def _invoice_has_tandem_guest_context(invoice: Invoice | None) -> bool:
+    if not invoice:
+        return False
+
+    for item in getattr(invoice, "items", []) or []:
+        load_entry = getattr(item, "load_entry", None)
+        if not load_entry:
+            continue
+        status_code = normalize_status_code(getattr(load_entry, "status_code", ""))
+        if status_code in _TANDEM_GUEST_STATUS_CODES:
+            return True
+
+    return False
+
+
+def _invoice_allows_sepa(invoice: Invoice | None) -> bool:
+    if not invoice:
+        return False
+    if not _person_allows_sepa(getattr(invoice, "person", None)):
+        return False
+    if _invoice_has_tandem_guest_context(invoice):
+        return False
+    return True
+
+
+def _invoice_payment_state(invoice: Invoice | None) -> str:
+    if not invoice:
+        return INVOICE_PAYMENT_STATE_OPEN
+
+    if bool(getattr(invoice, "is_paid", False)):
+        return INVOICE_PAYMENT_STATE_PAID
+
+    raw = (getattr(invoice, "payment_state", "") or "").strip().lower()
+    if raw in INVOICE_PAYMENT_STATES:
+        if raw == INVOICE_PAYMENT_STATE_PAID:
+            return INVOICE_PAYMENT_STATE_OPEN
+        if (
+            raw in {
+                INVOICE_PAYMENT_STATE_SEPA_PENDING,
+                INVOICE_PAYMENT_STATE_SEPA_EXPORTED,
+                INVOICE_PAYMENT_STATE_SEPA_RETURNED,
+            }
+            and not _invoice_allows_sepa(invoice)
+        ):
+            return INVOICE_PAYMENT_STATE_OPEN
+        return raw
+
+    if (getattr(invoice, "payment_method", "") or "").strip().lower() == "sepa" and _invoice_allows_sepa(invoice):
+        return INVOICE_PAYMENT_STATE_SEPA_PENDING
+    return INVOICE_PAYMENT_STATE_OPEN
+
+
+def _invoice_payment_state_label(invoice: Invoice | None) -> str:
+    return PAYMENT_STATE_LABELS.get(_invoice_payment_state(invoice), "Offen")
+
+
+def _set_invoice_payment_state(invoice: Invoice, payment_state: str) -> str:
+    state = (payment_state or "").strip().lower()
+    if state not in INVOICE_PAYMENT_STATES:
+        state = INVOICE_PAYMENT_STATE_OPEN
+
+    if state in {
+        INVOICE_PAYMENT_STATE_SEPA_PENDING,
+        INVOICE_PAYMENT_STATE_SEPA_EXPORTED,
+        INVOICE_PAYMENT_STATE_SEPA_RETURNED,
+    } and not _invoice_allows_sepa(invoice):
+        state = INVOICE_PAYMENT_STATE_OPEN
+
+    invoice.payment_state = state
+    if state == INVOICE_PAYMENT_STATE_PAID:
+        invoice.is_paid = True
+        if not getattr(invoice, "paid_at", None):
+            invoice.paid_at = now_berlin().replace(tzinfo=None)
+    else:
+        invoice.is_paid = False
+        invoice.paid_at = None
+
+    if state in {INVOICE_PAYMENT_STATE_SEPA_PENDING, INVOICE_PAYMENT_STATE_SEPA_EXPORTED, INVOICE_PAYMENT_STATE_SEPA_RETURNED}:
+        invoice.payment_method = "sepa"
+
+    return state
+
+
+def _is_allowed_payment_state_transition(current_state: str, next_state: str) -> bool:
+    allowed = {
+        INVOICE_PAYMENT_STATE_OPEN: {
+            INVOICE_PAYMENT_STATE_OPEN,
+            INVOICE_PAYMENT_STATE_SEPA_PENDING,
+            INVOICE_PAYMENT_STATE_PAID,
+        },
+        INVOICE_PAYMENT_STATE_SEPA_PENDING: {
+            INVOICE_PAYMENT_STATE_OPEN,
+            INVOICE_PAYMENT_STATE_SEPA_PENDING,
+            INVOICE_PAYMENT_STATE_SEPA_EXPORTED,
+            INVOICE_PAYMENT_STATE_PAID,
+        },
+        INVOICE_PAYMENT_STATE_SEPA_EXPORTED: {
+            INVOICE_PAYMENT_STATE_OPEN,
+            INVOICE_PAYMENT_STATE_SEPA_EXPORTED,
+            INVOICE_PAYMENT_STATE_SEPA_RETURNED,
+            INVOICE_PAYMENT_STATE_PAID,
+        },
+        INVOICE_PAYMENT_STATE_SEPA_RETURNED: {
+            INVOICE_PAYMENT_STATE_OPEN,
+            INVOICE_PAYMENT_STATE_SEPA_PENDING,
+            INVOICE_PAYMENT_STATE_SEPA_RETURNED,
+            INVOICE_PAYMENT_STATE_PAID,
+        },
+        INVOICE_PAYMENT_STATE_PAID: {
+            INVOICE_PAYMENT_STATE_OPEN,
+            INVOICE_PAYMENT_STATE_SEPA_RETURNED,
+            INVOICE_PAYMENT_STATE_PAID,
+        },
+    }
+    return next_state in allowed.get(current_state, {INVOICE_PAYMENT_STATE_OPEN})
 
 
 def _billing_person_main_status(person: Person) -> str:
@@ -475,8 +629,15 @@ def is_dev_mode() -> bool:
 
 def _parse_invoice_list_filters(args) -> dict:
     allowed_invoice_source = {"all", "loads", "manual"}
-    allowed_status = {"", "open", "paid"}
-    allowed_payment = {"", "cash", "card", "transfer", "wero", "voucher"}
+    allowed_status = {
+        "",
+        INVOICE_PAYMENT_STATE_OPEN,
+        INVOICE_PAYMENT_STATE_SEPA_PENDING,
+        INVOICE_PAYMENT_STATE_SEPA_EXPORTED,
+        INVOICE_PAYMENT_STATE_PAID,
+        INVOICE_PAYMENT_STATE_SEPA_RETURNED,
+    }
+    allowed_payment = {"", "cash", "card", "transfer", "wero", "sepa", "voucher"}
     allowed_email = {"", "not_sent", "error", "pending", "sent_unconfirmed", "sent_confirmed"}
     allowed_content_status = {
         "",
@@ -654,13 +815,6 @@ def _invoice_prepaid_amount(invoice: Invoice | None) -> Decimal:
         value = Decimal("0.00")
     if value < Decimal("0.00"):
         return Decimal("0.00")
-
-    total = Decimal(str(getattr(invoice, "total_amount", 0) or 0))
-    if total <= Decimal("0.00"):
-        return Decimal("0.00")
-
-    if value >= total:
-        value = total - Decimal("0.01")
     if value < Decimal("0.00"):
         value = Decimal("0.00")
     return value.quantize(Decimal("0.01"))
@@ -669,10 +823,7 @@ def _invoice_prepaid_amount(invoice: Invoice | None) -> Decimal:
 def _invoice_onsite_amount(invoice: Invoice | None) -> Decimal:
     total = Decimal(str(getattr(invoice, "total_amount", 0) or 0)) if invoice else Decimal("0.00")
     prepaid = _invoice_prepaid_amount(invoice)
-    rest = total - prepaid
-    if rest < Decimal("0.00"):
-        rest = Decimal("0.00")
-    return rest.quantize(Decimal("0.01"))
+    return (total - prepaid).quantize(Decimal("0.01"))
 
 
 def _invoice_open_amount_for_kpi(invoice: Invoice | None) -> Decimal:
@@ -684,7 +835,7 @@ def _invoice_open_amount_for_kpi(invoice: Invoice | None) -> Decimal:
     - Offene Rechnung mit positivem Betrag -> Rest (total - prepaid)
     - Offene Rechnung mit negativem Betrag (z.B. Gutschrift) -> voller negativer Betrag
     """
-    if not invoice or getattr(invoice, "is_paid", False):
+    if not invoice or _invoice_payment_state(invoice) == INVOICE_PAYMENT_STATE_PAID:
         return Decimal("0.00")
 
     total = Decimal(str(getattr(invoice, "total_amount", 0) or 0))
@@ -709,10 +860,10 @@ def _invoice_paid_amount_for_kpi(invoice: Invoice | None) -> Decimal:
 
     total = Decimal(str(getattr(invoice, "total_amount", 0) or 0))
     if total <= Decimal("0.00"):
-        return total.quantize(Decimal("0.01")) if getattr(invoice, "is_paid", False) else Decimal("0.00")
+        return total.quantize(Decimal("0.01")) if _invoice_payment_state(invoice) == INVOICE_PAYMENT_STATE_PAID else Decimal("0.00")
 
     prepaid = _invoice_prepaid_amount(invoice)
-    if getattr(invoice, "is_paid", False):
+    if _invoice_payment_state(invoice) == INVOICE_PAYMENT_STATE_PAID:
         return total.quantize(Decimal("0.01"))
     return prepaid.quantize(Decimal("0.01"))
 
@@ -729,12 +880,119 @@ def _invoice_split_payment_label(invoice: Invoice | None) -> str:
     return onsite_label
 
 
+def _parse_form_bool(value, *, default: bool = False) -> bool:
+    if value is None:
+        return bool(default)
+    return str(value).strip().lower() in {"1", "true", "yes", "on", "ja"}
+
+
+def _person_tandem_ku_default(person: Person | None) -> bool:
+    if not person:
+        return False
+    return _parse_form_bool(getattr(person, "is_tandem_kleinunternehmer", None), default=False)
+
+
+def _person_video_ku_default(person: Person | None) -> bool:
+    if not person:
+        return False
+    return _parse_form_bool(getattr(person, "is_video_kleinunternehmer", None), default=False)
+
+
+def _is_tandemmaster_entry(entry: LoadEntry | None) -> bool:
+    if not entry:
+        return False
+    return normalize_status_code(getattr(entry, "status_code", "") or "") in TM_STATUSES
+
+
+def _is_video_entry(entry: LoadEntry | None) -> bool:
+    if not entry:
+        return False
+    return normalize_status_code(getattr(entry, "status_code", "") or "") in VIDEO_STATUSES
+
+
+def _is_ku_eligible_entry(entry: LoadEntry | None) -> bool:
+    return _is_tandemmaster_entry(entry) or _is_video_entry(entry)
+
+
+def _is_jump_item(item: InvoiceItem | None) -> bool:
+    if not item:
+        return False
+    desc = (getattr(item, "description", "") or "").strip()
+    if not desc.startswith("Sprung"):
+        return False
+    return bool(getattr(item, "load_entry", None))
+
+
+def _is_tandemmaster_jump_item(item: InvoiceItem | None) -> bool:
+    if not _is_jump_item(item):
+        return False
+    return _is_tandemmaster_entry(getattr(item, "load_entry", None))
+
+
+def _is_video_jump_item(item: InvoiceItem | None) -> bool:
+    if not _is_jump_item(item):
+        return False
+    return _is_video_entry(getattr(item, "load_entry", None))
+
+
+def _is_ku_eligible_jump_item(item: InvoiceItem | None) -> bool:
+    return _is_tandemmaster_jump_item(item) or _is_video_jump_item(item)
+
+
+def _invoice_has_tandem_jump_positions(invoice: Invoice | None) -> bool:
+    if not invoice:
+        return False
+    for item in list(getattr(invoice, "items", []) or []):
+        if _is_tandemmaster_jump_item(item):
+            return True
+    return False
+
+
+def _invoice_has_video_jump_positions(invoice: Invoice | None) -> bool:
+    if not invoice:
+        return False
+    for item in list(getattr(invoice, "items", []) or []):
+        if _is_video_jump_item(item):
+            return True
+    return False
+
+
+def _invoice_has_ku_jump_positions(invoice: Invoice | None) -> bool:
+    return _invoice_has_tandem_jump_positions(invoice) or _invoice_has_video_jump_positions(invoice)
+
+
+def _invoice_totals(invoice: Invoice | None) -> tuple[Decimal, Decimal, Decimal]:
+    if not invoice:
+        return Decimal("0.00"), Decimal("0.00"), Decimal("0.00")
+
+    net_total = Decimal("0.00")
+    vat_total = Decimal("0.00")
+    gross_total = Decimal("0.00")
+    for item in list(getattr(invoice, "items", []) or []):
+        net_total += Decimal(str(getattr(item, "net_amount", 0) or 0))
+        vat_total += Decimal(str(getattr(item, "vat_amount", 0) or 0))
+        gross_total += Decimal(str(getattr(item, "amount", 0) or 0))
+
+    q = Decimal("0.01")
+    return (
+        net_total.quantize(q),
+        vat_total.quantize(q),
+        gross_total.quantize(q),
+    )
+
+
+def _invoice_totals_net_vat(invoice: Invoice | None) -> tuple[Decimal, Decimal]:
+    net_total, vat_total, _ = _invoice_totals(invoice)
+    return net_total, vat_total
+
+
 def _paid_method_breakdown(invoices: list[Invoice] | None) -> dict[str, Decimal]:
     sums = {
         "cash": Decimal("0.00"),
         "card": Decimal("0.00"),
         "transfer": Decimal("0.00"),
         "wero": Decimal("0.00"),
+        "sepa": Decimal("0.00"),
         "voucher": Decimal("0.00"),
     }
     for inv in list(invoices or []):
@@ -742,7 +1000,7 @@ def _paid_method_breakdown(invoices: list[Invoice] | None) -> dict[str, Decimal]
         if prepaid > Decimal("0.00"):
             sums["voucher"] += prepaid
 
-        if not getattr(inv, "is_paid", False):
+        if _invoice_payment_state(inv) != INVOICE_PAYMENT_STATE_PAID:
             continue
 
         pm = (getattr(inv, "payment_method", "") or "").strip().lower()
@@ -771,12 +1029,6 @@ def _parse_prepaid_amount(raw_value: str | None, *, total_amount: Decimal, allow
 
     if not allow_prepaid:
         return Decimal("0.00"), "Vorkasse / Gutschein ist aktuell nur für Tandemgäste (inkl. Mitflieger/Video) erlaubt."
-
-    if total_amount <= Decimal("0.00"):
-        return Decimal("0.00"), "Für diese Rechnung ist keine Vorkasse / Gutschein-Aufteilung möglich."
-
-    if value >= total_amount:
-        return Decimal("0.00"), "Vorkasse / Gutschein muss kleiner als der Rechnungsbetrag sein."
 
     return value, None
 
@@ -990,9 +1242,7 @@ def _invoice_matches_filters(invoice: Invoice, filters: dict | None) -> bool:
     elif person_query and person_query not in person_name:
         return False
 
-    if status == "open" and invoice.is_paid:
-        return False
-    if status == "paid" and not invoice.is_paid:
+    if status and _invoice_payment_state(invoice) != status:
         return False
 
     if payment:
@@ -1065,9 +1315,9 @@ def _sort_invoices_for_list(invoices: list[Invoice], sort_mode: str) -> list[Inv
     if sort_mode == "amount_asc":
         return sorted(invoices, key=lambda inv: Decimal(str(inv.total_amount or "0.00")))
     if sort_mode == "status_asc":
-        return sorted(invoices, key=lambda inv: "paid" if inv.is_paid else "open")
+        return sorted(invoices, key=lambda inv: _invoice_payment_state(inv))
     if sort_mode == "status_desc":
-        return sorted(invoices, key=lambda inv: "paid" if inv.is_paid else "open", reverse=True)
+        return sorted(invoices, key=lambda inv: _invoice_payment_state(inv), reverse=True)
     if sort_mode == "pay_asc":
         return sorted(invoices, key=lambda inv: (inv.payment_method or ""))
     if sort_mode == "pay_desc":
@@ -1129,10 +1379,8 @@ def _build_invoice_filter_labels(filters: dict | None) -> list[str]:
         labels.append(f"Person: {filters.get('person') or filters.get('person_id')}")
     if filters.get("text"):
         labels.append(f"Freitext: {filters['text']}")
-    if filters.get("status") == "open":
-        labels.append("Status: Offen")
-    elif filters.get("status") == "paid":
-        labels.append("Status: Bezahlt")
+    if filters.get("status"):
+        labels.append(f"Status: {PAYMENT_STATE_LABELS.get(filters['status'], filters['status'])}")
     if filters.get("payment"):
         labels.append(f"Bezahlart: {_invoice_payment_label(filters['payment'])}")
     email_map = {
@@ -1159,6 +1407,8 @@ def inject_invoice_content_status_helpers():
         "invoice_prepaid_amount": _invoice_prepaid_amount,
         "invoice_onsite_amount": _invoice_onsite_amount,
         "invoice_split_payment_label": _invoice_split_payment_label,
+        "invoice_payment_state_code": _invoice_payment_state,
+        "invoice_payment_state_label": _invoice_payment_state_label,
     }
 
 
@@ -1504,8 +1754,8 @@ def manual_invoice_new():
             continue
 
         try:
-            qty = _parse_decimal_de(qty_raw) if qty_raw else Decimal("0")
-            unit = _parse_decimal_de(unit_raw) if unit_raw else Decimal("0")
+            qty = _parse_decimal_de(qty_raw, allow_negative=True) if qty_raw else Decimal("0")
+            unit = _parse_decimal_de(unit_raw, allow_negative=True) if unit_raw else Decimal("0")
             vat_rate = _parse_decimal_de(vat_raw) if vat_raw else Decimal("0")
         except Exception:
             flash(f"Ungültige Zahlenwerte in Position {i + 1}.", "warning")
@@ -1950,6 +2200,10 @@ def person_billing(person_id):
     db.session.expire_all()  # Verhindert doppelte Anzeige durch ORM-Cache nach Rechnungserstellung
     person = Person.query.get_or_404(person_id)
     open_entries = BillingService.get_open_entries_for_person(person_id)
+    default_tandem_kleinunternehmer = _person_tandem_ku_default(person)
+    default_video_kleinunternehmer = _person_video_ku_default(person)
+    preview_tandem_ku_enabled = bool(getattr(person, "is_tandemmaster", False)) and default_tandem_kleinunternehmer
+    preview_video_ku_enabled = bool(getattr(person, "is_video", False)) and default_video_kleinunternehmer
 
     entry_rows = []
     total_jump = Decimal("0.00")
@@ -1973,7 +2227,14 @@ def person_billing(person_id):
         price = Decimal(str(BillingService.calculate_price_for_entry(e) or "0.00"))
         total_jump += price
 
-        vat_rate = Decimal(str(BillingService.get_entry_vat_rate(e) or "0.00"))
+        base_vat_rate = Decimal(str(BillingService.get_entry_vat_rate(e) or "0.00"))
+        is_tandemmaster_jump = BillingService._is_tandemmaster_jump_entry(e)
+        is_video_jump = BillingService._is_video_jump_entry(e)
+        ku_active_for_entry = (
+            (preview_tandem_ku_enabled and is_tandemmaster_jump)
+            or (preview_video_ku_enabled and is_video_jump)
+        )
+        vat_rate = Decimal("0.00") if ku_active_for_entry else base_vat_rate
         net, vat = BillingService.split_gross_into_net_and_vat(gross=price, vat_rate=vat_rate)
 
         entry_rows.append({
@@ -1985,7 +2246,12 @@ def person_billing(person_id):
             "price": price,
             "net": net,
             "vat": vat,
-            "vat_rate": vat_rate
+            "vat_rate": vat_rate,
+            "base_vat_rate": base_vat_rate,
+            "is_tandemmaster_jump": is_tandemmaster_jump,
+            "is_video_jump": is_video_jump,
+            "ku_eligible": bool(is_tandemmaster_jump or is_video_jump),
+            "ku_notice": bool(ku_active_for_entry),
         })
 
         if billing_config and BillingService._is_rent_eligible(e) and day:
@@ -2110,11 +2376,14 @@ def person_billing(person_id):
                             "amount": amt,
                             "days": [d],
                             "gross": Decimal("0.00"),
+                            "net": Decimal("0.00"),
+                            "vat": Decimal("0.00"),
                             "vat_rate": vat_rate,
                             "description": "Organisationspauschale",
                             "invoice_nr": invoice_nr,
                         })
                     else:
+                        _net, _vat = BillingService.split_gross_into_net_and_vat(gross=amt, vat_rate=vat_rate)
                         orga_total += amt
                         orga_lines.append({
                             "period_id": pid,
@@ -2122,6 +2391,8 @@ def person_billing(person_id):
                             "amount": amt,
                             "days": [d],
                             "gross": amt,
+                            "net": _net,
+                            "vat": _vat,
                             "vat_rate": vat_rate,
                             "description": "Organisationspauschale",
                             "invoice_nr": None,
@@ -2135,11 +2406,14 @@ def person_billing(person_id):
                         "amount": amt,
                         "days": days,
                         "gross": Decimal("0.00"),
+                        "net": Decimal("0.00"),
+                        "vat": Decimal("0.00"),
                         "vat_rate": vat_rate,
                         "description": "Organisationspauschale",
                         "invoice_nr": invoice_nr,
                     })
                 else:
+                    _net, _vat = BillingService.split_gross_into_net_and_vat(gross=amt, vat_rate=vat_rate)
                     orga_total += amt
                     orga_lines.append({
                         "period_id": pid,
@@ -2147,6 +2421,8 @@ def person_billing(person_id):
                         "amount": amt,
                         "days": days,
                         "gross": amt,
+                        "net": _net,
+                        "vat": _vat,
                         "vat_rate": vat_rate,
                         "description": "Organisationspauschale",
                         "invoice_nr": None,
@@ -2169,13 +2445,21 @@ def person_billing(person_id):
     prepaid_allowed = _entries_allow_prepaid_voucher(open_entries)
 
     # Netto/MwSt Summen (optional für Anzeige)
+    fixed_net_preview = (
+        sum(rl["net"] for rl in rent_lines)
+        + sum(ol.get("net", Decimal("0.00")) for ol in orga_lines)
+    )
+    fixed_vat_preview = (
+        sum(rl["vat"] for rl in rent_lines)
+        + sum(ol.get("vat", Decimal("0.00")) for ol in orga_lines)
+    )
     total_net_preview = (
         sum(r["net"] for r in entry_rows)
-        + sum(rl["net"] for rl in rent_lines)
+        + fixed_net_preview
     )
     total_vat_preview = (
         sum(r["vat"] for r in entry_rows)
-        + sum(rl["vat"] for rl in rent_lines)
+        + fixed_vat_preview
     )
 
     return render_template(
@@ -2193,6 +2477,12 @@ def person_billing(person_id):
         total_preview=total_preview,
         prepaid_allowed=prepaid_allowed,
         prepaid_voucher_amount=Decimal("0.00"),
+        default_tandem_kleinunternehmer=default_tandem_kleinunternehmer,
+        default_video_kleinunternehmer=default_video_kleinunternehmer,
+        preview_tandem_ku_enabled=preview_tandem_ku_enabled,
+        preview_video_ku_enabled=preview_video_ku_enabled,
+        fixed_net_preview=fixed_net_preview,
+        fixed_vat_preview=fixed_vat_preview,
         total_net_preview=total_net_preview,
         total_vat_preview=total_vat_preview,
     )
@@ -2203,7 +2493,7 @@ def person_billing(person_id):
 # ---------------------------------------------------------
 @bp.route("/person/<int:person_id>/create_invoice", methods=["POST"])
 def create_invoice_for_person(person_id):
-    Person.query.get_or_404(person_id)
+    person = Person.query.get_or_404(person_id)
     # Abweichende Rechnungsanschrift/E-Mail aus dem Formular übernehmen
     billing_address_name = request.form.get("billing_address_name") or None
     billing_address_street = request.form.get("billing_address_street") or None
@@ -2211,6 +2501,28 @@ def create_invoice_for_person(person_id):
     billing_address_city = request.form.get("billing_address_city") or None
     billing_address_email = request.form.get("billing_address_email") or None
     prepaid_voucher_raw = request.form.get("prepaid_voucher_amount") or ""
+    person_ku_default = _person_tandem_ku_default(person)
+    person_video_ku_default = _person_video_ku_default(person)
+    ku_form_value = request.form.get("invoice_is_tandem_kleinunternehmer")
+    video_ku_form_value = request.form.get("invoice_is_video_kleinunternehmer")
+    if ku_form_value is None or str(ku_form_value).strip() == "":
+        is_tandem_kleinunternehmer = person_ku_default
+    else:
+        is_tandem_kleinunternehmer = _parse_form_bool(
+            ku_form_value,
+            default=person_ku_default,
+        )
+    if video_ku_form_value is None or str(video_ku_form_value).strip() == "":
+        is_video_kleinunternehmer = person_video_ku_default
+    else:
+        is_video_kleinunternehmer = _parse_form_bool(
+            video_ku_form_value,
+            default=person_video_ku_default,
+        )
+    if not bool(getattr(person, "is_tandemmaster", False)):
+        is_tandem_kleinunternehmer = False
+    if not bool(getattr(person, "is_video", False)):
+        is_video_kleinunternehmer = False
 
     # Vorschau-Eingabe validieren: nur Tandem-/Mitflieger-Einträge dürfen Vorkasse/Gutschein nutzen.
     open_entries_for_precheck = BillingService.get_open_entries_for_person(person_id)
@@ -2232,11 +2544,16 @@ def create_invoice_for_person(person_id):
         billing_address_city=billing_address_city,
         billing_address_email=billing_address_email,
         prepaid_voucher_amount=parsed_prepaid,
+        is_tandem_kleinunternehmer=is_tandem_kleinunternehmer,
+        is_video_kleinunternehmer=is_video_kleinunternehmer,
     )
 
     if not invoice:
         flash("Keine offenen Sprünge für diese Person.", "warning")
         return redirect(url_for("billing.person_billing", person_id=person_id))
+
+    if not (getattr(invoice, "payment_method", "") or "").strip() and _invoice_allows_sepa(invoice):
+        invoice.payment_method = "sepa"
 
     flash("Rechnung wurde erstellt.", "success")
     return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number(invoice)))
@@ -2334,6 +2651,24 @@ def invoice_detail(invoice_id):
             and (not _last_success or _last_attempt >= _last_success)
         )
 
+        # Dynamische KU-Umschaltung in der Rechnungsansicht:
+        # Fixe Summen (alle nicht betroffenen Positionen) + Basis-MwSt je KU-relevanter Sprungzeile.
+        invoice_ku_regular_vat_rates: dict[int, Decimal] = {}
+        invoice_dynamic_fixed_net = Decimal("0.00")
+        invoice_dynamic_fixed_vat = Decimal("0.00")
+        for _item in list(getattr(invoice, "items", []) or []):
+            if _is_jump_item(_item):
+                _entry = getattr(_item, "load_entry", None)
+                _base_rate = BillingService.get_entry_vat_rate(_entry) if _entry else Decimal("0.00")
+                if getattr(_item, "id", None) is not None:
+                    invoice_ku_regular_vat_rates[int(_item.id)] = Decimal(str(_base_rate or "0.00"))
+                continue
+            invoice_dynamic_fixed_net += Decimal(str(getattr(_item, "net_amount", 0) or 0))
+            invoice_dynamic_fixed_vat += Decimal(str(getattr(_item, "vat_amount", 0) or 0))
+
+        invoice_dynamic_fixed_net = invoice_dynamic_fixed_net.quantize(Decimal("0.01"))
+        invoice_dynamic_fixed_vat = invoice_dynamic_fixed_vat.quantize(Decimal("0.01"))
+
         _tpl_kwargs = dict(
             invoice=invoice,
             invoice_display_number=invoice_display_number,
@@ -2351,6 +2686,15 @@ def invoice_detail(invoice_id):
             prepaid_voucher_amount=prepaid_voucher_amount,
             onsite_amount=onsite_amount,
             prepaid_allowed=prepaid_allowed,
+            invoice_allows_sepa=_invoice_allows_sepa(invoice),
+            invoice_payment_state_code=_invoice_payment_state(invoice),
+            invoice_payment_state_label=_invoice_payment_state_label(invoice),
+            invoice_has_tandem_jump_positions=_invoice_has_tandem_jump_positions(invoice),
+            invoice_has_video_jump_positions=_invoice_has_video_jump_positions(invoice),
+            invoice_has_ku_jump_positions=_invoice_has_ku_jump_positions(invoice),
+            invoice_ku_regular_vat_rates=invoice_ku_regular_vat_rates,
+            invoice_dynamic_fixed_net=invoice_dynamic_fixed_net,
+            invoice_dynamic_fixed_vat=invoice_dynamic_fixed_vat,
         )
 
         # Partial-Reload (AJAX)
@@ -2516,8 +2860,12 @@ def invoice_save(invoice_id):
         return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number(invoice)))
 
     payment_method = (request.form.get("payment_method") or "").strip().lower()
-    if payment_method not in {"", "cash", "card", "transfer", "wero"}:
+    if payment_method not in {"", "cash", "card", "transfer", "wero", "sepa"}:
         flash("Ungültige Zahlungsart.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number_for_detail(invoice)))
+
+    if payment_method == "sepa" and not _invoice_allows_sepa(invoice):
+        flash("SEPA-Lastschrift ist für diese Person nicht zulässig.", "warning")
         return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number_for_detail(invoice)))
 
     prepaid_voucher_raw = request.form.get("prepaid_voucher_amount") or ""
@@ -2533,6 +2881,21 @@ def invoice_save(invoice_id):
 
     invoice.payment_method = payment_method or None
     invoice.prepaid_voucher_amount = parsed_prepaid
+    if payment_method == "sepa":
+        _set_invoice_payment_state(invoice, INVOICE_PAYMENT_STATE_SEPA_PENDING)
+    else:
+        _set_invoice_payment_state(invoice, INVOICE_PAYMENT_STATE_OPEN)
+
+    if _invoice_has_ku_jump_positions(invoice):
+        invoice.is_tandem_kleinunternehmer = _parse_form_bool(
+            request.form.get("invoice_is_tandem_kleinunternehmer"),
+            default=bool(getattr(invoice, "is_tandem_kleinunternehmer", False)),
+        )
+        invoice.is_video_kleinunternehmer = _parse_form_bool(
+            request.form.get("invoice_is_video_kleinunternehmer"),
+            default=bool(getattr(invoice, "is_video_kleinunternehmer", False)),
+        )
+        BillingService.recalculate_invoice_ku_tax(invoice)
 
     if invoice.seq_number is None:
         # Bei Entwürfen die gleiche Anzeige-/Vorschaunummer als finale Nummer übernehmen.
@@ -2551,6 +2914,41 @@ def invoice_save(invoice_id):
 
     flash("Rechnung wurde gespeichert.", "success")
     return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number(invoice)))
+
+
+@bp.route("/invoice/<int:invoice_id>/set_tandem_kleinunternehmer", methods=["POST"])
+def invoice_set_tandem_kleinunternehmer(invoice_id):
+    invoice = (
+        Invoice.query
+        .options(selectinload(Invoice.items).joinedload(InvoiceItem.load_entry))
+        .get_or_404(invoice_id)
+    )
+
+    if invoice.is_deleted:
+        flash("Stornierte Rechnungen können nicht geändert werden.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number_for_detail(invoice)))
+
+    if not _invoice_has_ku_jump_positions(invoice):
+        flash("Diese Rechnung enthält keine KU-fähigen Sprungpositionen.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number_for_detail(invoice)))
+
+    if getattr(invoice, "email_sent_ok", False):
+        flash("Nach E-Mail-Versand ist diese steuerliche Einstellung gesperrt.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number_for_detail(invoice)))
+
+    invoice.is_tandem_kleinunternehmer = _parse_form_bool(
+        request.form.get("invoice_is_tandem_kleinunternehmer"),
+        default=bool(getattr(invoice, "is_tandem_kleinunternehmer", False)),
+    )
+    invoice.is_video_kleinunternehmer = _parse_form_bool(
+        request.form.get("invoice_is_video_kleinunternehmer"),
+        default=bool(getattr(invoice, "is_video_kleinunternehmer", False)),
+    )
+    BillingService.recalculate_invoice_ku_tax(invoice)
+    db.session.commit()
+
+    flash("Kleinunternehmer-Status wurde aktualisiert.", "success")
+    return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number_for_detail(invoice)))
  
 # ---------------------------------------------------------
 # Rechnung per E-Mail versenden
@@ -3097,12 +3495,16 @@ def invoice_set_payment_method(invoice_id):
         )
 
     method = (request.form.get("payment_method") or "").strip().lower()
-    allowed = {"", "cash", "card", "transfer", "wero"}
+    allowed = {"", "cash", "card", "transfer", "wero", "sepa"}
     if method not in allowed:
         flash("Ungültige Zahlungsart.", "danger")
         return redirect(
             url_for("billing.invoice_detail", invoice_id=invoice_id)
         )
+
+    if method == "sepa" and not _invoice_allows_sepa(invoice):
+        flash("SEPA-Lastschrift ist für diese Person nicht zulässig.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=invoice_id))
 
     prepaid_raw = request.form.get("prepaid_voucher_amount") or ""
     parsed_prepaid, prepaid_error = _parse_prepaid_amount(
@@ -3116,12 +3518,57 @@ def invoice_set_payment_method(invoice_id):
 
     invoice.payment_method = method or None
     invoice.prepaid_voucher_amount = parsed_prepaid
+    if invoice.is_paid:
+        _set_invoice_payment_state(invoice, INVOICE_PAYMENT_STATE_PAID)
+    elif method == "sepa":
+        _set_invoice_payment_state(invoice, INVOICE_PAYMENT_STATE_SEPA_PENDING)
+    else:
+        _set_invoice_payment_state(invoice, INVOICE_PAYMENT_STATE_OPEN)
     db.session.commit()
 
-    flash("Zahlungsart gespeichert (Rechnung bleibt OFFEN).", "success")
+    if method == "sepa" and not invoice.is_paid:
+        flash("Zahlungsart gespeichert (SEPA vorgemerkt).", "success")
+    else:
+        flash("Zahlungsart gespeichert.", "success")
     return redirect(
         url_for("billing.invoice_detail", invoice_id=invoice_id)
     )
+
+
+@bp.route("/invoice/<int:invoice_id>/set_payment_state", methods=["POST"])
+def invoice_set_payment_state(invoice_id):
+    deny = _full_admin_required("billing.invoice_detail", invoice_id=invoice_id)
+    if deny:
+        return deny
+
+    invoice = db.session.get(Invoice, invoice_id)
+    if not invoice:
+        flash("Rechnung nicht gefunden.", "danger")
+        return redirect(url_for("billing.invoice_list"))
+
+    if getattr(invoice, "stage", "final") != "final":
+        flash("Nur gespeicherte Rechnungen können einen Zahlungsstatus erhalten.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=invoice_id))
+
+    state = (request.form.get("payment_state") or "").strip().lower()
+    if state not in INVOICE_PAYMENT_STATES:
+        flash("Ungültiger Zahlungsstatus.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=invoice_id))
+
+    current_state = _invoice_payment_state(invoice)
+    if not _is_allowed_payment_state_transition(current_state, state):
+        flash("Unzulässiger Zahlungsstatus-Übergang.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=invoice_id))
+
+    if state in {INVOICE_PAYMENT_STATE_SEPA_PENDING, INVOICE_PAYMENT_STATE_SEPA_EXPORTED, INVOICE_PAYMENT_STATE_SEPA_RETURNED} and not _invoice_allows_sepa(invoice):
+        flash("SEPA-Status ist für diese Person nicht zulässig.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=invoice_id))
+
+    _set_invoice_payment_state(invoice, state)
+    db.session.commit()
+
+    flash(f"Zahlungsstatus aktualisiert: {PAYMENT_STATE_LABELS.get(state, state)}", "success")
+    return redirect(url_for("billing.invoice_detail", invoice_id=invoice_id))
 
 
 # ---------------------------------------------------------
@@ -3280,8 +3727,7 @@ def invoice_unpay(invoice_id):
         return redirect(url_for("billing.invoice_detail", invoice_id=invoice_id))
 
     # Zahlung aufheben (Invoice + Entries)
-    invoice.is_paid = False
-    invoice.paid_at = None
+    _set_invoice_payment_state(invoice, INVOICE_PAYMENT_STATE_OPEN)
     _unpay_invoice_entries(invoice)
     db.session.commit()
 
@@ -3602,7 +4048,7 @@ def _build_invoice_list_context(
             )
         )
 
-    invoices_all = q.order_by(Invoice.is_paid.asc(), Invoice.created_at.desc()).all()
+    invoices_all = q.order_by(Invoice.payment_state.asc(), Invoice.created_at.desc()).all()
 
     invoices = invoices_all
 
@@ -3840,16 +4286,19 @@ def invoice_list_csv():
     output = io.StringIO()
     writer = csv.writer(output, delimiter=";", quoting=csv.QUOTE_ALL)
 
-    writer.writerow(["Nr.", "Datum", "Person", "Betrag (EUR)", "Status", "Bezahlart", "Vor Ort (EUR)", "Vorkasse/Gutschein (EUR)", "Verwendungszweck"])
+    writer.writerow(["Nr.", "Datum", "Person", "Netto (EUR)", "MwSt (EUR)", "Brutto (EUR)", "Status", "Bezahlart", "Vor Ort (EUR)", "Vorkasse/Gutschein (EUR)", "Verwendungszweck"])
     for inv in ctx["invoices"]:
         prepaid = _invoice_prepaid_amount(inv)
         onsite = _invoice_onsite_amount(inv)
+        net_total, vat_total, gross_total = _invoice_totals(inv)
         writer.writerow([
             inv.seq_number or inv.id,
             inv.created_at.strftime("%d.%m.%Y") if inv.created_at else "",
             inv.person.full_name if inv.person else "",
-            _fmt(inv.total_amount or Decimal("0.00")),
-            "bezahlt" if inv.is_paid else "offen",
+            _fmt(net_total),
+            _fmt(vat_total),
+            _fmt(gross_total),
+            _invoice_payment_state_label(inv),
             _invoice_split_payment_label(inv),
             _fmt(onsite),
             _fmt(prepaid),
@@ -3864,6 +4313,7 @@ def invoice_list_csv():
     writer.writerow(["davon Karte", _fmt(paid_by_method["card"])])
     writer.writerow(["davon Überweisung", _fmt(paid_by_method["transfer"])])
     writer.writerow(["davon WERO", _fmt(paid_by_method["wero"])])
+    writer.writerow(["davon SEPA-Lastschrift", _fmt(paid_by_method["sepa"])])
     writer.writerow(["davon Vorkasse / Gutschein", _fmt(paid_by_method["voucher"])])
     writer.writerow(["Offen fakturiert", _fmt(ctx["sum_open_invoices"])])
     writer.writerow(["Noch nicht fakturiert", _fmt(ctx["sum_billable_uninvoiced"])])
@@ -3918,7 +4368,7 @@ def invoice_list_xlsx():
     thin = Side(style="thin")
     border = Border(bottom=thin)
 
-    headers = ["Nr.", "Datum", "Person", "Betrag (EUR)", "Status", "Bezahlart", "Vor Ort (EUR)", "Vorkasse/Gutschein (EUR)", "Verwendungszweck"]
+    headers = ["Nr.", "Datum", "Person", "Netto (EUR)", "MwSt (EUR)", "Brutto (EUR)", "Status", "Bezahlart", "Vor Ort (EUR)", "Vorkasse/Gutschein (EUR)", "Verwendungszweck"]
     ws.append(headers)
     for col_idx, _ in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col_idx)
@@ -3929,12 +4379,15 @@ def invoice_list_xlsx():
     for inv in ctx["invoices"]:
         prepaid = float(_invoice_prepaid_amount(inv))
         onsite = float(_invoice_onsite_amount(inv))
+        net_total, vat_total, gross_total = _invoice_totals(inv)
         row = [
             inv.seq_number or inv.id,
             inv.created_at.strftime("%d.%m.%Y") if inv.created_at else "",
             inv.person.full_name if inv.person else "",
-            float(inv.total_amount or Decimal("0.00")),
-            "bezahlt" if inv.is_paid else "offen",
+            float(net_total),
+            float(vat_total),
+            float(gross_total),
+            _invoice_payment_state_label(inv),
             _invoice_split_payment_label(inv),
             onsite,
             prepaid,
@@ -3942,13 +4395,15 @@ def invoice_list_xlsx():
         ]
         ws.append(row)
         row_idx = ws.max_row
-        row_fill = paid_fill if inv.is_paid else open_fill
+        row_fill = paid_fill if _invoice_payment_state(inv) == INVOICE_PAYMENT_STATE_PAID else open_fill
         for col_idx in range(1, len(headers) + 1):
             ws.cell(row=row_idx, column=col_idx).fill = row_fill
         # Beträge als Zahl formatieren
         ws.cell(row=row_idx, column=4).number_format = '#,##0.00 "€"'
-        ws.cell(row=row_idx, column=7).number_format = '#,##0.00 "€"'
-        ws.cell(row=row_idx, column=8).number_format = '#,##0.00 "€"'
+        ws.cell(row=row_idx, column=5).number_format = '#,##0.00 "€"'
+        ws.cell(row=row_idx, column=6).number_format = '#,##0.00 "€"'
+        ws.cell(row=row_idx, column=9).number_format = '#,##0.00 "€"'
+        ws.cell(row=row_idx, column=10).number_format = '#,##0.00 "€"'
 
     # Leerzeile
     ws.append([])
@@ -3966,6 +4421,7 @@ def invoice_list_xlsx():
         ("davon Karte", float(paid_by_method["card"])),
         ("davon Überweisung", float(paid_by_method["transfer"])),
         ("davon WERO", float(paid_by_method["wero"])),
+        ("davon SEPA-Lastschrift", float(paid_by_method["sepa"])),
         ("davon Vorkasse / Gutschein", float(paid_by_method["voucher"])),
         ("Offen fakturiert", float(ctx["sum_open_invoices"])),
         ("Noch nicht fakturiert", float(ctx["sum_billable_uninvoiced"])),
@@ -3984,7 +4440,7 @@ def invoice_list_xlsx():
                 ws.cell(row=row_idx, column=col_idx).border = border
 
     # Spaltenbreiten anpassen
-    col_widths = [8, 12, 30, 14, 12, 24, 14, 20, 60]
+    col_widths = [8, 12, 30, 14, 14, 14, 12, 24, 14, 20, 60]
     for i, w in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 

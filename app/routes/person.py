@@ -50,6 +50,43 @@ def is_true(v) -> bool:
     return (v or "").lower() == "true"
 
 
+def _normalize_iban(value: str | None) -> str:
+    return Person.normalize_iban(value)
+
+
+def _format_iban_for_display(value: str | None) -> str:
+    iban = _normalize_iban(value)
+    if not iban:
+        return ""
+    return " ".join(iban[i:i + 4] for i in range(0, len(iban), 4))
+
+
+def _default_sepa_mandate_reference(person_id: int | None) -> str:
+    if not person_id:
+        return ""
+    return f"DZ-{int(person_id):06d}"
+
+
+def _ensure_sepa_mandate_reference(person: Person) -> bool:
+    """Setzt eine Mandatsreferenz einmalig aus der Personen-ID, falls noch leer."""
+    if not person:
+        return False
+
+    current = Person.normalize_sepa_mandate_reference(getattr(person, "sepa_mandate_reference", None))
+    if current:
+        if current != getattr(person, "sepa_mandate_reference", None):
+            person.sepa_mandate_reference = current
+            return True
+        return False
+
+    reference = _default_sepa_mandate_reference(person.id)
+    if not reference:
+        return False
+
+    person.sepa_mandate_reference = reference
+    return True
+
+
 def _collect_and_validate(form):
     """
     Liest ALLE Felder aus dem Formular, normalisiert und validiert.
@@ -85,9 +122,21 @@ def _collect_and_validate(form):
     emergency_phone = (form.get("emergency_phone") or "").strip()
     emergency_email = (form.get("emergency_email") or "").strip()
 
-    iban = (form.get("iban") or "").strip()
+    iban = _normalize_iban(form.get("iban"))
     bic = (form.get("bic") or "").strip()
     account_holder = (form.get("account_holder") or "").strip()
+    sepa_enabled = is_true(form.get("sepa_enabled"))
+    sepa_mandate_reference = Person.normalize_sepa_mandate_reference(form.get("sepa_mandate_reference"))
+    sepa_mandate_date_raw = (form.get("sepa_mandate_date") or "").strip()
+    sepa_mandate_date = None
+    sepa_first_collection_done = is_true(form.get("sepa_first_collection_done"))
+
+    if sepa_mandate_date_raw:
+        md = parse_date_flexible(sepa_mandate_date_raw)
+        if md is None:
+            field_errors["sepa_mandate_date"] = "Mandatsdatum muss ein gültiges Datum sein."
+        else:
+            sepa_mandate_date = md
 
     street_and_number = (form.get("street_and_number") or "").strip()
     zip_code = (form.get("zip_code") or "").strip()
@@ -105,10 +154,20 @@ def _collect_and_validate(form):
     is_partner_verein = is_true(form.get("is_partner_verein"))
     is_tandem_guest = is_true(form.get("is_tandem_guest"))
     is_tandemmaster = is_true(form.get("is_tandemmaster"))
+    is_tandem_kleinunternehmer = is_true(form.get("is_tandem_kleinunternehmer"))
     is_student = is_true(form.get("is_student"))
     is_video = is_true(form.get("is_video"))
+    is_video_kleinunternehmer = is_true(form.get("is_video_kleinunternehmer"))
     is_aff_teacher = is_true(form.get("is_aff_teacher"))
     is_aff_student = is_true(form.get("is_aff_student"))
+
+    # Feld ist nur fuer Tandemmaster fachlich relevant.
+    if not is_tandemmaster:
+        is_tandem_kleinunternehmer = False
+
+    # Feld ist nur fuer Video fachlich relevant.
+    if not is_video:
+        is_video_kleinunternehmer = False
 
     # ---- Validierung (wie bisher, nicht strenger) ----
     if not first_name:
@@ -162,6 +221,21 @@ def _collect_and_validate(form):
         field_errors["is_partner_verein"] = "Partner-Verein kann nicht gleichzeitig Tandemgast sein."
         field_errors["is_tandem_guest"] = "Tandemgast kann nicht gleichzeitig Partner-Verein sein."
 
+    if sepa_enabled and is_tandem_guest:
+        sepa_enabled = False
+        sepa_first_collection_done = False
+        warnings.append("SEPA-Lastschrift wurde für Tandemgast/Mitflieger deaktiviert.")
+
+    if sepa_enabled:
+        if not iban:
+            field_errors["iban"] = "IBAN ist Pflicht, wenn SEPA-Lastschrift aktiviert ist."
+        if not account_holder:
+            field_errors["account_holder"] = "Kontoinhaber ist Pflicht, wenn SEPA-Lastschrift aktiviert ist."
+        if not sepa_mandate_date:
+            field_errors["sepa_mandate_date"] = "Mandatsdatum ist Pflicht, wenn SEPA-Lastschrift aktiviert ist."
+    else:
+        sepa_first_collection_done = False
+
     # Lehrer
     is_teacher = is_true(form.get("is_teacher"))
     teacher_license_expires_raw = (form.get("teacher_license_expires") or "").strip()
@@ -214,6 +288,10 @@ def _collect_and_validate(form):
         iban=iban,
         bic=bic,
         account_holder=account_holder,
+        sepa_enabled=sepa_enabled,
+        sepa_mandate_reference=sepa_mandate_reference,
+        sepa_mandate_date=sepa_mandate_date,
+        sepa_first_collection_done=sepa_first_collection_done,
         street_and_number=street_and_number,
         zip_code=zip_code,
         city=city,
@@ -229,8 +307,10 @@ def _collect_and_validate(form):
         is_partner_verein=is_partner_verein,
         is_tandem_guest=is_tandem_guest,
         is_tandemmaster=is_tandemmaster,
+        is_tandem_kleinunternehmer=is_tandem_kleinunternehmer,
         is_student=is_student,
         is_video=is_video,
+        is_video_kleinunternehmer=is_video_kleinunternehmer,
         is_aff_teacher=is_aff_teacher,
         is_aff_student=is_aff_student,
         is_teacher=is_teacher,
@@ -382,17 +462,26 @@ def new_person():
                 person=person,
                 field_errors=field_errors,
                 form_data=request.form,
+                format_iban_for_display=_format_iban_for_display,
             )
 
         p = Person(**data)
         db.session.add(p)
         db.session.commit()
+        if _ensure_sepa_mandate_reference(p):
+            db.session.commit()
         for warning in warnings:
             flash(warning, "warning")
         flash("Person erfolgreich angelegt.", "success")
         return redirect(url_for("person.list_persons"))
 
-    return render_template("person/form.html", person=None, field_errors={}, form_data=None)
+    return render_template(
+        "person/form.html",
+        person=None,
+        field_errors={},
+        form_data=None,
+        format_iban_for_display=_format_iban_for_display,
+    )
 
 
 # ---------------------------------------------------------
@@ -411,6 +500,9 @@ def detail(id):
 def edit_person(id):
     person = Person.query.get_or_404(id)
 
+    if request.method == "GET" and _ensure_sepa_mandate_reference(person):
+        db.session.commit()
+
     if request.method == "POST":
         data, field_errors, warnings = _collect_and_validate(request.form)
 
@@ -420,11 +512,13 @@ def edit_person(id):
                 person=person,
                 field_errors=field_errors,
                 form_data=request.form,
+                format_iban_for_display=_format_iban_for_display,
             )
 
         previous_name = person.current_name
         for k, v in data.items():
             setattr(person, k, v)
+        _ensure_sepa_mandate_reference(person)
         person.remember_original_name(previous_name)
 
         # Newsletter-Status nur bei expliziter manueller Aktion aendern.
@@ -441,7 +535,13 @@ def edit_person(id):
         flash("Person erfolgreich aktualisiert.", "success")
         return redirect(url_for("person.list_persons"))
 
-    return render_template("person/form.html", person=person, field_errors={}, form_data=None)
+    return render_template(
+        "person/form.html",
+        person=person,
+        field_errors={},
+        form_data=None,
+        format_iban_for_display=_format_iban_for_display,
+    )
 
 
 # ---------------------------------------------------------

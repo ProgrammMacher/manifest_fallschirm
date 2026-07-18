@@ -29,6 +29,7 @@
 
   // UX Hint (einmal pro Page Load)
   const FILL_HINT_DURATION_MS = 4000;
+  const MAX_EXTRA_SEATS_PER_LOAD = 4;
 
   // Nur diese Höhen sind im UI/Backend sinnvoll
   const VALID_HEIGHTS = new Set([1500, 3000, 4000]);
@@ -166,14 +167,71 @@
     const hidden = qs("#extra_seats_ui");
     if (!hidden) return 0;
     const v = safeInt(hidden.value, 0);
-    return Math.max(0, Math.min(2, v));
+    return Math.max(0, Math.min(MAX_EXTRA_SEATS_PER_LOAD, v));
   }
 
   function setExtraSeatsUiCount(n) {
     const hidden = qs("#extra_seats_ui");
     if (!hidden) return;
-    const v = Math.max(0, Math.min(2, safeInt(n, 0)));
+    const v = Math.max(0, Math.min(MAX_EXTRA_SEATS_PER_LOAD, safeInt(n, 0)));
     hidden.value = String(v);
+  }
+
+  function getOccupiedExtraSeatCount(baseSeatCount = getBaseSeatCount()) {
+    if (!baseSeatCount) return 0;
+    let occupied = 0;
+    for (let seat = baseSeatCount + 1; seat <= baseSeatCount + MAX_EXTRA_SEATS_PER_LOAD; seat++) {
+      if (isSeatRowOccupied(seat)) occupied += 1;
+    }
+    return Math.max(0, Math.min(MAX_EXTRA_SEATS_PER_LOAD, occupied));
+  }
+
+  function syncExtraSeatsUiCount(baseSeatCount = getBaseSeatCount()) {
+    const synced = Math.max(getExtraSeatsUiCount(), getOccupiedExtraSeatCount(baseSeatCount));
+    setExtraSeatsUiCount(synced);
+    return synced;
+  }
+
+  function updateExtraSeatButtonState(baseSeatCount = getBaseSeatCount()) {
+    const button = qs("#add_extra_seat");
+    if (!button) return;
+    const current = syncExtraSeatsUiCount(baseSeatCount);
+    const locked = button.dataset.locked === "1";
+    button.disabled = locked || current >= MAX_EXTRA_SEATS_PER_LOAD;
+    if (current >= MAX_EXTRA_SEATS_PER_LOAD) {
+      button.setAttribute("aria-disabled", "true");
+      button.title = `Maximal ${MAX_EXTRA_SEATS_PER_LOAD} Extrasitze pro Load.`;
+    } else {
+      button.removeAttribute("aria-disabled");
+      button.removeAttribute("title");
+    }
+  }
+
+  function bindExtraSeatButton() {
+    const button = qs("#add_extra_seat");
+    if (!button || button.dataset.bound === "1") return;
+    button.dataset.bound = "1";
+    button.dataset.locked = button.disabled ? "1" : "0";
+
+    updateExtraSeatButtonState();
+
+    button.addEventListener("click", () => {
+      const baseSeatCount = getBaseSeatCount();
+      const current = syncExtraSeatsUiCount(baseSeatCount);
+      if (current >= MAX_EXTRA_SEATS_PER_LOAD) {
+        updateExtraSeatButtonState(baseSeatCount);
+        return;
+      }
+      setExtraSeatsUiCount(current + 1);
+      const aircraftSelect = qs('select[name="aircraft_id"]');
+      if (aircraftSelect) {
+        aircraftSelect.dispatchEvent(new Event("change"));
+      } else {
+        updateExtraSeatButtonState(baseSeatCount);
+        updateLiveLogic();
+        scheduleDraftSave();
+      }
+    });
   }
 
   function isSeatRowOccupied(seatNo) {
@@ -3058,8 +3116,8 @@ document.addEventListener("drop", () => __clearDropPreview(), true);
       const baseSeats = parseSeatsFromOptionText(opt ? opt.textContent : "");
       if (!baseSeats) return;
 
-      const extraUi = getExtraSeatsUiCount();
-      const maxExtra = 2;
+      const extraUi = syncExtraSeatsUiCount(baseSeats);
+      const maxExtra = MAX_EXTRA_SEATS_PER_LOAD;
 
       const maxRendered = Math.max(...qsa('tr.seat-row[data-seat]').map((r) => safeInt(r.dataset.seat, 0)), 0);
       for (let s = 1; s <= maxRendered; s++) {
@@ -3084,6 +3142,7 @@ document.addEventListener("drop", () => __clearDropPreview(), true);
           row.setAttribute("hidden", "hidden");
         }
       }
+      updateExtraSeatButtonState(baseSeats);
       updateLiveLogic();
     }
 
@@ -3368,6 +3427,7 @@ async function maybeAutoRestoreDraft() {
 async function initEditor() {
   __pageLoadedAt = nowMs();
   await loadStatusList();
+  bindExtraSeatButton();
 
   // ----------------------------
   // Load-Höhe

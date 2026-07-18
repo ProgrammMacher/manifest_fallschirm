@@ -1,7 +1,10 @@
 # C:\manifest_fallschirm\app\models\person.py
 
 from datetime import date, datetime
+from difflib import SequenceMatcher
 from typing import Optional
+
+from sqlalchemy.orm import validates
 
 from app import db
 
@@ -43,11 +46,27 @@ class Person(db.Model):
     # Tandemmaster (nur fuer UI-Filter im Loadeditor)
     is_tandemmaster = db.Column(db.Boolean, nullable=False, default=False, server_default="0")
 
+    # Kleinunternehmerregelung (§19 UStG) fuer Tandemmaster
+    is_tandem_kleinunternehmer = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default="0",
+    )
+
     # Schüler (nur fuer UI-Filter im Loadeditor)
     is_student = db.Column(db.Boolean, nullable=False, default=False, server_default="0")
 
     # Video (nur fuer UI-Filter im Loadeditor)
     is_video = db.Column(db.Boolean, nullable=False, default=False, server_default="0")
+
+    # Kleinunternehmerregelung (§19 UStG) fuer Video-Personal
+    is_video_kleinunternehmer = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default="0",
+    )
 
     # Lehrer (manuell)
     is_teacher = db.Column(db.Boolean, nullable=False, default=False, server_default="0")
@@ -78,6 +97,10 @@ class Person(db.Model):
     iban = db.Column(db.String(34), nullable=True, index=True)
     bic = db.Column(db.String(11), nullable=True)
     account_holder = db.Column(db.String(120), nullable=True)
+    sepa_enabled = db.Column(db.Boolean, nullable=False, default=False, server_default="0")
+    sepa_mandate_reference = db.Column(db.String(32), nullable=True, index=True)
+    sepa_mandate_date = db.Column(db.Date, nullable=True)
+    sepa_first_collection_done = db.Column(db.Boolean, nullable=False, default=False, server_default="0")
 
     # Kommentar & Notizen
     comment = db.Column(db.Text, nullable=True)
@@ -126,6 +149,29 @@ class Person(db.Model):
     # -----------------------------
     # Helper
     # -----------------------------
+    @staticmethod
+    def normalize_iban(value: Optional[str]) -> str:
+        if value is None:
+            return ""
+        return "".join(str(value).split()).upper()
+
+    @staticmethod
+    def normalize_sepa_mandate_reference(value: Optional[str]) -> str:
+        raw = str(value or "").strip()
+        if not raw or raw.casefold() in {"none", "null"}:
+            return ""
+        return raw.upper()
+
+    @validates("iban")
+    def _validate_iban(self, _key: str, value: Optional[str]) -> Optional[str]:
+        normalized = self.normalize_iban(value)
+        return normalized or None
+
+    @validates("sepa_mandate_reference")
+    def _validate_sepa_mandate_reference(self, _key: str, value: Optional[str]) -> Optional[str]:
+        normalized = self.normalize_sepa_mandate_reference(value)
+        return normalized or None
+
     def __repr__(self) -> str:
         return f"<Person {self.id}: {self.first_name} {self.last_name}>"
 
@@ -135,11 +181,40 @@ class Person(db.Model):
         ln = (self.last_name or "").strip()
         return f"{fn} {ln}".strip()
 
+    @staticmethod
+    def _normalized_name_parts(name: Optional[str]) -> tuple[str, str]:
+        parts = [part.strip() for part in str(name or "").split() if part.strip()]
+        if not parts:
+            return "", ""
+        if len(parts) == 1:
+            return parts[0].casefold(), ""
+        first = " ".join(parts[:-1]).casefold()
+        last = parts[-1].casefold()
+        return first, last
+
+    @classmethod
+    def _is_minor_name_correction(cls, previous_name: Optional[str], current_name: Optional[str]) -> bool:
+        previous_first, previous_last = cls._normalized_name_parts(previous_name)
+        current_first, current_last = cls._normalized_name_parts(current_name)
+
+        if not previous_first or not current_first:
+            return False
+        if previous_last != current_last:
+            return False
+        if previous_first == current_first:
+            return True
+
+        similarity = SequenceMatcher(None, previous_first, current_first).ratio()
+        max_len = max(len(previous_first), len(current_first))
+        length_delta = abs(len(previous_first) - len(current_first))
+
+        return similarity >= 0.84 and length_delta <= 2 and max_len >= 4
+
     @property
     def full_name(self) -> str:
         current = self.current_name
         original = (self.original_name or "").strip()
-        if original and original.casefold() != current.casefold():
+        if original and original.casefold() != current.casefold() and not self._is_minor_name_correction(original, current):
             return f"{current} ({original})"
         return current
 
@@ -149,6 +224,10 @@ class Person(db.Model):
         if not previous or not current:
             return
         if previous.casefold() == current.casefold():
+            return
+        if self._is_minor_name_correction(previous, current):
+            if self.original_name and self._is_minor_name_correction(self.original_name, current):
+                self.original_name = None
             return
         if not self.original_name:
             self.original_name = previous

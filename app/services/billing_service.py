@@ -34,6 +34,7 @@ from app.constants import (
     STUDENT_STATUSES,
     TANDEM_GUEST_STATUSES,
     TM_STATUSES,
+    VIDEO_STATUSES,
     GUEST_STATUSES,
     PARTNER_MEMBER_STATUSES,
     MEMBER_STATUSES,
@@ -71,6 +72,7 @@ def _invoice_payment_label(payment_method: str | None) -> str:
         "card": "Karte",
         "transfer": "Überweisung",
         "wero": "WERO",
+        "sepa": "SEPA-Lastschrift",
         "voucher": "Vorkasse / Gutschein",
     }
     return mapping.get((payment_method or "").strip().lower(), "")
@@ -137,6 +139,7 @@ class BillingService:
 
     # Status-Sets aus app.constants (zentral gepflegt)
     TM_STATUSES = TM_STATUSES
+    VIDEO_STATUSES = VIDEO_STATUSES
     GUEST_STATUSES = GUEST_STATUSES
     PARTNER_MEMBER_STATUSES = PARTNER_MEMBER_STATUSES
     MEMBER_STATUSES = MEMBER_STATUSES
@@ -150,6 +153,115 @@ class BillingService:
         return Decimal(str(x or "0.00")).quantize(
             BillingService.MONEY, rounding=ROUND_HALF_UP
         )
+
+    @staticmethod
+    def _is_tandemmaster_jump_entry(entry: LoadEntry | None) -> bool:
+        if not entry:
+            return False
+        code = normalize_status_code(getattr(entry, "status_code", "") or "")
+        return code in BillingService.TM_STATUSES
+
+    @staticmethod
+    def _is_video_jump_entry(entry: LoadEntry | None) -> bool:
+        if not entry:
+            return False
+        code = normalize_status_code(getattr(entry, "status_code", "") or "")
+        return code in BillingService.VIDEO_STATUSES
+
+    @staticmethod
+    def _is_ku_eligible_jump_entry(entry: LoadEntry | None) -> bool:
+        return (
+            BillingService._is_tandemmaster_jump_entry(entry)
+            or BillingService._is_video_jump_entry(entry)
+        )
+
+    @staticmethod
+    def _is_tandemmaster_jump_item(item: InvoiceItem | None) -> bool:
+        if not item:
+            return False
+        desc = (getattr(item, "description", "") or "").strip()
+        if not desc.startswith("Sprung"):
+            return False
+        return BillingService._is_tandemmaster_jump_entry(getattr(item, "load_entry", None))
+
+    @staticmethod
+    def _is_video_jump_item(item: InvoiceItem | None) -> bool:
+        if not item:
+            return False
+        desc = (getattr(item, "description", "") or "").strip()
+        if not desc.startswith("Sprung"):
+            return False
+        return BillingService._is_video_jump_entry(getattr(item, "load_entry", None))
+
+    @staticmethod
+    def _is_ku_eligible_jump_item(item: InvoiceItem | None) -> bool:
+        return (
+            BillingService._is_tandemmaster_jump_item(item)
+            or BillingService._is_video_jump_item(item)
+        )
+
+    @staticmethod
+    def recalculate_invoice_tandemmaster_tax(invoice: Invoice) -> None:
+        """
+        Wendet §19 UStG ausschließlich auf Tandemmaster-Sprungpositionen an.
+        Alle anderen Positionen bleiben unverändert.
+        """
+        is_kleinunternehmer = bool(getattr(invoice, "is_tandem_kleinunternehmer", False))
+
+        for item in list(getattr(invoice, "items", []) or []):
+            if not BillingService._is_tandemmaster_jump_item(item):
+                continue
+
+            gross = BillingService._q2(Decimal(str(getattr(item, "amount", 0) or "0.00")))
+            if is_kleinunternehmer:
+                vat_rate = Decimal("0.00")
+            else:
+                vat_rate = BillingService._q2(
+                    BillingService.get_entry_vat_rate(getattr(item, "load_entry", None))
+                )
+
+            net, vat = BillingService.split_gross_into_net_and_vat(gross=gross, vat_rate=vat_rate)
+            item.vat_rate = vat_rate
+            item.net_amount = net
+            item.vat_amount = vat
+
+        invoice.calculate_total()
+
+    @staticmethod
+    def recalculate_invoice_ku_tax(invoice: Invoice) -> None:
+        """
+        Wendet §19 UStG ausschließlich auf ku-fähige Sprungpositionen an
+        (Tandemmaster + Video). Alle anderen Positionen bleiben unverändert.
+        """
+        is_tandem_ku = bool(getattr(invoice, "is_tandem_kleinunternehmer", False))
+        is_video_ku = bool(getattr(invoice, "is_video_kleinunternehmer", False))
+
+        for item in list(getattr(invoice, "items", []) or []):
+            if not BillingService._is_ku_eligible_jump_item(item):
+                continue
+
+            entry = getattr(item, "load_entry", None)
+            is_tandem_item = BillingService._is_tandemmaster_jump_entry(entry)
+            is_video_item = BillingService._is_video_jump_entry(entry)
+            ku_active_for_item = (
+                (is_tandem_item and is_tandem_ku)
+                or (is_video_item and is_video_ku)
+            )
+
+            gross = BillingService._q2(Decimal(str(getattr(item, "amount", 0) or "0.00")))
+            if ku_active_for_item:
+                vat_rate = Decimal("0.00")
+            else:
+                vat_rate = BillingService._q2(
+                    BillingService.get_entry_vat_rate(entry)
+                )
+
+            net, vat = BillingService.split_gross_into_net_and_vat(gross=gross, vat_rate=vat_rate)
+            item.vat_rate = vat_rate
+            item.net_amount = net
+            item.vat_amount = vat
+
+        invoice.calculate_total()
 
     # ---------------------------------------------------------
     # Helper: Brutto -> Netto/MwSt
@@ -863,9 +975,16 @@ class BillingService:
             gross = BillingService._q2(
                 BillingService.calculate_price_for_entry(entry)
             )
-            vat_rate = BillingService._q2(
-                BillingService.get_entry_vat_rate(entry)
+            ku_active_for_entry = (
+                (bool(getattr(invoice, "is_tandem_kleinunternehmer", False)) and BillingService._is_tandemmaster_jump_entry(entry))
+                or (bool(getattr(invoice, "is_video_kleinunternehmer", False)) and BillingService._is_video_jump_entry(entry))
             )
+            if ku_active_for_entry:
+                vat_rate = Decimal("0.00")
+            else:
+                vat_rate = BillingService._q2(
+                    BillingService.get_entry_vat_rate(entry)
+                )
 
             net, vat = BillingService.split_gross_into_net_and_vat(
                 gross=gross,
@@ -1064,6 +1183,8 @@ class BillingService:
         billing_address_city: str = None,
         billing_address_email: str = None,
         prepaid_voucher_amount: Decimal | None = None,
+        is_tandem_kleinunternehmer: bool | None = None,
+        is_video_kleinunternehmer: bool | None = None,
     ) -> Optional[Invoice]:
         # 1) Offene Sprünge prüfen (VOR Transaktion)
         open_entries = BillingService.get_open_entries_for_person(person_id)
@@ -1078,6 +1199,12 @@ class BillingService:
 
         # 2) ALLE DB-Änderungen IN EINER Transaktion
         with db.session.begin_nested():
+            person = db.session.get(Person, person_id)
+            person_ku_default = bool(getattr(person, "is_tandem_kleinunternehmer", False)) if person else False
+            person_video_ku_default = bool(getattr(person, "is_video_kleinunternehmer", False)) if person else False
+            invoice_ku_flag = person_ku_default if is_tandem_kleinunternehmer is None else bool(is_tandem_kleinunternehmer)
+            invoice_video_ku_flag = person_video_ku_default if is_video_kleinunternehmer is None else bool(is_video_kleinunternehmer)
+
             # ✅ SCHUTZ: Alte Entwurfs-Rechnungen der Person entfernen (inkl. Items)
             old_drafts = Invoice.query.filter_by(
                 person_id=person_id,
@@ -1100,6 +1227,8 @@ class BillingService:
                 billing_address_zip=billing_address_zip,
                 billing_address_city=billing_address_city,
                 billing_address_email=billing_address_email,
+                is_tandem_kleinunternehmer=invoice_ku_flag,
+                is_video_kleinunternehmer=invoice_video_ku_flag,
             )
             db.session.add(invoice)
 
@@ -1163,7 +1292,7 @@ class BillingService:
             unit = Decimal(str((line or {}).get("unit_price_gross") or "0"))
             vat_rate = Decimal(str((line or {}).get("vat_rate") or "0"))
 
-            if qty <= 0:
+            if qty == 0:
                 continue
 
             gross = BillingService._q2(qty * unit)
@@ -1238,9 +1367,6 @@ class BillingService:
 
             prepaid = Decimal(str(prepaid_voucher_amount or "0.00"))
             if prepaid < Decimal("0.00"):
-                prepaid = Decimal("0.00")
-            total = Decimal(str(invoice.total_amount or "0.00"))
-            if prepaid >= total:
                 prepaid = Decimal("0.00")
             invoice.prepaid_voucher_amount = prepaid
 
@@ -1385,6 +1511,33 @@ class BillingService:
             qr_path = os.path.join(static_dir, "img", "qr", billing_config.qr_website_filename)
             qr_website_data_uri = _image_to_data_uri(qr_path)
 
+        invoice_ku_regular_vat_rates: dict[int, Decimal] = {}
+        invoice_dynamic_fixed_net = Decimal("0.00")
+        invoice_dynamic_fixed_vat = Decimal("0.00")
+        has_tandem_ku_rows = False
+        has_video_ku_rows = False
+        for _item in list(getattr(invoice, "items", []) or []):
+            _desc = (getattr(_item, "description", "") or "").strip()
+            _is_jump_item = _desc.startswith("Sprung") and bool(getattr(_item, "load_entry", None))
+
+            if BillingService._is_tandemmaster_jump_item(_item):
+                has_tandem_ku_rows = True
+            if BillingService._is_video_jump_item(_item):
+                has_video_ku_rows = True
+
+            if _is_jump_item:
+                _entry = getattr(_item, "load_entry", None)
+                _base_rate = BillingService.get_entry_vat_rate(_entry) if _entry else Decimal("0.00")
+                if getattr(_item, "id", None) is not None:
+                    invoice_ku_regular_vat_rates[int(_item.id)] = Decimal(str(_base_rate or "0.00"))
+                continue
+
+            invoice_dynamic_fixed_net += Decimal(str(getattr(_item, "net_amount", 0) or 0))
+            invoice_dynamic_fixed_vat += Decimal(str(getattr(_item, "vat_amount", 0) or 0))
+
+        invoice_dynamic_fixed_net = invoice_dynamic_fixed_net.quantize(Decimal("0.01"))
+        invoice_dynamic_fixed_vat = invoice_dynamic_fixed_vat.quantize(Decimal("0.01"))
+
         # HTML exakt aus deinem bestehenden Template erzeugen
         html = render_template(
             "billing/invoice_detail.html",
@@ -1400,6 +1553,12 @@ class BillingService:
             onsite_amount=onsite_amount,
             prepaid_allowed=prepaid_allowed,
             invoice_split_payment_label=_invoice_split_payment_label,
+            invoice_has_tandem_jump_positions=has_tandem_ku_rows,
+            invoice_has_video_jump_positions=has_video_ku_rows,
+            invoice_has_ku_jump_positions=(has_tandem_ku_rows or has_video_ku_rows),
+            invoice_ku_regular_vat_rates=invoice_ku_regular_vat_rates,
+            invoice_dynamic_fixed_net=invoice_dynamic_fixed_net,
+            invoice_dynamic_fixed_vat=invoice_dynamic_fixed_vat,
             is_pdf_render=True,
             is_dev_mode=False,   # im PDF keine Dev/UI-Elemente
         )

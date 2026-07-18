@@ -32,6 +32,7 @@
 
 {% if not invoice.is_deleted %}
 <div class="no-print mb-3">
+  {% set draft_payment_method = invoice.payment_method or ('sepa' if invoice.stage == 'draft' and invoice_allows_sepa else '') %}
 
 	{% if invoice.stage == 'draft' %}
 	<form method="post"
@@ -40,32 +41,40 @@
 		<div class="row g-3 align-items-end">
 			<div class="col-md-4">
 				<label for="draftPaymentMethod" class="form-label mb-1">Zahlungsart</label>
-				<input type="hidden" id="draftPaymentMethod" name="payment_method" value="{{ invoice.payment_method or '' }}">
+				<input type="hidden" id="draftPaymentMethod" name="payment_method" value="{{ draft_payment_method }}">
 				<div class="d-flex flex-wrap gap-2" id="draftPaymentButtons">
 					<button type="button"
-									class="btn btn-success btn-sm draft-payment-btn {% if invoice.payment_method == 'cash' %}active{% endif %}"
+								class="btn btn-success btn-sm draft-payment-btn {% if draft_payment_method == 'cash' %}active{% endif %}"
 									data-method="cash"
 									onclick="selectDraftPaymentMethod(this)">
-						<span class="draft-payment-check {% if invoice.payment_method != 'cash' %}d-none{% endif %}">✔</span> Bar
+						<span class="draft-payment-check {% if draft_payment_method != 'cash' %}d-none{% endif %}">✔</span> Bar
 					</button>
 					<button type="button"
-									class="btn btn-primary btn-sm draft-payment-btn {% if invoice.payment_method == 'card' %}active{% endif %}"
+								class="btn btn-primary btn-sm draft-payment-btn {% if draft_payment_method == 'card' %}active{% endif %}"
 									data-method="card"
 									onclick="selectDraftPaymentMethod(this)">
-						<span class="draft-payment-check {% if invoice.payment_method != 'card' %}d-none{% endif %}">✔</span> Karte
+						<span class="draft-payment-check {% if draft_payment_method != 'card' %}d-none{% endif %}">✔</span> Karte
 					</button>
 					<button type="button"
-									class="btn btn-secondary btn-sm draft-payment-btn {% if invoice.payment_method == 'transfer' %}active{% endif %}"
+								class="btn btn-secondary btn-sm draft-payment-btn {% if draft_payment_method == 'transfer' %}active{% endif %}"
 									data-method="transfer"
 									onclick="selectDraftPaymentMethod(this)">
-						<span class="draft-payment-check {% if invoice.payment_method != 'transfer' %}d-none{% endif %}">✔</span> Überweisung
+						<span class="draft-payment-check {% if draft_payment_method != 'transfer' %}d-none{% endif %}">✔</span> Überweisung
 					</button>
 					<button type="button"
-									class="btn btn-info btn-sm text-dark draft-payment-btn {% if invoice.payment_method == 'wero' %}active{% endif %}"
+								class="btn btn-info btn-sm text-dark draft-payment-btn {% if draft_payment_method == 'wero' %}active{% endif %}"
 									data-method="wero"
 									onclick="selectDraftPaymentMethod(this)">
-						<span class="draft-payment-check {% if invoice.payment_method != 'wero' %}d-none{% endif %}">✔</span> WERO
+						<span class="draft-payment-check {% if draft_payment_method != 'wero' %}d-none{% endif %}">✔</span> WERO
 					</button>
+					{% if invoice_allows_sepa %}
+					<button type="button"
+								class="btn btn-dark btn-sm draft-payment-btn {% if draft_payment_method == 'sepa' %}active{% endif %}"
+									data-method="sepa"
+									onclick="selectDraftPaymentMethod(this)">
+						<span class="draft-payment-check {% if draft_payment_method != 'sepa' %}d-none{% endif %}">✔</span> SEPA-Lastschrift
+					</button>
+					{% endif %}
 				</div>
 			</div>
 
@@ -86,8 +95,24 @@
 			</div>
 
 			<div class="col-md-4">
-				<div class="small text-muted">Hinweis</div>
-				<div class="text-muted">Die ausgewählte Zahlungsart wird mit der Rechnung gespeichert.</div>
+				{% if invoice_has_ku_jump_positions %}
+					<label for="draftInvoiceIsTandemKleinunternehmer" class="form-label mb-1">Kleinunternehmer (§ 19 UStG)</label>
+					<select id="draftInvoiceIsTandemKleinunternehmer" name="invoice_is_tandem_kleinunternehmer" class="form-select">
+						<option value="false" {% if not invoice.is_tandem_kleinunternehmer %}selected{% endif %}>Nein (Regelbesteuerung)</option>
+						<option value="true" {% if invoice.is_tandem_kleinunternehmer %}selected{% endif %}>Ja (nur Tandemsprung 0 % MwSt)</option>
+					</select>
+					{% if invoice_has_video_jump_positions %}
+						<label for="draftInvoiceIsVideoKleinunternehmer" class="form-label mb-1 mt-2">Kleinunternehmer Video (§ 19 UStG)</label>
+						<select id="draftInvoiceIsVideoKleinunternehmer" name="invoice_is_video_kleinunternehmer" class="form-select">
+							<option value="false" {% if not invoice.is_video_kleinunternehmer %}selected{% endif %}>Nein (Regelbesteuerung)</option>
+							<option value="true" {% if invoice.is_video_kleinunternehmer %}selected{% endif %}>Ja (nur Video-Sprung 0 % MwSt)</option>
+						</select>
+					{% endif %}
+					<div class="form-text">Ändert nur ku-fähige Sprungpositionen dieser Rechnung (Tandem/Video).</div>
+				{% else %}
+					<div class="small text-muted">Hinweis</div>
+					<div class="text-muted">Die ausgewählte Zahlungsart wird mit der Rechnung gespeichert.</div>
+				{% endif %}
 			</div>
 		</div>
 
@@ -108,6 +133,9 @@
 
 	{% elif not invoice.is_paid %}
 	<div class="fw-bold mb-2">Zahlungsart auswählen:</div>
+	<div class="mb-2">
+		<span class="badge bg-secondary">Status: {{ invoice_payment_state_label }}</span>
+	</div>
 
 	<div class="d-flex flex-wrap gap-2 mb-2" id="payment-method-buttons">
 
@@ -139,6 +167,15 @@
 			<span class="pm-check d-none">✔</span> WERO
 		</button>
 
+		{% if invoice_allows_sepa %}
+		<button type="button"
+						class="btn btn-dark btn-sm payment-btn"
+						data-method="sepa"
+						onclick="selectPaymentMethod(this)">
+			<span class="pm-check d-none">✔</span> SEPA-Lastschrift
+		</button>
+		{% endif %}
+
 	</div>
 
 	<div class="card mb-2" style="max-width: 520px;">
@@ -164,8 +201,13 @@
 				<div class="col-md-6">
 					<div class="small text-muted">Rechnungsbetrag</div>
 					<div class="fw-semibold" id="splitTotalAmountText">{{ '{:,.2f}'.format(invoice.total_amount or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</div>
-					<div class="small text-muted mt-1">Vor Ort zahlbar</div>
-					<div class="fw-semibold text-primary" id="splitOnsiteAmountText">{{ '{:,.2f}'.format(onsite_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</div>
+					{% if onsite_amount < 0 %}
+						<div class="small text-muted mt-1">Gutschrift</div>
+						<div class="fw-semibold text-success" id="splitOnsiteAmountText">{{ '{:,.2f}'.format((onsite_amount * -1)).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</div>
+					{% else %}
+						<div class="small text-muted mt-1">Vor Ort zahlbar</div>
+						<div class="fw-semibold text-primary" id="splitOnsiteAmountText">{{ '{:,.2f}'.format(onsite_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</div>
+					{% endif %}
 				</div>
 			</div>
 		</div>
@@ -196,8 +238,20 @@
 			{% set onsite_method_label = 'Überweisung' %}
 		{% elif invoice.payment_method == 'wero' %}
 			{% set onsite_method_label = 'WERO' %}
+		{% elif invoice.payment_method == 'sepa' %}
+			{% set onsite_method_label = 'SEPA-Lastschrift' %}
 		{% endif %}
+		{% if invoice_payment_state_code == 'paid' %}
 		<span class="badge bg-success">Bezahlt</span>
+		{% elif invoice_payment_state_code == 'sepa_pending' %}
+		<span class="badge bg-primary">SEPA vorgemerkt</span>
+		{% elif invoice_payment_state_code == 'sepa_exported' %}
+		<span class="badge bg-info text-dark">SEPA exportiert</span>
+		{% elif invoice_payment_state_code == 'sepa_returned' %}
+		<span class="badge bg-danger">Rücklastschrift</span>
+		{% else %}
+		<span class="badge bg-warning text-dark">Offen</span>
+		{% endif %}
 		{% if prepaid_voucher_amount <= 0 %}
 		<span class="badge bg-secondary">{{ invoice_split_payment_label(invoice) or '–' }}</span>
 		{% endif %}
@@ -213,6 +267,35 @@
 	</div>
 	{% endif %}
 </div>
+{% if invoice.stage != 'draft' and invoice_has_ku_jump_positions and not invoice.email_sent_ok and not invoice.is_deleted %}
+<div class="no-print mb-3">
+	<form method="post" action="{{ url_for('billing.invoice_set_tandem_kleinunternehmer', invoice_id=invoice.id) }}" class="card p-3" style="max-width: 900px;">
+		<div class="row g-3 align-items-end">
+			<div class="col-md-5">
+				<label for="invoiceIsTandemKleinunternehmer" class="form-label mb-1">Kleinunternehmer (§ 19 UStG)</label>
+				<select id="invoiceIsTandemKleinunternehmer" name="invoice_is_tandem_kleinunternehmer" class="form-select">
+					<option value="false" {% if not invoice.is_tandem_kleinunternehmer %}selected{% endif %}>Nein (Regelbesteuerung)</option>
+					<option value="true" {% if invoice.is_tandem_kleinunternehmer %}selected{% endif %}>Ja (nur Tandemsprung 0 % MwSt)</option>
+				</select>
+				{% if invoice_has_video_jump_positions %}
+				<label for="invoiceIsVideoKleinunternehmer" class="form-label mb-1 mt-2">Kleinunternehmer Video (§ 19 UStG)</label>
+				<select id="invoiceIsVideoKleinunternehmer" name="invoice_is_video_kleinunternehmer" class="form-select">
+					<option value="false" {% if not invoice.is_video_kleinunternehmer %}selected{% endif %}>Nein (Regelbesteuerung)</option>
+					<option value="true" {% if invoice.is_video_kleinunternehmer %}selected{% endif %}>Ja (nur Video-Sprung 0 % MwSt)</option>
+				</select>
+				{% endif %}
+			</div>
+			<div class="col-md-5">
+				<div class="small text-muted">Gültigkeit</div>
+				<div class="text-muted">Änderung wirkt nur auf diese Rechnung und nur auf ku-fähige Sprungpositionen (Tandem/Video). Stammdaten bleiben unverändert.</div>
+			</div>
+			<div class="col-md-2 d-grid">
+				<button class="btn btn-outline-primary">Steuerstatus speichern</button>
+			</div>
+		</div>
+	</form>
+</div>
+{% endif %}
 {% endif %}
 
 {# ----------------------------------------------------- #}
@@ -633,17 +716,33 @@
 			  {% set le = item.load_entry %}
 			  {% set ld = le.load %}
 			  {% set dt = (ld.actual_time or ld.scheduled_time or ld.created_at) if ld else None %}
+			  {% set status_code = (le.status_code or '') if le else '' %}
+			  {% set is_tandem_ku_eligible = status_code in ['TD', 'TD-Vereins-Schirm'] %}
+			  {% set is_video_ku_eligible = status_code in ['Video', 'Videomann'] %}
+			  {% set is_ku_eligible = is_tandem_ku_eligible or is_video_ku_eligible %}
+			  {% set is_tandem_ku_row = invoice.is_tandem_kleinunternehmer and is_tandem_ku_eligible %}
+			  {% set is_video_ku_row = invoice.is_video_kleinunternehmer and is_video_ku_eligible %}
+			  {% set is_ku_row = is_tandem_ku_row or is_video_ku_row %}
+			  {% set row_base_vat_rate = invoice_ku_regular_vat_rates.get(item.id, (item.vat_rate or 0)) %}
 			  {% set j.net = j.net + (item.net_amount or 0) %}
 			  {% set j.vat = j.vat + (item.vat_amount or 0) %}
 			  {% set j.gross = j.gross + (item.amount or 0) %}
-			  <tr>
+			  <tr class="js-invoice-jump-row"
+				  data-gross="{{ '{:.2f}'.format(item.amount or 0).replace(',', '.') }}"
+				  data-ku-eligible="{{ 1 if is_ku_eligible else 0 }}"
+				  data-is-tm="{{ 1 if is_tandem_ku_eligible else 0 }}"
+				  data-is-video="{{ 1 if is_video_ku_eligible else 0 }}"
+				  data-base-vat-rate="{{ '{:.2f}'.format(row_base_vat_rate or 0).replace(',', '.') }}">
 				<td>{{ dt.strftime('%d.%m.%Y') if dt else '–' }}</td>
 				<td>{{ dt.strftime('%H:%M') if dt else '–' }}</td>
 				<td>{% if ld %}Load {{ ld.load_number }}{% else %}–{% endif %}</td>
 				<td class="text-nowrap">
 				  {{ (ld.airfield.name or '').split(' ')[0] if ld and ld.airfield else '–' }}
 				</td>
-				<td>{{ le.status_code }}</td>
+				<td>
+				  {{ le.status_code }}
+				  <div class="small text-muted js-invoice-ku-note{% if is_ku_row %} d-block{% else %} d-none{% endif %}">Kleinunternehmerregelung gem. § 19 UStG</div>
+				</td>
 				<td class="text-end">{{ le.height_m }} m</td>
 				<td class="text-center">
 				  {% if le.gear_rental %}
@@ -654,16 +753,16 @@
 				</td>
 
 				<td class="text-end col-net">
-				  {{ "{:,.2f}".format(item.net_amount or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+				  <span class="js-invoice-row-net">{{ "{:,.2f}".format(item.net_amount or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span>
 				</td>
 
 				<td class="text-end col-vat">
-				  <div>
+				  <div class="js-invoice-row-vat">
 					{{ "{:,.2f}".format(item.vat_amount or 0)
 					   .replace(',', 'X').replace('.', ',').replace('X', '.') }}
 				  </div>
 				  <div class="small text-muted">
-					{{ item.vat_rate or 0 }}%
+					<span class="js-invoice-row-vat-rate">{{ '{:.2f}'.format(item.vat_rate or 0).replace(',', '.') }}</span>%
 				  </div>
 				</td>
 
@@ -681,10 +780,10 @@
 		  <tr class="table-light">
 			<th colspan="7">Summe Sprünge</th>
 			<th class="text-end col-net col-netvat-foot">
-			  {{ "{:,.2f}".format(j.net).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			  <span id="invoiceJumpSumNet">{{ "{:,.2f}".format(j.net).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span>
 			</th>
 			<th class="text-end col-vat col-netvat-foot">
-			  {{ "{:,.2f}".format(j.vat).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+			  <span id="invoiceJumpSumVat">{{ "{:,.2f}".format(j.vat).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span>
 			</th>
 			<th class="text-end">
 			  {{ "{:,.2f}".format(j.gross).replace(',', 'X').replace('.', ',').replace('X', '.') }}
@@ -1199,6 +1298,9 @@
      <option value="card" {% if invoice.payment_method == 'card' %}selected{% endif %}>Karte</option>
      <option value="transfer" {% if invoice.payment_method == 'transfer' %}selected{% endif %}>Überweisung</option>
      <option value="wero" {% if invoice.payment_method == 'wero' %}selected{% endif %}>WERO</option>
+			 {% if invoice_allows_sepa %}
+			 <option value="sepa" {% if invoice.payment_method == 'sepa' %}selected{% endif %}>SEPA-Lastschrift</option>
+			 {% endif %}
     </select>
 	<input type="text"
 		   name="prepaid_voucher_amount"
@@ -1211,6 +1313,24 @@
     </button>
    </div>
   </form>
+
+	 <form method="post"
+			action="{{ url_for('billing.invoice_set_payment_state', invoice_id=invoice.id) }}"
+			class="mb-2">
+		<label class="form-label mb-1">Zahlungsstatus ändern</label>
+		<div class="d-flex gap-2">
+		 <select name="payment_state" class="form-select form-select-sm">
+			<option value="open" {% if invoice_payment_state_code == 'open' %}selected{% endif %}>Offen</option>
+			{% if invoice_allows_sepa %}
+			<option value="sepa_pending" {% if invoice_payment_state_code == 'sepa_pending' %}selected{% endif %}>SEPA vorgemerkt</option>
+			<option value="sepa_exported" {% if invoice_payment_state_code == 'sepa_exported' %}selected{% endif %}>SEPA exportiert</option>
+			<option value="sepa_returned" {% if invoice_payment_state_code == 'sepa_returned' %}selected{% endif %}>Rücklastschrift</option>
+			{% endif %}
+			<option value="paid" {% if invoice_payment_state_code == 'paid' %}selected{% endif %}>Bezahlt</option>
+		 </select>
+		 <button class="btn btn-outline-primary btn-sm">Status speichern</button>
+		</div>
+	 </form>
 
   {# Zahlung zurücksetzen (bezahlt → unbezahlt) #}
   <form method="post"
@@ -1248,13 +1368,14 @@
 	  </button>
 	</div>
 
-	<!-- Gesamtsumme (Netto/MwSt im Fuß zusammengefasst) -->
-	{% set totals = namespace(net=0, vat=0) %}
+	<!-- Gesamtsumme (Netto/MwSt/Brutto im Fuß zusammengefasst) -->
+	{% set totals = namespace(net=0, vat=0, gross=0) %}
 	{% for item in invoice.items %}
 	  {% set totals.net = totals.net + (item.net_amount or 0) %}
 	  {% set totals.vat = totals.vat + (item.vat_amount or 0) %}
+	  {% set totals.gross = totals.gross + (item.amount or 0) %}
 	{% endfor %}
-	{% set total_gross = invoice.total_amount or 0 %}
+	{% set total_gross = totals.gross %}
 
 	{# Automatisch Rechnung / Gutschrift je nach Vorzeichen #}
 	{% set doc_label = 'Gutschrift' if total_gross < 0 else 'Rechnung' %}
@@ -1283,9 +1404,11 @@
 						{% set summary_onsite_method_label = 'Überweisung' %}
 					{% elif invoice.payment_method == 'wero' %}
 						{% set summary_onsite_method_label = 'WERO' %}
+					{% elif invoice.payment_method == 'sepa' %}
+						{% set summary_onsite_method_label = 'SEPA-Lastschrift' %}
 					{% endif %}
 
-					{% if invoice.payment_method or prepaid_voucher_amount > 0 %}
+					{% if invoice.payment_method or prepaid_voucher_amount > 0 or invoice_payment_state_code in ['sepa_pending', 'sepa_exported', 'sepa_returned'] %}
 						<div style="margin-top:3mm; font-size:9pt;">
 							{% if invoice.is_paid %}
 								<span class="text-muted">Bezahlt</span>
@@ -1295,13 +1418,27 @@
 										<strong>{{ summary_onsite_method_label }}</strong>
 									</div>
 								{% endif %}
+							{% elif invoice_payment_state_code == 'sepa_pending' %}
+								<span class="text-muted">Zahlungsstatus</span>
+								<strong>SEPA vorgemerkt</strong>
+							{% elif invoice_payment_state_code == 'sepa_exported' %}
+								<span class="text-muted">Zahlungsstatus</span>
+								<strong>SEPA exportiert</strong>
+							{% elif invoice_payment_state_code == 'sepa_returned' %}
+								<span class="text-muted">Zahlungsstatus</span>
+								<strong>SEPA Rücklastschrift</strong>
 							{% elif prepaid_voucher_amount > 0 %}
 								<span class="text-muted">Zahlungsart</span>
 								<strong>Vorkasse / Gutschein</strong>
+							{% elif summary_onsite_method_label != '—' %}
+								<span class="text-muted">Zahlungsart</span>
+								<strong>{{ summary_onsite_method_label }}</strong>
 							{% endif %}
 							{% if prepaid_voucher_amount > 0 %}
 								<div class="text-muted" style="margin-top:1mm;">
-									{% if onsite_amount > 0 and summary_onsite_method_label != '—' %}
+									{% if onsite_amount < 0 %}
+										Gutschrift: {{ "{:,.2f}".format((onsite_amount * -1)).replace(',', 'X').replace('.', ',').replace('X', '.') }} €<br>
+									{% elif onsite_amount > 0 and summary_onsite_method_label != '—' %}
 										Vor Ort bezahlt mit {{ summary_onsite_method_label }}: {{ "{:,.2f}".format(onsite_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €<br>
 									{% elif onsite_amount > 0 %}
 										Vor Ort bezahlt: {{ "{:,.2f}".format(onsite_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €<br>
@@ -1322,11 +1459,11 @@
 					</div>
 					<div class="text-muted col-netvat-foot">
 						Netto:
-						{{ "{:,.2f}".format(totals.net)
-							 .replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+						<span id="invoiceSummaryNet">{{ "{:,.2f}".format(totals.net)
+							 .replace(',', 'X').replace('.', ',').replace('X', '.') }}</span> €
 						· MwSt:
-						{{ "{:,.2f}".format(totals.vat)
-							 .replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+						<span id="invoiceSummaryVat">{{ "{:,.2f}".format(totals.vat)
+							 .replace(',', 'X').replace('.', ',').replace('X', '.') }}</span> €
 					</div>
 				</div>
 
@@ -1905,6 +2042,102 @@ function formatEuro(n) {
 	return Number(n || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function round2(value) {
+	return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+}
+
+function splitGrossIntoNetVat(gross, vatRate) {
+	const g = Number(gross || 0);
+	const r = Number(vatRate || 0);
+	if (!Number.isFinite(g) || !Number.isFinite(r) || r <= 0) {
+		return { net: round2(g), vat: 0 };
+	}
+	const factor = 1 + (r / 100);
+	const net = round2(g / factor);
+	const vat = round2(g - net);
+	return { net, vat };
+}
+
+function parseDataNumber(raw) {
+	const text = String(raw ?? '').trim().replace(',', '.');
+	const n = Number(text);
+	return Number.isFinite(n) ? n : 0;
+}
+
+function recalculateInvoiceKuView() {
+	const tandemKuSelect = document.getElementById('invoiceIsTandemKleinunternehmer') || document.getElementById('draftInvoiceIsTandemKleinunternehmer');
+	const videoKuSelect = document.getElementById('invoiceIsVideoKleinunternehmer') || document.getElementById('draftInvoiceIsVideoKleinunternehmer');
+	if (!tandemKuSelect && !videoKuSelect) return;
+
+	const rows = Array.from(document.querySelectorAll('.js-invoice-jump-row'));
+	if (!rows.length) return;
+
+	const tandemKuActive = tandemKuSelect && String(tandemKuSelect.value || '').toLowerCase() === 'true';
+	const videoKuActive = videoKuSelect && String(videoKuSelect.value || '').toLowerCase() === 'true';
+	let jumpNet = 0;
+	let jumpVat = 0;
+
+	rows.forEach((row) => {
+		const gross = parseDataNumber(row.dataset.gross);
+		const baseVatRate = parseDataNumber(row.dataset.baseVatRate);
+		const isTm = String(row.dataset.isTm || '0') === '1';
+		const isVideo = String(row.dataset.isVideo || '0') === '1';
+		const kuActiveForRow = (tandemKuActive && isTm) || (videoKuActive && isVideo);
+		const effectiveVatRate = kuActiveForRow ? 0 : baseVatRate;
+		const split = splitGrossIntoNetVat(gross, effectiveVatRate);
+
+		jumpNet += split.net;
+		jumpVat += split.vat;
+
+		const netEl = row.querySelector('.js-invoice-row-net');
+		if (netEl) netEl.textContent = formatEuro(split.net);
+
+		const vatEl = row.querySelector('.js-invoice-row-vat');
+		if (vatEl) vatEl.textContent = formatEuro(split.vat);
+
+		const vatRateEl = row.querySelector('.js-invoice-row-vat-rate');
+		if (vatRateEl) vatRateEl.textContent = round2(effectiveVatRate).toFixed(2);
+
+		const kuNoteEl = row.querySelector('.js-invoice-ku-note');
+		if (kuNoteEl) {
+			kuNoteEl.classList.toggle('d-none', !kuActiveForRow);
+			kuNoteEl.classList.toggle('d-block', kuActiveForRow);
+		}
+	});
+
+	const jumpNetEl = document.getElementById('invoiceJumpSumNet');
+	if (jumpNetEl) jumpNetEl.textContent = formatEuro(jumpNet);
+
+	const jumpVatEl = document.getElementById('invoiceJumpSumVat');
+	if (jumpVatEl) jumpVatEl.textContent = formatEuro(jumpVat);
+
+	const summaryNetEl = document.getElementById('invoiceSummaryNet');
+	const summaryVatEl = document.getElementById('invoiceSummaryVat');
+	if (summaryNetEl || summaryVatEl) {
+		const fixedNet = parseDataNumber("{{ '{:.2f}'.format(invoice_dynamic_fixed_net or 0).replace(',', '.') }}");
+		const fixedVat = parseDataNumber("{{ '{:.2f}'.format(invoice_dynamic_fixed_vat or 0).replace(',', '.') }}");
+		if (summaryNetEl) summaryNetEl.textContent = formatEuro(jumpNet + fixedNet);
+		if (summaryVatEl) summaryVatEl.textContent = formatEuro(jumpVat + fixedVat);
+	}
+}
+
+function bindInvoiceKuToggleRecalc() {
+	const kuSelects = [
+		document.getElementById('invoiceIsTandemKleinunternehmer'),
+		document.getElementById('draftInvoiceIsTandemKleinunternehmer'),
+		document.getElementById('invoiceIsVideoKleinunternehmer'),
+		document.getElementById('draftInvoiceIsVideoKleinunternehmer'),
+	].filter(Boolean);
+
+	kuSelects.forEach((sel) => {
+		if (sel.dataset.kuRecalcBound === '1') return;
+		sel.dataset.kuRecalcBound = '1';
+		sel.addEventListener('change', recalculateInvoiceKuView);
+	});
+
+	recalculateInvoiceKuView();
+}
+
 function syncPrepaidPreview() {
 	const input = document.getElementById('prepaidVoucherAmountInput');
 	const totalText = document.getElementById('splitTotalAmountText');
@@ -1913,7 +2146,6 @@ function syncPrepaidPreview() {
 
 	const total = parseEuroInput(totalText.textContent);
 	let prepaid = parseEuroInput(input.value);
-	if (prepaid >= total) prepaid = Math.max(0, total - 0.01);
 
 	onsiteText.textContent = formatEuro(total - prepaid) + ' €';
 }
@@ -2104,13 +2336,41 @@ function selectPaymentMethod(btn) {
   document.getElementById('selectedPaymentLabel').textContent =
     btn.textContent.replace('✔', '').trim();
 
-  // Roter Button aktivieren
-  document.getElementById('markPaidBtn').disabled = false;
-
-  // OK-Form korrekt setzen
+	const markPaidBtn = document.getElementById('markPaidBtn');
   const form = document.getElementById('paidOkForm');
-  const tpl = "{{ url_for('billing.invoice_pay', invoice_id=invoice.id, method='__METHOD__') }}";
-  form.action = tpl.replace('__METHOD__', selectedPaymentMethod);
+
+	// SEPA wird zunächst vorgemerkt (nicht direkt als bezahlt markiert).
+	if (selectedPaymentMethod === 'sepa') {
+		form.action = "{{ url_for('billing.invoice_set_payment_method', invoice_id=invoice.id) }}";
+		if (markPaidBtn) {
+			markPaidBtn.textContent = 'SEPA vormerken';
+			markPaidBtn.classList.remove('btn-danger');
+			markPaidBtn.classList.add('btn-primary');
+			markPaidBtn.disabled = false;
+		}
+
+		let hidden = form.querySelector('input[name="payment_method"]');
+		if (!hidden) {
+			hidden = document.createElement('input');
+			hidden.type = 'hidden';
+			hidden.name = 'payment_method';
+			form.appendChild(hidden);
+		}
+		hidden.value = 'sepa';
+	} else {
+		const tpl = "{{ url_for('billing.invoice_pay', invoice_id=invoice.id, method='__METHOD__') }}";
+		form.action = tpl.replace('__METHOD__', selectedPaymentMethod);
+		if (markPaidBtn) {
+			markPaidBtn.textContent = 'Als bezahlt markieren';
+			markPaidBtn.classList.remove('btn-primary');
+			markPaidBtn.classList.add('btn-danger');
+			markPaidBtn.disabled = false;
+		}
+		const hidden = form.querySelector('input[name="payment_method"]');
+		if (hidden) {
+			hidden.remove();
+		}
+	}
 	syncPrepaidPreview();
 }
 
@@ -2131,6 +2391,7 @@ function selectDraftPaymentMethod(btn) {
 
 document.addEventListener('DOMContentLoaded', function () {
 	syncPrepaidPreview();
+	bindInvoiceKuToggleRecalc();
 });
 </script>
 

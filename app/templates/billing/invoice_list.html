@@ -232,7 +232,10 @@
             <select class="form-select" id="filterStatus">
               <option value="">Alle</option>
               <option value="open" {% if f_status == 'open' %}selected{% endif %}>Offen</option>
+              <option value="sepa_pending" {% if f_status == 'sepa_pending' %}selected{% endif %}>SEPA vorgemerkt</option>
+              <option value="sepa_exported" {% if f_status == 'sepa_exported' %}selected{% endif %}>SEPA exportiert</option>
               <option value="paid" {% if f_status == 'paid' %}selected{% endif %}>Bezahlt</option>
+              <option value="sepa_returned" {% if f_status == 'sepa_returned' %}selected{% endif %}>Rücklastschrift</option>
             </select>
           </div>
 
@@ -244,6 +247,7 @@
               <option value="card" {% if f_payment == 'card' %}selected{% endif %}>Karte</option>
               <option value="transfer" {% if f_payment == 'transfer' %}selected{% endif %}>Überweisung</option>
               <option value="wero" {% if f_payment == 'wero' %}selected{% endif %}>WERO</option>
+              <option value="sepa" {% if f_payment == 'sepa' %}selected{% endif %}>SEPA-Lastschrift</option>
               <option value="voucher" {% if f_payment == 'voucher' %}selected{% endif %}>Vorkasse / Gutschein</option>
             </select>
           </div>
@@ -329,6 +333,8 @@
             <th role="button" class="sortable text-end" data-sort-key="amount">
               Summe (Brutto) <span class="sort-indicator"></span>
             </th>
+            <th class="text-end">Netto</th>
+            <th class="text-end">MwSt</th>
             <th role="button" class="sortable" data-sort-key="status">
               Status <span class="sort-indicator"></span>
             </th>
@@ -353,6 +359,11 @@
           {% set inv_label = inv.created_at.strftime('%Y') ~ ('-manuell #' if _is_manual_invoice else '-Sprünge #') ~ inv_no %}
           {% set prepaid_amount = invoice_prepaid_amount(inv) %}
           {% set onsite_amount = invoice_onsite_amount(inv) %}
+          {% set ns = namespace(net=0, vat=0) %}
+          {% for _item in inv.items %}
+            {% set ns.net = ns.net + (_item.net_amount or 0) %}
+            {% set ns.vat = ns.vat + (_item.vat_amount or 0) %}
+          {% endfor %}
 
           {# --- Bezahlart Mapping + Badge --- #}
           {% set pm = (inv.payment_method or '') if inv.is_paid or prepaid_amount == 0 else 'voucher' %}
@@ -371,10 +382,16 @@
           {% elif pm == 'wero' %}
             {% set pm_label = 'WERO' %}
             {% set pm_badge = 'bg-info text-dark' %}
+          {% elif pm == 'sepa' %}
+            {% set pm_label = 'SEPA-Lastschrift' %}
+            {% set pm_badge = 'bg-dark' %}
           {% elif pm == 'voucher' %}
             {% set pm_label = 'Vorkasse / Gutschein' %}
             {% set pm_badge = 'bg-warning text-dark' %}
           {% endif %}
+
+          {% set pstate = invoice_payment_state_code(inv) %}
+          {% set pstate_label = invoice_payment_state_label(inv) %}
 
           {% set purpose = generate_invoice_purpose(inv, invoice_number=inv_no) %}
           {# E-Mail-Status für Filter und Sortierung #}
@@ -398,7 +415,7 @@
               data-person="{{ inv.person.full_name|lower }}"
               data-person-sort="{{ (inv.person.last_name ~ ' ' ~ inv.person.first_name)|lower }}"
               data-search="{{ (inv_label ~ ' ' ~ inv.person.full_name ~ ' ' ~ pm_label)|lower }}"
-              data-status="{{ 'paid' if inv.is_paid else 'open' }}"
+              data-status="{{ pstate }}"
               data-payment="{{ pm }}"
               data-prepaid="{{ prepaid_amount }}"
               data-onsite="{{ onsite_amount }}"
@@ -423,9 +440,25 @@
                  .replace(',', 'X').replace('.', ',').replace('X', '.') }} €
             </td>
 
+            <td class="text-end">
+              {{ "{:,.2f}".format(ns.net)
+                 .replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+            </td>
+
+            <td class="text-end">
+              {{ "{:,.2f}".format(ns.vat)
+                 .replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+            </td>
+
             <td>
-              {% if inv.is_paid %}
+              {% if pstate == 'paid' %}
                 <span class="badge bg-success">Bezahlt</span>
+              {% elif pstate == 'sepa_pending' %}
+                <span class="badge bg-primary">SEPA vorgemerkt</span>
+              {% elif pstate == 'sepa_exported' %}
+                <span class="badge bg-info text-dark">SEPA exportiert</span>
+              {% elif pstate == 'sepa_returned' %}
+                <span class="badge bg-danger">Rücklastschrift</span>
               {% else %}
                 <span class="badge bg-warning text-dark">Offen</span>
               {% endif %}
@@ -434,16 +467,24 @@
             <td>
               {% if inv.is_paid %}
                 {% if prepaid_amount > 0 %}
-                  <span class="badge {{ pm_badge }}" title="Vor Ort">{{ pm_label }} ({{ "{:,.2f}".format(onsite_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €)</span>
+                  {% if onsite_amount < 0 %}
+                    <span class="badge bg-success text-dark" title="Gutschrift">Gutschrift ({{ "{:,.2f}".format((onsite_amount * -1)).replace(',', 'X').replace('.', ',').replace('X', '.') }} €)</span>
+                  {% else %}
+                    <span class="badge {{ pm_badge }}" title="Vor Ort">{{ pm_label }} ({{ "{:,.2f}".format(onsite_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €)</span>
+                  {% endif %}
                   <span class="badge bg-warning text-dark" title="Vorkasse/Gutschein">Vorkasse / Gutschein ({{ "{:,.2f}".format(prepaid_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €)</span>
                 {% else %}
                   <span class="badge {{ pm_badge }}">{{ pm_label }}</span>
                 {% endif %}
               {% elif prepaid_amount > 0 %}
                 <span class="badge bg-warning text-dark" title="Vorkasse/Gutschein">Vorkasse / Gutschein ({{ "{:,.2f}".format(prepaid_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €)</span>
-                {% if onsite_amount > 0 %}
+                {% if onsite_amount < 0 %}
+                  <span class="badge bg-success text-dark" title="Gutschrift">Gutschrift ({{ "{:,.2f}".format((onsite_amount * -1)).replace(',', 'X').replace('.', ',').replace('X', '.') }} €)</span>
+                {% elif onsite_amount > 0 %}
                   <span class="badge bg-secondary" title="Vor Ort noch offen">Vor Ort offen ({{ "{:,.2f}".format(onsite_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €)</span>
                 {% endif %}
+              {% elif pm_label != '—' %}
+                <span class="badge {{ pm_badge }}">{{ pm_label }}</span>
               {% else %}
                 <span class="text-muted">—</span>
               {% endif %}
@@ -501,7 +542,7 @@
           <tr class="table-light fw-bold" id="invoiceSubtotalRow">
             <td colspan="3" class="text-end">Teilsumme (gefilterte Ansicht)</td>
             <td class="text-end" id="invoiceSubtotalAmount">0,00 €</td>
-            <td colspan="4"></td>
+            <td colspan="6"></td>
           </tr>
         </tfoot>
       </table>
@@ -589,6 +630,10 @@
             <div class="d-flex justify-content-between paid-method-breakdown-row" data-payment-method="wero">
               <span>WERO</span>
               <span id="paidMethodWeroValue" class="fw-semibold">0,00 €</span>
+            </div>
+            <div class="d-flex justify-content-between paid-method-breakdown-row" data-payment-method="sepa">
+              <span>SEPA-Lastschrift</span>
+              <span id="paidMethodSepaValue" class="fw-semibold">0,00 €</span>
             </div>
             <div class="d-flex justify-content-between paid-method-breakdown-row" data-payment-method="voucher">
               <span>Vorkasse / Gutschein</span>
@@ -751,6 +796,7 @@
     card: $("#paidMethodCardValue"),
     transfer: $("#paidMethodTransferValue"),
     wero: $("#paidMethodWeroValue"),
+    sepa: $("#paidMethodSepaValue"),
     voucher: $("#paidMethodVoucherValue"),
   };
   const deltaDetails = $("#deltaDetails");
@@ -1040,7 +1086,7 @@
     const visibleRows = rows.filter(row => row.style.display !== "none");
     const totalVisibleSum = visibleRows.reduce((sum, row) => sum + Number(row.dataset.amount || 0), 0);
     const openVisibleSum = visibleRows.reduce((sum, row) => {
-      if ((row.dataset.status || "") !== "open") return sum;
+      if ((row.dataset.status || "") === "paid") return sum;
       const total = Number(row.dataset.amount || 0);
       const prepaid = Number(row.dataset.prepaid || 0);
       return sum + (total - prepaid);
@@ -1084,7 +1130,7 @@
         (!pid && (!personText || itemPerson.includes(personText)));
 
       const matchText = !text || itemSearch.includes(text);
-      const matchStatus = !status || status === "open";
+      const matchStatus = !status || status !== "paid";
       const matchPay = !pay;
       const matchBillableContentStatus = !billableContentStatus || itemContentStatus.includes("," + billableContentStatus + ",");
 
@@ -1135,6 +1181,7 @@
       card: 0,
       transfer: 0,
       wero: 0,
+      sepa: 0,
       voucher: 0,
     };
 

@@ -1,12 +1,14 @@
 {% extends "base.html" %}
 {% set is_edit = person and person.id %}
+{% set display_iban = form_data.get('iban') if form_data else (format_iban_for_display(person.iban) if person else '') %}
+{% set display_mandate_reference = form_data.get('sepa_mandate_reference') if form_data else ((person.sepa_mandate_reference or ('DZ-%06d' % person.id)) if is_edit else '') %}
 
 {% macro v(name, fallback='') -%}
-    {{ (form_data.get(name) if form_data else fallback) }}
+    {{ (form_data.get(name) if form_data else fallback) or fallback }}
 {%- endmacro %}
 
 {% macro sel(name, fallback_bool=False) -%}
-    {{ (form_data.get(name) if form_data else ('true' if fallback_bool else 'false')) }}
+    {{ (form_data.get(name) if form_data else ('true' if fallback_bool else 'false')) or ('true' if fallback_bool else 'false') }}
 {%- endmacro %}
 
 {% block title %}
@@ -178,6 +180,15 @@
                     </select>
                 </div>
 
+                <div class="col-md-6 {% if is_tandemmaster_val != 'true' %}d-none{% endif %}" id="tandemKleinunternehmerWrap">
+                    <label class="form-label fw-bold">Kleinunternehmer (§ 19 UStG)</label>
+                    {% set is_tandem_kleinunternehmer_val = sel('is_tandem_kleinunternehmer', person.is_tandem_kleinunternehmer if person else False) %}
+                    <select name="is_tandem_kleinunternehmer" class="form-select">
+                        <option value="false" {% if is_tandem_kleinunternehmer_val == 'false' %}selected{% endif %}>Nein</option>
+                        <option value="true"  {% if is_tandem_kleinunternehmer_val == 'true' %}selected{% endif %}>Ja</option>
+                    </select>
+                </div>
+
                 <div class="col-md-6">
                     <label class="form-label fw-bold">Schüler *</label>
                     {% set is_student_val = sel('is_student', person.is_student if person else False) %}
@@ -193,6 +204,15 @@
                     <select name="is_video" class="form-select" required>
                         <option value="false" {% if is_video_val == 'false' %}selected{% endif %}>Nein</option>
                         <option value="true"  {% if is_video_val == 'true' %}selected{% endif %}>Ja</option>
+                    </select>
+                </div>
+
+                <div class="col-md-6 {% if is_video_val != 'true' %}d-none{% endif %}" id="videoKleinunternehmerWrap">
+                    <label class="form-label fw-bold">Kleinunternehmer (§ 19 UStG)</label>
+                    {% set is_video_kleinunternehmer_val = sel('is_video_kleinunternehmer', person.is_video_kleinunternehmer if person else False) %}
+                    <select name="is_video_kleinunternehmer" class="form-select">
+                        <option value="false" {% if is_video_kleinunternehmer_val == 'false' %}selected{% endif %}>Nein</option>
+                        <option value="true"  {% if is_video_kleinunternehmer_val == 'true' %}selected{% endif %}>Ja</option>
                     </select>
                 </div>
 
@@ -376,8 +396,13 @@
 
                 <div class="col-md-6">
                     <label class="form-label fw-bold">IBAN</label>
-                    <input type="text" name="iban" class="form-control"
-                           value="{{ v('iban', person.iban if person else '') }}">
+                    <input type="text" name="iban" class="form-control {% if field_errors.get('iban') %}is-invalid{% endif %}"
+                           value="{{ display_iban or '' }}"
+                           inputmode="text"
+                           autocomplete="off">
+                    {% if field_errors.get('iban') %}
+                    <div class="invalid-feedback">{{ field_errors.get('iban') }}</div>
+                    {% endif %}
                 </div>
 
                 <div class="col-md-6">
@@ -388,8 +413,57 @@
 
                 <div class="col-md-6">
                     <label class="form-label fw-bold">Kontoinhaber</label>
-                    <input type="text" name="account_holder" class="form-control"
+                    <input type="text" name="account_holder" class="form-control {% if field_errors.get('account_holder') %}is-invalid{% endif %}"
                            value="{{ v('account_holder', person.account_holder if person else '') }}">
+                    {% if field_errors.get('account_holder') %}
+                    <div class="invalid-feedback">{{ field_errors.get('account_holder') }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="col-12"><hr class="my-2"></div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">SEPA-Lastschrift aktiv</label>
+                    {% set sepa_enabled_val = sel('sepa_enabled', person.sepa_enabled if person else False) %}
+                    <select name="sepa_enabled" id="sepaEnabledSelect" class="form-select {% if field_errors.get('sepa_enabled') %}is-invalid{% endif %}">
+                        <option value="false" {% if sepa_enabled_val == 'false' %}selected{% endif %}>Nein</option>
+                        <option value="true" {% if sepa_enabled_val == 'true' %}selected{% endif %}>Ja</option>
+                    </select>
+                    {% if field_errors.get('sepa_enabled') %}
+                    <div class="invalid-feedback d-block">{{ field_errors.get('sepa_enabled') }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="col-md-4" id="sepaMandateDateWrap">
+                    <label class="form-label fw-bold">SEPA-Mandatsdatum</label>
+                    <input type="date"
+                           name="sepa_mandate_date"
+                           id="sepaMandateDateInput"
+                           class="form-control {% if field_errors.get('sepa_mandate_date') %}is-invalid{% endif %}"
+                           value="{% if form_data %}{{ form_data.get('sepa_mandate_date','') }}{% elif person and person.sepa_mandate_date %}{{ person.sepa_mandate_date.strftime('%Y-%m-%d') }}{% endif %}">
+                    {% if field_errors.get('sepa_mandate_date') %}
+                    <div class="invalid-feedback">{{ field_errors.get('sepa_mandate_date') }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Mandatsreferenz</label>
+                    <input type="text"
+                           name="sepa_mandate_reference"
+                           id="sepaMandateReferenceInput"
+                           class="form-control"
+                           value="{{ display_mandate_reference or '' }}"
+                           readonly>
+                    <div class="form-text">Die Mandatsreferenz wird beim ersten Speichern automatisch erzeugt.</div>
+                </div>
+
+                <div class="col-md-4" id="sepaFirstCollectionWrap">
+                    <label class="form-label fw-bold">Erste Lastschrift erfolgt</label>
+                    {% set sepa_first_collection_done_val = sel('sepa_first_collection_done', person.sepa_first_collection_done if person else False) %}
+                    <select name="sepa_first_collection_done" id="sepaFirstCollectionSelect" class="form-select">
+                        <option value="false" {% if sepa_first_collection_done_val == 'false' %}selected{% endif %}>Nein</option>
+                        <option value="true" {% if sepa_first_collection_done_val == 'true' %}selected{% endif %}>Ja</option>
+                    </select>
                 </div>
 
                 <div class="col-md-6">
@@ -502,6 +576,18 @@
 <script>
 document.addEventListener("DOMContentLoaded", function () {
     const tandemSelect = document.querySelector('select[name="is_tandem_guest"]');
+    const ibanInput = document.querySelector('input[name="iban"]');
+    const tandemmasterSelect = document.querySelector('select[name="is_tandemmaster"]');
+    const tandemKleinunternehmerWrap = document.getElementById("tandemKleinunternehmerWrap");
+    const tandemKleinunternehmerSelect = document.querySelector('select[name="is_tandem_kleinunternehmer"]');
+    const videoSelect = document.querySelector('select[name="is_video"]');
+    const videoKleinunternehmerWrap = document.getElementById("videoKleinunternehmerWrap");
+    const videoKleinunternehmerSelect = document.querySelector('select[name="is_video_kleinunternehmer"]');
+    const sepaEnabledSelect = document.getElementById("sepaEnabledSelect");
+    const sepaMandateDateInput = document.getElementById("sepaMandateDateInput");
+    const sepaMandateDateWrap = document.getElementById("sepaMandateDateWrap");
+    const sepaFirstCollectionSelect = document.getElementById("sepaFirstCollectionSelect");
+    const sepaFirstCollectionWrap = document.getElementById("sepaFirstCollectionWrap");
     const phoneInput = document.querySelector('input[name="phone"]');
     const emergencyNameInput = document.querySelector('input[name="emergency_name"]');
     const emergencyPhoneInput = document.querySelector('input[name="emergency_phone"]');
@@ -542,6 +628,89 @@ document.addEventListener("DOMContentLoaded", function () {
 
     tandemSelect.addEventListener("change", syncRequiredForTandem);
     syncRequiredForTandem();
+
+    function syncTandemmasterKleinunternehmer() {
+        if (!tandemmasterSelect || !tandemKleinunternehmerWrap || !tandemKleinunternehmerSelect) {
+            return;
+        }
+        const isTandemmaster = tandemmasterSelect.value === "true";
+        tandemKleinunternehmerWrap.classList.toggle("d-none", !isTandemmaster);
+        if (!isTandemmaster) {
+            tandemKleinunternehmerSelect.value = "false";
+        }
+    }
+
+    if (tandemmasterSelect) {
+        tandemmasterSelect.addEventListener("change", syncTandemmasterKleinunternehmer);
+        syncTandemmasterKleinunternehmer();
+    }
+
+    function syncVideoKleinunternehmer() {
+        if (!videoSelect || !videoKleinunternehmerWrap || !videoKleinunternehmerSelect) {
+            return;
+        }
+        const isVideo = videoSelect.value === "true";
+        videoKleinunternehmerWrap.classList.toggle("d-none", !isVideo);
+        if (!isVideo) {
+            videoKleinunternehmerSelect.value = "false";
+        }
+    }
+
+    if (videoSelect) {
+        videoSelect.addEventListener("change", syncVideoKleinunternehmer);
+        syncVideoKleinunternehmer();
+    }
+
+    function formatIbanUi(value) {
+        const normalized = (value || "")
+            .toUpperCase()
+            .replace(/\s+/g, "")
+            .replace(/[^A-Z0-9]/g, "");
+        return normalized.replace(/(.{4})/g, "$1 ").trim();
+    }
+
+    if (ibanInput) {
+        ibanInput.addEventListener("input", function () {
+            const start = this.selectionStart || 0;
+            const previousLength = this.value.length;
+            this.value = formatIbanUi(this.value);
+            const delta = this.value.length - previousLength;
+            const nextPos = Math.max(0, start + delta);
+            try {
+                this.setSelectionRange(nextPos, nextPos);
+            } catch (_) {
+            }
+        });
+        ibanInput.value = formatIbanUi(ibanInput.value);
+    }
+
+    function syncSepaFields() {
+        if (!sepaEnabledSelect) {
+            return;
+        }
+        const enabled = sepaEnabledSelect.value === "true";
+        if (sepaMandateDateInput) {
+            sepaMandateDateInput.required = enabled;
+            sepaMandateDateInput.disabled = !enabled;
+        }
+        if (sepaFirstCollectionSelect) {
+            sepaFirstCollectionSelect.disabled = !enabled;
+            if (!enabled) {
+                sepaFirstCollectionSelect.value = "false";
+            }
+        }
+        if (sepaMandateDateWrap) {
+            sepaMandateDateWrap.classList.toggle("opacity-50", !enabled);
+        }
+        if (sepaFirstCollectionWrap) {
+            sepaFirstCollectionWrap.classList.toggle("opacity-50", !enabled);
+        }
+    }
+
+    if (sepaEnabledSelect) {
+        sepaEnabledSelect.addEventListener("change", syncSepaFields);
+        syncSepaFields();
+    }
 });
 </script>
 

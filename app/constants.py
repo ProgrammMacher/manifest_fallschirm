@@ -32,6 +32,11 @@ TM_STATUSES = {
     "TD-Vereins-Schirm",
 }
 
+# Video-Personal
+VIDEO_STATUSES = {
+    "Video",
+}
+
 # Gäste
 GUEST_STATUSES = {
     "Gast",
@@ -65,6 +70,21 @@ VALID_HEIGHTS = {1500, 3000, 4000}
 # ============================================================
 # Billing-spezifische Konstanten
 # ============================================================
+
+# Zahlungsstatus fuer Rechnungen
+INVOICE_PAYMENT_STATE_OPEN = "open"
+INVOICE_PAYMENT_STATE_SEPA_PENDING = "sepa_pending"
+INVOICE_PAYMENT_STATE_SEPA_EXPORTED = "sepa_exported"
+INVOICE_PAYMENT_STATE_PAID = "paid"
+INVOICE_PAYMENT_STATE_SEPA_RETURNED = "sepa_returned"
+
+INVOICE_PAYMENT_STATES = {
+    INVOICE_PAYMENT_STATE_OPEN,
+    INVOICE_PAYMENT_STATE_SEPA_PENDING,
+    INVOICE_PAYMENT_STATE_SEPA_EXPORTED,
+    INVOICE_PAYMENT_STATE_PAID,
+    INVOICE_PAYMENT_STATE_SEPA_RETURNED,
+}
 
 # Lehrer-Status
 TEACHER_STATUSES = {

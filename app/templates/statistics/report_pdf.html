@@ -929,7 +929,7 @@
             {% if show_col_net %}<th class="text-end">Netto</th>{% endif %}
             {% if show_col_vat %}<th class="text-end">MwSt</th>{% endif %}
             {% if show_col_vatrate %}<th class="text-end">MwSt-Satz</th>{% endif %}
-            {% if show_col_payment %}<th class="payment-method-cell">Zahlart</th>{% endif %}
+            {% if show_col_payment %}<th class="payment-method-cell">Zahlart / Zahlungsstatus</th>{% endif %}
             {% if show_col_invoice_number %}<th>Rechnungsnummer</th>{% endif %}
             {% if show_col_gross %}<th class="text-end">Brutto</th>{% endif %}
           </tr>
@@ -950,7 +950,14 @@
               {% if show_col_net %}<td class="text-end nowrap">{{ "{:,.2f}".format(row.price_net).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</td>{% endif %}
               {% if show_col_vat %}<td class="text-end nowrap">{{ "{:,.2f}".format(row.price_vat).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</td>{% endif %}
               {% if show_col_vatrate %}<td class="text-end nowrap">{{ "{:,.2f}".format(row.vat_rate).replace(',', 'X').replace('.', ',').replace('X', '.') }} %</td>{% endif %}
-              {% if show_col_payment %}<td class="payment-method-cell">{{ (row.payment_method or '–')|replace('Überweisung', 'Über­weisung') }}</td>{% endif %}
+              {% if show_col_payment %}
+                <td class="payment-method-cell">
+                  {{ (row.payment_method or '–')|replace('Überweisung', 'Über­weisung') }}
+                  {% if row.invoice_status %}
+                    <span class="subtext">{{ row.invoice_status }}</span>
+                  {% endif %}
+                </td>
+              {% endif %}
               {% if show_col_invoice_number %}<td>{{ row.invoice_number or '–' }}</td>{% endif %}
               {% if show_col_gross %}<td class="text-end nowrap">{{ "{:,.2f}".format(row.price_gross).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</td>{% endif %}
             </tr>

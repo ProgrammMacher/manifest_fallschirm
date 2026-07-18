@@ -168,9 +168,9 @@
   {% set active_filters = active_filter_labels|default([]) %}
   {% set filtered_subtotal = filtered_invoice_subtotal if filtered_invoice_subtotal is defined else (invoices|sum(attribute='total_amount')) %}
   {% set selected_payment = (filters.payment if filters else '') %}
-  {% set paid_method = namespace(cash=0, card=0, transfer=0, wero=0, voucher=0) %}
+  {% set paid_method = namespace(cash=0, card=0, transfer=0, wero=0, sepa=0, voucher=0) %}
   {% for inv in invoices %}
-    {% if inv.is_paid %}
+    {% if invoice_payment_state_code(inv) == 'paid' %}
       {% set prepaid = invoice_prepaid_amount(inv) %}
       {% set onsite = invoice_onsite_amount(inv) %}
       {% if inv.payment_method == 'cash' %}
@@ -181,6 +181,8 @@
         {% set paid_method.transfer = paid_method.transfer + onsite %}
       {% elif inv.payment_method == 'wero' %}
         {% set paid_method.wero = paid_method.wero + onsite %}
+      {% elif inv.payment_method == 'sepa' %}
+        {% set paid_method.sepa = paid_method.sepa + onsite %}
       {% endif %}
       {% set paid_method.voucher = paid_method.voucher + prepaid %}
     {% endif %}
@@ -257,6 +259,10 @@
       <div class="summary-subvalue">{{ '{:,.2f}'.format(paid_method.wero).replace(',', 'X').replace('.', ',').replace('X', '.') }} EUR</div>
     </div>
     <div class="summary-subrow">
+      <div class="summary-label">SEPA-Lastschrift</div>
+      <div class="summary-subvalue">{{ '{:,.2f}'.format(paid_method.sepa).replace(',', 'X').replace('.', ',').replace('X', '.') }} EUR</div>
+    </div>
+    <div class="summary-subrow">
       <div class="summary-label">Vorkasse / Gutschein</div>
       <div class="summary-subvalue">{{ '{:,.2f}'.format(paid_method.voucher).replace(',', 'X').replace('.', ',').replace('X', '.') }} EUR</div>
     </div>
@@ -287,8 +293,9 @@
             <td>{{ inv.person.full_name }}</td>
             <td>{{ inv.created_at.strftime('%d.%m.%Y') }}</td>
             <td class="text-end">{{ '{:,.2f}'.format(inv.total_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} EUR</td>
-            <td {% if not inv.is_paid %}class="status-open"{% endif %}>{% if inv.is_paid %}Bezahlt{% else %}Offen{% endif %}</td>
-            <td>{% if inv.is_paid %}{{ pm_label }}{% else %}-{% endif %}</td>
+            {% set pstate = invoice_payment_state_code(inv) %}
+            <td {% if pstate != 'paid' %}class="status-open"{% endif %}>{{ invoice_payment_state_label(inv) }}</td>
+            <td>{% if pstate == 'paid' or inv.payment_method %}{{ pm_label }}{% else %}-{% endif %}</td>
           </tr>
         {% endfor %}
       </tbody>

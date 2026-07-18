@@ -69,8 +69,17 @@ from app.helpers.network_utils import get_wifi_qr_string
 from app.helpers.status_code import normalize_status_code
 from app.utils import parse_int, parse_float, parse_bool
 from app.constants import VALID_HEIGHTS, STUDENT_STATUSES, TANDEM_GUEST_STATUSES
+from app.constants import (
+    INVOICE_PAYMENT_STATE_OPEN,
+    INVOICE_PAYMENT_STATE_SEPA_PENDING,
+    INVOICE_PAYMENT_STATE_SEPA_EXPORTED,
+    INVOICE_PAYMENT_STATE_PAID,
+    INVOICE_PAYMENT_STATE_SEPA_RETURNED,
+    INVOICE_PAYMENT_STATES,
+)
 
 bp_load = Blueprint("load", __name__, url_prefix="/loads")
+MAX_EXTRA_SEATS_PER_LOAD = 4
 
 
 # ============================================================
@@ -1879,6 +1888,17 @@ def delete_load(id: int):
 # ============================================================
 def validate_load_business_rules(load, entries, capacity_override: Optional[int] = None):
     errors = []
+    base_capacity = int(load.aircraft.seats or 0)
+    max_supported_capacity = base_capacity + MAX_EXTRA_SEATS_PER_LOAD
+
+    highest_used_seat = max(
+        (
+            int(seat)
+            for seat, _, _ in entries
+            if seat is not None
+        ),
+        default=0,
+    )
 
     allowed_auffueller_statuses = {
         "Auffüller Verein",
@@ -1919,8 +1939,20 @@ def validate_load_business_rules(load, entries, capacity_override: Optional[int]
     capacity = int(
         capacity_override
         if capacity_override is not None
-        else (load.aircraft.seats or 0)
+        else max(base_capacity, min(max_supported_capacity, highest_used_seat))
     )
+
+    invalid_seats = sorted({
+        int(seat)
+        for seat, _, _ in entries
+        if seat is not None and int(seat) > capacity
+    })
+    if invalid_seats:
+        errors.append(
+            "Sitz außerhalb der erlaubten Kapazität: "
+            + ", ".join(str(seat) for seat in invalid_seats)
+            + f". Erlaubt sind maximal {capacity} Sitze für diesen Load."
+        )
 
     # --------------------------------------------------------
     # Tandem-Regeln
@@ -1996,7 +2028,7 @@ def validate_load_business_rules(load, entries, capacity_override: Optional[int]
 
     if count_auffueller == 1:
         auff_seat = [seat for seat, s, _ in entries if s in allowed_auffueller_statuses][0]
-        if auff_seat > capacity:
+        if auff_seat > base_capacity:
             errors.append("Auffüller darf keinen Extrasitz belegen.")
 
         has_tandem_block = total_tandem_guests > 0 and count_td > 0
@@ -2012,9 +2044,9 @@ def validate_load_business_rules(load, entries, capacity_override: Optional[int]
 
         occupied_regular_seats = {
             seat for seat, _, _ in entries
-            if 1 <= int(seat) <= capacity
+            if 1 <= int(seat) <= base_capacity
         }
-        if len(occupied_regular_seats) != capacity:
+        if len(occupied_regular_seats) != base_capacity:
             errors.append(
                 "Auffüller ist nur als letzter freier Platz erlaubt "
                 "(mit Auffüller muss der Load voll sein)."
@@ -2219,7 +2251,7 @@ def save_load(id):
 
     desired = {}
 
-    for seat in range(1, int(load.aircraft.seats or 0) + 3):
+    for seat in range(1, int(load.aircraft.seats or 0) + MAX_EXTRA_SEATS_PER_LOAD + 1):
         person_id = request.form.get(f"seat_{seat}_person")
         status_code = (request.form.get(f"seat_{seat}_status_code") or "").strip()
         height_raw = (request.form.get(f"seat_{seat}_height_m") or "").strip()
@@ -2270,12 +2302,23 @@ def save_load(id):
     # --------------------------------------------------------
     # Geschäftsregeln vor dem Speichern prüfen
     # --------------------------------------------------------
+    requested_extra_seats = max(0, min(MAX_EXTRA_SEATS_PER_LOAD, parse_int(request.form.get("extra_seats_ui")) or 0))
+
     validation_entries = [
         (seat, data["status"], data["height"])
         for seat, data in desired.items()
         if data is not None
     ]
-    ok_rules, rule_errors = validate_load_business_rules(load, validation_entries)
+    base_capacity = int(load.aircraft.seats or 0)
+    highest_desired_seat = max((seat for seat, _, _ in validation_entries), default=0)
+    desired_extra_seats = max(0, min(MAX_EXTRA_SEATS_PER_LOAD, highest_desired_seat - base_capacity))
+    effective_capacity = base_capacity + max(requested_extra_seats, desired_extra_seats)
+
+    ok_rules, rule_errors = validate_load_business_rules(
+        load,
+        validation_entries,
+        capacity_override=effective_capacity,
+    )
     if not ok_rules:
         # Doppelte Meldungen vermeiden, Reihenfolge beibehalten.
         deduped = []
@@ -2564,8 +2607,39 @@ def _compute_extras_from_completed_loads(loads: list[Load], args):
     )
 
 
-def _invoice_status_label(is_paid: bool | None) -> str:
-    return "bezahlt" if bool(is_paid) else "offen"
+def _invoice_payment_state_code(
+    is_paid: bool | None,
+    payment_method: str | None,
+    payment_state: str | None,
+) -> str:
+    if bool(is_paid):
+        return INVOICE_PAYMENT_STATE_PAID
+
+    raw_state = (payment_state or "").strip().lower()
+    if raw_state in INVOICE_PAYMENT_STATES:
+        if raw_state == INVOICE_PAYMENT_STATE_PAID:
+            return INVOICE_PAYMENT_STATE_OPEN
+        return raw_state
+
+    if (payment_method or "").strip().lower() == "sepa":
+        return INVOICE_PAYMENT_STATE_SEPA_PENDING
+    return INVOICE_PAYMENT_STATE_OPEN
+
+
+def _invoice_status_label(
+    is_paid: bool | None,
+    payment_method: str | None,
+    payment_state: str | None,
+) -> str:
+    state = _invoice_payment_state_code(is_paid, payment_method, payment_state)
+    mapping = {
+        INVOICE_PAYMENT_STATE_OPEN: "offen",
+        INVOICE_PAYMENT_STATE_SEPA_PENDING: "sepa vorgemerkt",
+        INVOICE_PAYMENT_STATE_SEPA_EXPORTED: "sepa exportiert",
+        INVOICE_PAYMENT_STATE_PAID: "bezahlt",
+        INVOICE_PAYMENT_STATE_SEPA_RETURNED: "ruecklastschrift",
+    }
+    return mapping.get(state, "offen")
 
 
 def _invoice_number_missing_label() -> str:
@@ -2582,9 +2656,7 @@ def _invoice_number_label(created_at, invoice_id) -> str:
         return str(invoice_id or _invoice_number_missing_label())
 
 
-def _invoice_payment_split_label(is_paid: bool, payment_method: str | None, prepaid_voucher_amount) -> str:
-    if not is_paid:
-        return "offen"
+def _invoice_payment_split_label(payment_method: str | None, prepaid_voucher_amount) -> str:
     onsite_label = _invoice_payment_label(payment_method) if payment_method else ""
     try:
         prepaid = Decimal(str(prepaid_voucher_amount or "0"))
@@ -2688,9 +2760,12 @@ def _build_manual_invoice_item_rows(args) -> list[dict]:
         if dt_to and (not eff_dt or eff_dt > dt_to):
             continue
 
-        invoice_status = _invoice_status_label(getattr(inv, "is_paid", False))
+        invoice_status = _invoice_status_label(
+            getattr(inv, "is_paid", False),
+            getattr(inv, "payment_method", None),
+            getattr(inv, "payment_state", None),
+        )
         payment_label = _invoice_payment_split_label(
-            bool(getattr(inv, "is_paid", False)),
             getattr(inv, "payment_method", None),
             getattr(inv, "prepaid_voucher_amount", None),
         )
@@ -2759,17 +2834,22 @@ def _fmt_money_de(value, decimals: int = 2) -> str:
     return s.replace(".", ",")
 
 
-def _build_invoice_info_by_entry(entry_ids: list[int]) -> dict[int, dict[str, str]]:
-    """Liefert je LoadEntry die zuletzt erstellte, nicht stornierte Rechnung."""
-    invoice_info_by_entry: dict[int, dict[str, str]] = {}
+def _build_invoice_info_by_entry(entry_ids: list[int]) -> dict[int, dict[str, object]]:
+    """Liefert je LoadEntry die zuletzt erstellte, nicht stornierte Rechnung inkl. Snapshot-Betraege."""
+    invoice_info_by_entry: dict[int, dict[str, object]] = {}
     if not entry_ids:
         return invoice_info_by_entry
 
     invoice_rows = (
         db.session.query(
             InvoiceItem.load_entry_id,
+            InvoiceItem.amount,
+            InvoiceItem.net_amount,
+            InvoiceItem.vat_amount,
+            InvoiceItem.vat_rate,
             Invoice.is_paid,
             Invoice.payment_method,
+            Invoice.payment_state,
             Invoice.prepaid_voucher_amount,
             Invoice.created_at,
             Invoice.id,
@@ -2778,6 +2858,7 @@ def _build_invoice_info_by_entry(entry_ids: list[int]) -> dict[int, dict[str, st
         .filter(
             InvoiceItem.load_entry_id.in_(entry_ids),
             Invoice.is_deleted.is_(False),
+            Invoice.stage == "final",
         )
         .order_by(
             InvoiceItem.load_entry_id.asc(),
@@ -2787,14 +2868,30 @@ def _build_invoice_info_by_entry(entry_ids: list[int]) -> dict[int, dict[str, st
         .all()
     )
 
-    for load_entry_id, is_paid, payment_method, prepaid_voucher_amount, created_at, invoice_id in invoice_rows:
+    for (
+        load_entry_id,
+        item_gross,
+        item_net,
+        item_vat,
+        item_vat_rate,
+        is_paid,
+        payment_method,
+        payment_state,
+        prepaid_voucher_amount,
+        created_at,
+        invoice_id,
+    ) in invoice_rows:
         le_id = int(load_entry_id or 0)
         if le_id <= 0 or le_id in invoice_info_by_entry:
             continue
         invoice_info_by_entry[le_id] = {
-            "invoice_status": _invoice_status_label(is_paid),
-            "payment_method": _invoice_payment_split_label(bool(is_paid), payment_method, prepaid_voucher_amount),
+            "invoice_status": _invoice_status_label(is_paid, payment_method, payment_state),
+            "payment_method": _invoice_payment_split_label(payment_method, prepaid_voucher_amount),
             "invoice_number": _invoice_number_label(created_at, invoice_id),
+            "gross": Decimal(str(item_gross or "0.00")),
+            "net": Decimal(str(item_net or "0.00")),
+            "vat": Decimal(str(item_vat or "0.00")),
+            "vat_rate": Decimal(str(item_vat_rate or "0.00")),
         }
 
     return invoice_info_by_entry
@@ -2811,6 +2908,7 @@ def _build_invoice_info_by_person(person_ids: list[int]) -> dict[int, dict[str, 
             Invoice.person_id,
             Invoice.is_paid,
             Invoice.payment_method,
+            Invoice.payment_state,
             Invoice.prepaid_voucher_amount,
             Invoice.created_at,
             Invoice.id,
@@ -2828,13 +2926,13 @@ def _build_invoice_info_by_person(person_ids: list[int]) -> dict[int, dict[str, 
         .all()
     )
 
-    for person_id, is_paid, payment_method, prepaid_voucher_amount, created_at, invoice_id in rows:
+    for person_id, is_paid, payment_method, payment_state, prepaid_voucher_amount, created_at, invoice_id in rows:
         pid = int(person_id or 0)
         if pid <= 0 or pid in invoice_info:
             continue
         invoice_info[pid] = {
-            "invoice_status": _invoice_status_label(is_paid),
-            "payment_method": _invoice_payment_split_label(bool(is_paid), payment_method, prepaid_voucher_amount),
+            "invoice_status": _invoice_status_label(is_paid, payment_method, payment_state),
+            "payment_method": _invoice_payment_split_label(payment_method, prepaid_voucher_amount),
             "invoice_number": _invoice_number_label(created_at, invoice_id),
         }
 
@@ -2895,14 +2993,21 @@ def _iter_export_rows(loads: list[Load], args):
 
             person = getattr(e, "person", None)
             person_name = getattr(person, "full_name", "") if person else ""
+            entry_invoice_info = invoice_info_by_entry.get(int(getattr(e, "id", 0) or 0), {})
 
             gross = net = vat = vat_rate = Decimal("0.00")
-            try:
-                gross = _money(BillingService.calculate_price_for_entry(e))
-                vat_rate = _money(BillingService.get_entry_vat_rate(e))
-                net, vat = BillingService.split_gross_into_net_and_vat(gross=gross, vat_rate=vat_rate)
-            except Exception:
-                pass
+            if entry_invoice_info:
+                gross = _money(entry_invoice_info.get("gross") or "0.00")
+                net = _money(entry_invoice_info.get("net") or "0.00")
+                vat = _money(entry_invoice_info.get("vat") or "0.00")
+                vat_rate = _money(entry_invoice_info.get("vat_rate") or "0.00")
+            else:
+                try:
+                    gross = _money(BillingService.calculate_price_for_entry(e))
+                    vat_rate = _money(BillingService.get_entry_vat_rate(e))
+                    net, vat = BillingService.split_gross_into_net_and_vat(gross=gross, vat_rate=vat_rate)
+                except Exception:
+                    pass
 
             status_css_class = _archive_entry_css_class(l, e)
             status_bg, status_border = _archive_colors_from_css_class(status_css_class)
@@ -2910,7 +3015,11 @@ def _iter_export_rows(loads: list[Load], args):
             yield {
                 "row_type": "entry",
                 "item_type": "Sprung",
-                "item_desc": "Sprung",
+                "item_desc": (
+                    "Sprung - Kein Umsatzsteuerausweis gemäß § 19 UStG"
+                    if (vat_rate == Decimal("0.00") and (getattr(e, "status_code", "") or "") in {"TD", "TD-Vereins-Schirm"})
+                    else "Sprung"
+                ),
                 "load_id": getattr(l, "id", ""),
                 "load_number": getattr(l, "load_number", ""),
                 "load_date": load_date,
@@ -2925,9 +3034,9 @@ def _iter_export_rows(loads: list[Load], args):
                 "status_code": getattr(e, "status_code", ""),
                 "entry_height_m": getattr(e, "height_m", ""),
                 "gear_rental": 1 if getattr(e, "gear_rental", False) else 0,
-                "invoice_status": invoice_info_by_entry.get(int(getattr(e, "id", 0) or 0), {}).get("invoice_status", "offen"),
-                "payment_method": invoice_info_by_entry.get(int(getattr(e, "id", 0) or 0), {}).get("payment_method", ""),
-                "invoice_number": invoice_info_by_entry.get(int(getattr(e, "id", 0) or 0), {}).get("invoice_number", _invoice_number_missing_label()),
+                "invoice_status": entry_invoice_info.get("invoice_status", "offen"),
+                "payment_method": entry_invoice_info.get("payment_method", ""),
+                "invoice_number": entry_invoice_info.get("invoice_number", _invoice_number_missing_label()),
                 "gross": str(gross),
                 "net": str(_money(net)),
                 "vat": str(_money(vat)),
@@ -3095,6 +3204,14 @@ def _build_statistics_context(args):
     manual_sum_net = sum(Decimal(str(r.get("net") or "0.00")) for r in manual_invoice_rows)
     manual_sum_vat = sum(Decimal(str(r.get("vat") or "0.00")) for r in manual_invoice_rows)
 
+    stats_entry_ids = [
+        int(getattr(e, "id", 0) or 0)
+        for l in loads
+        for e in (getattr(l, "entries", None) or [])
+        if int(getattr(e, "id", 0) or 0) > 0
+    ]
+    invoice_info_by_entry = _build_invoice_info_by_entry(stats_entry_ids)
+
     entry_matches = _make_entry_matcher(args)
 
     total_loads = len(loads)
@@ -3147,9 +3264,16 @@ def _build_statistics_context(args):
                 pass
 
             try:
-                gross = _money(BillingService.calculate_price_for_entry(e))
-                vat_rate = _money(BillingService.get_entry_vat_rate(e))
-                net, vat = BillingService.split_gross_into_net_and_vat(gross=gross, vat_rate=vat_rate)
+                entry_invoice_info = invoice_info_by_entry.get(int(getattr(e, "id", 0) or 0), {})
+                if entry_invoice_info:
+                    gross = _money(entry_invoice_info.get("gross") or "0.00")
+                    net = _money(entry_invoice_info.get("net") or "0.00")
+                    vat = _money(entry_invoice_info.get("vat") or "0.00")
+                    vat_rate = _money(entry_invoice_info.get("vat_rate") or "0.00")
+                else:
+                    gross = _money(BillingService.calculate_price_for_entry(e))
+                    vat_rate = _money(BillingService.get_entry_vat_rate(e))
+                    net, vat = BillingService.split_gross_into_net_and_vat(gross=gross, vat_rate=vat_rate)
                 gross_sum_est += gross
                 net_sum_est += _money(net)
                 vat_sum_est += _money(vat)
@@ -3172,14 +3296,6 @@ def _build_statistics_context(args):
     net_sum_total = net_sum_jumps + extra_rental_sum_net + extra_orga_sum_net + manual_sum_net
     vat_sum_total = vat_sum_jumps + extra_rental_sum_vat + extra_orga_sum_vat + manual_sum_vat
 
-    stats_entry_ids = [
-        int(getattr(e, "id", 0) or 0)
-        for l in loads
-        for e in (getattr(l, "entries", None) or [])
-        if int(getattr(e, "id", 0) or 0) > 0
-    ]
-    invoice_info_by_entry = _build_invoice_info_by_entry(stats_entry_ids)
-
     matched_entries = []
     for l in loads:
         eff_dt = getattr(l, "actual_time", None) or getattr(l, "created_at", None)
@@ -3189,9 +3305,16 @@ def _build_statistics_context(args):
 
             gross = net = vat = vat_rate = Decimal("0.00")
             try:
-                gross = _money(BillingService.calculate_price_for_entry(e))
-                vat_rate = _money(BillingService.get_entry_vat_rate(e))
-                net, vat = BillingService.split_gross_into_net_and_vat(gross=gross, vat_rate=vat_rate)
+                entry_invoice_info = invoice_info_by_entry.get(int(getattr(e, "id", 0) or 0), {})
+                if entry_invoice_info:
+                    gross = _money(entry_invoice_info.get("gross") or "0.00")
+                    net = _money(entry_invoice_info.get("net") or "0.00")
+                    vat = _money(entry_invoice_info.get("vat") or "0.00")
+                    vat_rate = _money(entry_invoice_info.get("vat_rate") or "0.00")
+                else:
+                    gross = _money(BillingService.calculate_price_for_entry(e))
+                    vat_rate = _money(BillingService.get_entry_vat_rate(e))
+                    net, vat = BillingService.split_gross_into_net_and_vat(gross=gross, vat_rate=vat_rate)
             except Exception:
                 pass
 

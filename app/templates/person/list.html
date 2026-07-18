@@ -251,6 +251,10 @@
                 <thead class="table-light">
                     <tr>
 
+                        <th data-col="row_index" class="text-end" style="width: 70px;">#
+                            <div class="resize-handle"></div>
+                        </th>
+
                         <!-- NAME -->
                         {% set next_dir = 'asc' if not (sort=='last_name' and direction=='asc') else 'desc' %}
                         <th data-col="name">
@@ -398,6 +402,8 @@
                 <tbody>
                     {% for p in persons %}
                     <tr>
+
+                        <td class="text-end text-muted">{{ loop.index }}</td>
 
                         <!-- NAME -->
                         <td>

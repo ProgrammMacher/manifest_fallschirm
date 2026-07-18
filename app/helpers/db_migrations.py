@@ -112,6 +112,34 @@ def ensure_person_tandemmaster_column() -> None:
         db.session.commit()
 
 
+def ensure_person_tandem_kleinunternehmer_column() -> None:
+    """
+    Fuegt person.is_tandem_kleinunternehmer hinzu (idempotent), falls nicht vorhanden.
+    """
+    if not _table_exists("person"):
+        return
+
+    if not _column_exists("person", "is_tandem_kleinunternehmer"):
+        db.session.execute(
+            text("ALTER TABLE person ADD COLUMN is_tandem_kleinunternehmer INTEGER NOT NULL DEFAULT 0")
+        )
+        db.session.commit()
+
+
+def ensure_person_video_kleinunternehmer_column() -> None:
+    """
+    Fuegt person.is_video_kleinunternehmer hinzu (idempotent), falls nicht vorhanden.
+    """
+    if not _table_exists("person"):
+        return
+
+    if not _column_exists("person", "is_video_kleinunternehmer"):
+        db.session.execute(
+            text("ALTER TABLE person ADD COLUMN is_video_kleinunternehmer INTEGER NOT NULL DEFAULT 0")
+        )
+        db.session.commit()
+
+
 def ensure_person_student_column() -> None:
     """
     Fuegt person.is_student hinzu (idempotent), falls nicht vorhanden.
@@ -532,6 +560,56 @@ def ensure_invoice_email_audit_columns() -> None:
         db.session.commit()
 
 
+def ensure_invoice_tandem_kleinunternehmer_column() -> None:
+    """
+    Fuegt invoice.is_tandem_kleinunternehmer hinzu (idempotent), falls nicht vorhanden.
+    """
+    if not _table_exists("invoice"):
+        return
+
+    changed = False
+    if not _column_exists("invoice", "is_tandem_kleinunternehmer"):
+        db.session.execute(
+            text("ALTER TABLE invoice ADD COLUMN is_tandem_kleinunternehmer INTEGER NOT NULL DEFAULT 0")
+        )
+        changed = True
+
+    db.session.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_invoice_is_tandem_kleinunternehmer "
+            "ON invoice (is_tandem_kleinunternehmer)"
+        )
+    )
+
+    if changed:
+        db.session.commit()
+
+
+def ensure_invoice_video_kleinunternehmer_column() -> None:
+    """
+    Fuegt invoice.is_video_kleinunternehmer hinzu (idempotent), falls nicht vorhanden.
+    """
+    if not _table_exists("invoice"):
+        return
+
+    changed = False
+    if not _column_exists("invoice", "is_video_kleinunternehmer"):
+        db.session.execute(
+            text("ALTER TABLE invoice ADD COLUMN is_video_kleinunternehmer INTEGER NOT NULL DEFAULT 0")
+        )
+        changed = True
+
+    db.session.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_invoice_is_video_kleinunternehmer "
+            "ON invoice (is_video_kleinunternehmer)"
+        )
+    )
+
+    if changed:
+        db.session.commit()
+
+
 def ensure_person_newsletter_columns() -> None:
     """Fügt newsletter_opt_out + newsletter_unsubscribe_token zu person hinzu."""
     if not _table_exists("person"):
@@ -552,6 +630,87 @@ def ensure_person_newsletter_columns() -> None:
             )
         )
     db.session.commit()
+
+
+def ensure_person_sepa_columns() -> None:
+    """Fuegt SEPA-Stammdatenfelder in person hinzu (idempotent)."""
+    if not _table_exists("person"):
+        return
+
+    changed = False
+
+    if not _column_exists("person", "sepa_enabled"):
+        db.session.execute(
+            text("ALTER TABLE person ADD COLUMN sepa_enabled BOOLEAN NOT NULL DEFAULT 0")
+        )
+        changed = True
+
+    if not _column_exists("person", "sepa_mandate_reference"):
+        db.session.execute(
+            text("ALTER TABLE person ADD COLUMN sepa_mandate_reference VARCHAR(32)")
+        )
+        changed = True
+
+    if not _column_exists("person", "sepa_mandate_date"):
+        db.session.execute(
+            text("ALTER TABLE person ADD COLUMN sepa_mandate_date DATE")
+        )
+        changed = True
+
+    if not _column_exists("person", "sepa_first_collection_done"):
+        db.session.execute(
+            text("ALTER TABLE person ADD COLUMN sepa_first_collection_done BOOLEAN NOT NULL DEFAULT 0")
+        )
+        changed = True
+
+    db.session.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_person_sepa_mandate_reference "
+            "ON person (sepa_mandate_reference)"
+        )
+    )
+
+    if changed:
+        db.session.commit()
+
+
+def ensure_invoice_payment_state_column() -> None:
+    """Fuegt invoice.payment_state hinzu und migriert Legacy-Zustand (idempotent)."""
+    if not _table_exists("invoice"):
+        return
+
+    changed = False
+
+    if not _column_exists("invoice", "payment_state"):
+        db.session.execute(
+            text("ALTER TABLE invoice ADD COLUMN payment_state VARCHAR(20) NOT NULL DEFAULT 'open'")
+        )
+        changed = True
+
+    db.session.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_invoice_payment_state "
+            "ON invoice (payment_state)"
+        )
+    )
+
+    # Legacy-Daten kompatibel hochziehen.
+    db.session.execute(
+        text(
+            """
+            UPDATE invoice
+               SET payment_state = CASE
+                   WHEN COALESCE(is_paid, 0) = 1 THEN 'paid'
+                   WHEN lower(COALESCE(payment_method, '')) = 'sepa' THEN 'sepa_pending'
+                   ELSE 'open'
+               END
+             WHERE payment_state IS NULL OR payment_state = '' OR payment_state = 'open'
+            """
+        )
+    )
+
+    if changed:
+        db.session.commit()
 
 
 def ensure_email_config_table() -> None:
@@ -618,11 +777,17 @@ def run_startup_migrations() -> None:
     ensure_load_pricing_model_id_column()
     ensure_person_partner_verein_column()
     ensure_person_tandemmaster_column()
+    ensure_person_tandem_kleinunternehmer_column()
+    ensure_person_video_kleinunternehmer_column()
     ensure_person_student_column()
     ensure_person_original_name_column()
     ensure_billing_config_waiver_text_columns()
     ensure_billing_config_manual_invoice_mail_text_column()
     ensure_invoice_email_audit_columns()
+    ensure_invoice_tandem_kleinunternehmer_column()
+    ensure_invoice_video_kleinunternehmer_column()
+    ensure_person_sepa_columns()
+    ensure_invoice_payment_state_column()
     ensure_partner_verein_status_and_prices()
     ensure_billing_config_partner_canopy_rent_columns()
     ensure_person_newsletter_columns()

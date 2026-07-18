@@ -343,8 +343,21 @@ def create_app():
     # ---------------------------------------------------------
     # STARTUP-DB-MIGRATIONEN
     # ---------------------------------------------------------
-    from app.helpers.db_migrations import run_startup_migrations
     with app.app_context():
+        # 1) Versuch: Alembic-Migrationen auf aktuelle Heads bringen.
+        #    Darf den App-Start niemals abbrechen.
+        if os.environ.get("MANIFEST_AUTO_DB_UPGRADE", "1").lower() in ("1", "true", "yes", "on"):
+            try:
+                from flask_migrate import Migrate, upgrade
+
+                if "migrate" not in app.extensions:
+                    Migrate(app, db)
+                upgrade(directory="migrations", revision="heads")
+            except Exception as e:
+                print("[WARNUNG] Alembic-Startup-Upgrade fehlgeschlagen:", e)
+
+        # 2) Fallback: idempotente SQL-Migrationen für Alt-Datenbanken.
+        from app.helpers.db_migrations import run_startup_migrations
         run_startup_migrations()
 
     # ---------------------------------------------------------

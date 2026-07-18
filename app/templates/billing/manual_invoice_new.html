@@ -54,7 +54,7 @@
           <div class="col-md-3">
             <label class="form-label">Vorkasse / Gutschein (Brutto)</label>
             <input type="text" class="form-control" name="prepaid_voucher_amount" value="{{ form_data.prepaid_voucher_amount if form_data else '' }}" placeholder="z. B. 100,00">
-            <div class="form-text">Auch bei manuellen Rechnungen möglich.</div>
+            <div class="form-text">Auch bei manuellen Rechnungen möglich. Wenn die Vorkasse höher ist als der Leistungswert, entsteht automatisch eine Gutschrift.</div>
           </div>
         </div>
 
@@ -101,7 +101,7 @@
             </tbody>
           </table>
         </div>
-        <div class="form-text mb-2">Zahlenformat: Komma für Dezimalstellen, Punkt für Tausender (z. B. 1.234,56).</div>
+        <div class="form-text mb-2">Zahlenformat: Komma für Dezimalstellen, Punkt für Tausender (z. B. 1.234,56). Negative Menge oder negativer Einzelpreis sind für Gutschriften erlaubt.</div>
 
         <div class="d-flex justify-content-between mb-3">
           <button type="button" class="btn btn-outline-primary" id="addManualLineBtn">

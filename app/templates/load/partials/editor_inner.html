@@ -225,9 +225,15 @@
     {% endfor %}
 
     {% set base_seat_count = load.aircraft.seats %}
-    {% set effective_seat_count = base_seat_count + 2 %}
+    {% set effective_seat_count = base_seat_count + 4 %}
+    {% set occupied_extra_seats = namespace(count=0) %}
+    {% for seat_no in entries_map.keys() %}
+      {% if seat_no > base_seat_count and seat_no <= effective_seat_count %}
+        {% set occupied_extra_seats.count = occupied_extra_seats.count + 1 %}
+      {% endif %}
+    {% endfor %}
 
-    <input type="hidden" id="extra_seats_ui" name="extra_seats_ui" value="0">
+    <input type="hidden" id="extra_seats_ui" name="extra_seats_ui" value="{{ occupied_extra_seats.count if occupied_extra_seats.count <= 4 else 4 }}">
     <button type="button"
             id="add_extra_seat"
             class="btn btn-sm btn-outline-secondary mb-2"

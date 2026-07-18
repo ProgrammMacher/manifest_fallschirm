@@ -4,6 +4,11 @@ from decimal import Decimal
 from app import db, now_local
 now_berlin = now_local  # Alias für Abwärtskompatibilität
 from app.models.invoice_item import InvoiceItem
+from app.constants import (
+    INVOICE_PAYMENT_STATE_OPEN,
+    INVOICE_PAYMENT_STATE_PAID,
+    INVOICE_PAYMENT_STATE_SEPA_PENDING,
+)
 
 
 class Invoice(db.Model):
@@ -59,8 +64,17 @@ class Invoice(db.Model):
     paid_at = db.Column(db.DateTime, nullable=True)
 
     # Zahlungsart (nur relevant, wenn is_paid = True)
-    # Mögliche Werte: "cash" | "card" | "transfer" | "wero"
+    # Mögliche Werte: "cash" | "card" | "transfer" | "wero" | "sepa"
     payment_method = db.Column(db.String(20), nullable=True)
+
+    # Erweiterter Zahlungsstatus (legacy-kompatibel zu is_paid)
+    payment_state = db.Column(
+        db.String(20),
+        nullable=False,
+        default=INVOICE_PAYMENT_STATE_OPEN,
+        server_default=INVOICE_PAYMENT_STATE_OPEN,
+        index=True,
+    )
 
     # Teilzahlung über Vorkasse / Gutschein (Bruttoanteil)
     prepaid_voucher_amount = db.Column(
@@ -141,6 +155,24 @@ class Invoice(db.Model):
     # Cached PDF bytes for faster email sending
     pdf_bytes = db.Column(db.LargeBinary, nullable=True)
 
+    # §19 UStG-Override auf Beleg-Ebene (nur Tandemmaster-Sprungpositionen)
+    is_tandem_kleinunternehmer = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default="0",
+        index=True,
+    )
+
+    # §19 UStG-Override auf Beleg-Ebene (nur Video-Sprungpositionen)
+    is_video_kleinunternehmer = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default="0",
+        index=True,
+    )
+
     # ---------------------------------------------------------
     # Methoden
     # ---------------------------------------------------------
@@ -177,7 +209,18 @@ class Invoice(db.Model):
     def mark_paid(self) -> None:
         """Markiert die Rechnung als bezahlt (Zahlungsart wird extern gesetzt)."""
         self.is_paid = True
+        self.payment_state = INVOICE_PAYMENT_STATE_PAID
         self.paid_at = now_berlin().replace(tzinfo=None)
+
+    def sync_payment_state_from_legacy(self) -> None:
+        """Leitet den neuen payment_state robust aus Legacy-Feldern ab."""
+        if self.is_paid:
+            self.payment_state = INVOICE_PAYMENT_STATE_PAID
+            return
+        if (self.payment_method or "").strip().lower() == "sepa":
+            self.payment_state = INVOICE_PAYMENT_STATE_SEPA_PENDING
+            return
+        self.payment_state = INVOICE_PAYMENT_STATE_OPEN
 
     @property
     def prepaid_voucher_amount_decimal(self) -> Decimal:
