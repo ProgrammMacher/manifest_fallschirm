@@ -265,9 +265,18 @@
               </td>
               <td class="text-end">
                 {% if can_execute_sepa_export %}
-                <a class="btn btn-outline-primary btn-sm" href="{{ url_for('billing.invoice_sepa_export_download', export_id=exp.id) }}">
-                  Download
-                </a>
+                <div class="d-flex flex-wrap justify-content-end gap-1">
+                  <a class="btn btn-outline-primary btn-sm" href="{{ url_for('billing.invoice_sepa_export_download', export_id=exp.id) }}">
+                    Download
+                  </a>
+                  {% if is_dev_mode and loop.first %}
+                  <form method="post" action="{{ url_for('billing.invoice_sepa_export_rollback', export_id=exp.id) }}" onsubmit="return confirm('Diesen SEPA-Testexport vollständig zurückrollen?');">
+                    <button type="submit" class="btn btn-outline-danger btn-sm">
+                      SEPA-Testexport zurückrollen
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
                 {% else %}
                 <span class="text-muted small">Kein Zugriff</span>
                 {% endif %}

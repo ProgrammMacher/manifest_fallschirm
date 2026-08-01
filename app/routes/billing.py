@@ -132,6 +132,14 @@ def _invoice_payment_state_label(invoice: Invoice | None) -> str:
     return PAYMENT_STATE_LABELS.get(_invoice_payment_state(invoice), "Offen")
 
 
+def _reset_invoice_after_sepa_rollback(invoice: Invoice) -> None:
+    """Setzt eine Rechnung nach einem Dev-Rollback wieder auf einen neutralen offenen Zustand zurück."""
+    _set_invoice_payment_state(invoice, INVOICE_PAYMENT_STATE_OPEN)
+    invoice.payment_method = None
+    invoice.is_paid = False
+    invoice.paid_at = None
+
+
 def _set_invoice_payment_state(invoice: Invoice, payment_state: str) -> str:
     state = (payment_state or "").strip().lower()
     if state not in INVOICE_PAYMENT_STATES:
@@ -4268,6 +4276,57 @@ def invoice_sepa_export_download(export_id):
     response.headers["Content-Type"] = "application/xml; charset=utf-8"
     response.headers["Content-Disposition"] = f'attachment; filename="{export.file_name}"'
     return response
+
+
+@bp.route("/invoices/sepa/export/<int:export_id>/rollback", methods=["POST"])
+def invoice_sepa_export_rollback(export_id):
+    if not is_dev_mode():
+        flash("SEPA-Testexports können nur im Dev-Modus zurückgerollt werden.", "warning")
+        return redirect(url_for("billing.invoice_list"))
+
+    deny = _admin_or_db_admin_required("billing.invoice_list")
+    if deny:
+        return deny
+
+    export = SepaExport.query.get_or_404(export_id)
+
+    latest_export = (
+        SepaExport.query
+        .order_by(SepaExport.created_at.desc(), SepaExport.id.desc())
+        .first()
+    )
+    if not latest_export or latest_export.id != export.id:
+        flash("Nur der aktuell letzte SEPA-Export kann zurückgerollt werden.", "warning")
+        return redirect(url_for("billing.invoice_list"))
+
+    invoice_ids = [link.invoice_id for link in (getattr(export, "invoices", []) or []) if getattr(link, "invoice_id", None)]
+    file_path = (export.file_path or "").strip()
+
+    try:
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception:
+                pass
+
+        if invoice_ids:
+            invoices = Invoice.query.filter(Invoice.id.in_(invoice_ids)).all()
+        else:
+            invoices = []
+
+        SepaExportInvoice.query.filter(SepaExportInvoice.export_id == export.id).delete(synchronize_session=False)
+        db.session.delete(export)
+
+        for invoice in invoices:
+            _reset_invoice_after_sepa_rollback(invoice)
+
+        db.session.commit()
+        flash("SEPA-Testexport wurde vollständig zurückgerollt.", "success")
+    except Exception as exc:
+        db.session.rollback()
+        flash(f"SEPA-Testexport konnte nicht zurückgerollt werden: {exc}", "danger")
+
+    return redirect(url_for("billing.invoice_list"))
 
 
 # ---------------------------------------------------------
