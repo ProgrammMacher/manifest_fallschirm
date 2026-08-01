@@ -1,0 +1,16 @@
+Tag: sepa-workflow-v1
+
+Enthält:
+
+- pain.008 Export
+- Creditor-ID
+- SEPA Rollback
+- SEPA Statusworkflow
+- Zahlungsart "Nicht festgelegt"
+- SEPA Filter und Sortierung
+- Exporthistorie
+- UI-Fixes
+- QR-Code / SEPA gemeinsame Zahlungslogik
+
+Commit:
+e208c7c0
