@@ -3696,6 +3696,88 @@ def invoice_set_payment_method(invoice_id):
     )
 
 
+@bp.route("/invoice/<int:invoice_id>/mark_sepa_returned", methods=["POST"])
+def invoice_mark_sepa_returned(invoice_id):
+    deny = _admin_or_db_admin_required("billing.invoice_detail", invoice_id=invoice_id)
+    if deny:
+        return deny
+
+    invoice = db.session.get(Invoice, invoice_id)
+    if not invoice:
+        flash("Rechnung nicht gefunden.", "danger")
+        return redirect(url_for("billing.invoice_list"))
+
+    if getattr(invoice, "stage", "final") != "final":
+        flash("Nur gespeicherte Rechnungen können markiert werden.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=invoice_id))
+
+    current_state = _invoice_payment_state(invoice)
+    if invoice.payment_method != "sepa" or current_state not in {
+        INVOICE_PAYMENT_STATE_PAID,
+        INVOICE_PAYMENT_STATE_SEPA_EXPORTED,
+    }:
+        flash("Diese Aktion ist nur für SEPA-Rechnungen mit Zustand 'Bezahlt' oder 'SEPA exportiert' verfügbar.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=invoice_id))
+
+    _set_invoice_payment_state(invoice, INVOICE_PAYMENT_STATE_SEPA_RETURNED)
+    db.session.commit()
+
+    flash("Rücklastschrift erfasst.", "success")
+    return redirect(url_for("billing.invoice_detail", invoice_id=invoice_id))
+
+
+@bp.route("/invoice/<int:invoice_id>/mark_sepa_pending", methods=["POST"])
+def invoice_mark_sepa_pending(invoice_id):
+    deny = _admin_or_db_admin_required("billing.invoice_detail", invoice_id=invoice_id)
+    if deny:
+        return deny
+
+    invoice = db.session.get(Invoice, invoice_id)
+    if not invoice:
+        flash("Rechnung nicht gefunden.", "danger")
+        return redirect(url_for("billing.invoice_list"))
+
+    if getattr(invoice, "stage", "final") != "final":
+        flash("Nur gespeicherte Rechnungen können markiert werden.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=invoice_id))
+
+    if _invoice_payment_state(invoice) != INVOICE_PAYMENT_STATE_SEPA_RETURNED:
+        flash("Diese Aktion ist nur für Rechnungen mit Rücklastschrift verfügbar.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=invoice_id))
+
+    _set_invoice_payment_state(invoice, INVOICE_PAYMENT_STATE_SEPA_PENDING)
+    db.session.commit()
+
+    flash("Rechnung wurde erneut für SEPA vorgemerkt.", "success")
+    return redirect(url_for("billing.invoice_detail", invoice_id=invoice_id))
+
+
+@bp.route("/invoice/<int:invoice_id>/mark_sepa_open", methods=["POST"])
+def invoice_mark_sepa_open(invoice_id):
+    deny = _admin_or_db_admin_required("billing.invoice_detail", invoice_id=invoice_id)
+    if deny:
+        return deny
+
+    invoice = db.session.get(Invoice, invoice_id)
+    if not invoice:
+        flash("Rechnung nicht gefunden.", "danger")
+        return redirect(url_for("billing.invoice_list"))
+
+    if getattr(invoice, "stage", "final") != "final":
+        flash("Nur gespeicherte Rechnungen können markiert werden.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=invoice_id))
+
+    if _invoice_payment_state(invoice) != INVOICE_PAYMENT_STATE_SEPA_RETURNED:
+        flash("Diese Aktion ist nur für Rechnungen mit Rücklastschrift verfügbar.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=invoice_id))
+
+    _set_invoice_payment_state(invoice, INVOICE_PAYMENT_STATE_OPEN)
+    db.session.commit()
+
+    flash("Rechnung wurde auf offene Rechnung zurückgesetzt.", "success")
+    return redirect(url_for("billing.invoice_detail", invoice_id=invoice_id))
+
+
 @bp.route("/invoice/<int:invoice_id>/set_payment_state", methods=["POST"])
 def invoice_set_payment_state(invoice_id):
     deny = _full_admin_required("billing.invoice_detail", invoice_id=invoice_id)

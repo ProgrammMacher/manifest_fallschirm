@@ -579,7 +579,14 @@
               {% elif pstate == 'sepa_exported' %}
                 <span class="badge bg-info text-dark">SEPA exportiert</span>
               {% elif pstate == 'sepa_returned' %}
-                <span class="badge bg-danger">Rücklastschrift</span>
+                <div class="d-flex flex-column align-items-start gap-1">
+                  <span class="badge bg-danger">Rücklastschrift</span>
+                  {% if session.get('is_admin') or session.get('is_db_admin') %}
+                    <a class="btn btn-outline-danger btn-sm px-2 py-0" href="{{ url_for('billing.invoice_detail', invoice_id=inv.id) }}#sepa-returned-actions">
+                      Aktion
+                    </a>
+                  {% endif %}
+                </div>
               {% else %}
                 <span class="badge bg-warning text-dark">Offen</span>
               {% endif %}

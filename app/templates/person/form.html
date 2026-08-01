@@ -21,6 +21,12 @@
 
 {% block content %}
 
+{% if field_errors %}
+<div id="form-error-summary" class="alert alert-danger mb-4" role="alert">
+    <strong>Das Formular enthält Fehler. Bitte prüfen Sie die markierten Felder.</strong>
+</div>
+{% endif %}
+
 <form method="post"
       action="{% if is_edit %}{{ url_for('person.edit_person', id=person.id) }}{% else %}{{ url_for('person.new_person') }}{% endif %}"
       enctype="multipart/form-data"
@@ -575,6 +581,8 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
+    const form = document.querySelector('form[method="post"]');
+    const errorSummary = document.getElementById("form-error-summary");
     const tandemSelect = document.querySelector('select[name="is_tandem_guest"]');
     const ibanInput = document.querySelector('input[name="iban"]');
     const tandemmasterSelect = document.querySelector('select[name="is_tandemmaster"]');
@@ -595,6 +603,16 @@ document.addEventListener("DOMContentLoaded", function () {
     const emergencyNameLabel = document.getElementById("labelEmergencyName");
     const emergencyPhoneLabel = document.getElementById("labelEmergencyPhone");
     const tandemHint = document.getElementById("tandemGuestHint");
+
+    if (errorSummary) {
+        errorSummary.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    const invalidField = document.querySelector('.is-invalid');
+    if (invalidField) {
+        invalidField.focus({ preventScroll: true });
+        invalidField.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
 
     if (!tandemSelect) {
         return;

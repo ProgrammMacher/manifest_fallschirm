@@ -263,6 +263,7 @@ def create_app():
         """
         Merkt sich die zuletzt besuchte *inhaltliche* Seite,
         um nach dem Admin-Login dorthin zurückzuleiten.
+        Technische API-/Polling-Endpunkte dürfen den Rückweg nicht überschreiben.
         """
         if request.method != "GET":
             return
@@ -271,14 +272,29 @@ def create_app():
 
         EXCLUDED_PREFIXES = (
             "/admin/login",
+            "/admin/logout",
             "/pwa/health",
             "/pwa/publish",
             "/pwa/publish/status",
+            "/pwa/runtime/",
+            "/pwa/connect/",
             "/api/",
             "/static/",
         )
 
         if path.startswith(EXCLUDED_PREFIXES):
+            return
+
+        if path.startswith("/billing/") and (
+            path.startswith("/billing/invoice/") and "/send_email_status" in path
+            or path == "/billing/email_jobs_active"
+        ):
+            return
+
+        if path.startswith("/load/") and "/api/" in path:
+            return
+
+        if path.startswith("/pwa/api/"):
             return
 
         session["last_page"] = path

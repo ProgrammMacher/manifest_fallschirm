@@ -1,6 +1,7 @@
 # C:\manifest_fallschirm\app\routes\person.py
 
 import os
+import re
 from io import BytesIO
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
@@ -52,6 +53,26 @@ def is_true(v) -> bool:
 
 def _normalize_iban(value: str | None) -> str:
     return Person.normalize_iban(value)
+
+
+def _is_valid_iban(value: str | None) -> bool:
+    iban = _normalize_iban(value)
+    if not iban:
+        return True
+    if len(iban) < 15 or len(iban) > 34:
+        return False
+    if not re.fullmatch(r"[A-Z0-9]+", iban):
+        return False
+
+    rearranged = iban[4:] + iban[:4]
+    digits = []
+    for char in rearranged:
+        if char.isdigit():
+            digits.append(char)
+        else:
+            digits.append(str(ord(char) - 55))
+
+    return int("".join(digits)) % 97 == 1
 
 
 def _format_iban_for_display(value: str | None) -> str:
@@ -225,6 +246,9 @@ def _collect_and_validate(form):
         sepa_enabled = False
         sepa_first_collection_done = False
         warnings.append("SEPA-Lastschrift wurde für Tandemgast/Mitflieger deaktiviert.")
+
+    if iban and not _is_valid_iban(iban):
+        field_errors["iban"] = "Die eingegebene IBAN ist ungültig."
 
     if sepa_enabled:
         if not iban:

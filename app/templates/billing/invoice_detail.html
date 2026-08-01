@@ -1281,10 +1281,10 @@
 	{% endif %}
  </div>
 
- {% if session.get('is_admin') %}
+ {% if session.get('is_admin') or session.get('is_db_admin') %}
  <div class="no-print mt-2 p-3 border rounded bg-light">
   <div class="fw-bold text-danger mb-2">
-   Admin-Aktionen
+   Admin-/DB-Admin-Aktionen
   </div>
 
   {# Zahlungsart nachträglich ändern #}
@@ -1332,6 +1332,35 @@
 		 <button class="btn btn-outline-primary btn-sm">Status speichern</button>
 		</div>
 	 </form>
+
+	 {% if invoice.payment_method == 'sepa' and invoice_payment_state_code in ['paid', 'sepa_exported'] %}
+	 <form method="post"
+			action="{{ url_for('billing.invoice_mark_sepa_returned', invoice_id=invoice.id) }}"
+			class="mb-2">
+		<button class="btn btn-outline-danger btn-sm">
+		 Rücklastschrift erfassen
+		</button>
+	 </form>
+	 {% endif %}
+
+	 {% if invoice_payment_state_code == 'sepa_returned' %}
+	 <div id="sepa-returned-actions" class="alert alert-warning py-2 px-3 mb-2 small">
+		<strong>Die Lastschrift wurde von der Bank zurückgegeben.</strong><br>
+		Sie können die Rechnung erneut per SEPA einziehen oder auf eine andere Zahlungsart umstellen.
+	 </div>
+	 <div class="d-flex flex-wrap gap-2 mb-2">
+		<form method="post"
+			  action="{{ url_for('billing.invoice_mark_sepa_pending', invoice_id=invoice.id) }}"
+			  class="d-inline">
+		 <button class="btn btn-outline-primary btn-sm">Erneut per SEPA einziehen</button>
+		</form>
+		<form method="post"
+			  action="{{ url_for('billing.invoice_mark_sepa_open', invoice_id=invoice.id) }}"
+			  class="d-inline">
+		 <button class="btn btn-outline-secondary btn-sm">Auf offene Rechnung zurücksetzen</button>
+		</form>
+	 </div>
+	 {% endif %}
 
   {# Zahlung zurücksetzen (bezahlt → unbezahlt) #}
   <form method="post"
@@ -1476,7 +1505,7 @@
 <!-- ================================================= -->
 <!-- Admin-Aktionen: Soft-Delete & Hard-Delete (DEV) -->
 <!-- ================================================= -->
-{% if session.get('is_admin') %}
+{% if session.get('is_admin') or session.get('is_db_admin') %}
   <!-- Soft-Delete (fachlich korrektes Storno) -->
 	{% if not invoice.is_deleted %}
   <form method="post"
