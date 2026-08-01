@@ -135,6 +135,20 @@ class BillingConfig(db.Model):
     bank_name = db.Column(db.String(200), nullable=True)
     iban = db.Column(db.String(50), nullable=True)
     bic = db.Column(db.String(50), nullable=True)
+    creditor_id = db.Column(
+        db.String(35),
+        nullable=False,
+        default="",
+        server_default="",
+        doc="Gläubiger-Identifikationsnummer (Creditor ID) für SEPA-Exports",
+    )
+    pain_version = db.Column(
+        db.String(30),
+        nullable=False,
+        default="pain.008.001.02",
+        server_default="pain.008.001.02",
+        doc="pain-Version für SEPA-XML-Exports",
+    )
     payment_terms = db.Column(
         db.String(200),
         nullable=True,

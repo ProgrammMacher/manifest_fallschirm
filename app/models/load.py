@@ -7,6 +7,9 @@ from typing import Any, List, Optional, cast
 from sqlalchemy.orm import object_session
 
 from app import db
+from app.models.aircraft import Aircraft
+from app.models.billing_config import BillingPricePeriod
+from app.models.flugplatz import Flugplatz
 from app.models.load_entry import LoadEntry
 from app.services.tandem_block_service import build_tandem_blocks
 

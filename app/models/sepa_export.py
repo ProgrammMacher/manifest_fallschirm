@@ -30,8 +30,13 @@ class SepaExport(db.Model):
 
     # Lifecycle für spätere Erweiterungen: created -> submitted -> executed -> file_deleted
     status = db.Column(db.String(30), nullable=False, default="created", server_default="created", index=True)
-    xml_version = db.Column(db.String(30), nullable=False, default="infra-v1", server_default="infra-v1")
+    xml_version = db.Column(db.String(30), nullable=False, default="pain.008.001.02", server_default="pain.008.001.02")
     selection_scope = db.Column(db.String(30), nullable=False, default="manual", server_default="manual")
+    message_id = db.Column(db.String(100), nullable=True)
+    payment_information_id = db.Column(db.String(100), nullable=True)
+    collection_date = db.Column(db.Date, nullable=True)
+    control_sum = db.Column(db.Numeric(10, 2), nullable=True)
+    transaction_count = db.Column(db.Integer, nullable=True)
 
     submitted_at = db.Column(db.DateTime, nullable=True)
     submitted_by = db.Column(db.String(100), nullable=True)
@@ -77,6 +82,9 @@ class SepaExportInvoice(db.Model):
     mandate_reference_snapshot = db.Column(db.String(32), nullable=True)
     payment_method_snapshot = db.Column(db.String(20), nullable=True)
     payment_state_snapshot = db.Column(db.String(20), nullable=False)
+    end_to_end_id_snapshot = db.Column(db.String(100), nullable=True)
+    sequence_type_snapshot = db.Column(db.String(10), nullable=True)
+    remittance_information_snapshot = db.Column(db.String(500), nullable=True)
 
     load_date_from = db.Column(db.Date, nullable=True)
     load_date_to = db.Column(db.Date, nullable=True)
@@ -95,6 +103,9 @@ _SNAPSHOT_FIELDS = {
     "mandate_reference_snapshot",
     "payment_method_snapshot",
     "payment_state_snapshot",
+    "end_to_end_id_snapshot",
+    "sequence_type_snapshot",
+    "remittance_information_snapshot",
     "load_date_from",
     "load_date_to",
     "load_dates_text",

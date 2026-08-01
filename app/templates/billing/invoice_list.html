@@ -3,7 +3,9 @@
 {% block header %}Rechnungen – Übersicht{% endblock %}
 
 {% block content %}
-<div class="container" id="invoiceListRoot">
+<div class="container" id="invoiceListRoot"
+     data-sepa-download-export-id="{{ request.args.get('sepa_download_export_id', '') }}"
+     data-sepa-download-file-name="{{ request.args.get('sepa_download_export_id', '') }}">
 
   {% set kw = date.today().isocalendar()[1] %}
   {% set period = period|default(request.args.get('period','all')) %}
@@ -202,17 +204,23 @@
         <div>
           <h5 class="mb-1">SEPA-Export (Infrastruktur)</h5>
           <div class="text-muted small">
-            Exportiert werden nur Rechnungen mit Status <strong>SEPA vorgemerkt</strong>. Aktuell auswählbar: {{ sepa_pending_count }}.
+            Exportiert werden nur Rechnungen mit Status <strong>SEPA vorgemerkt</strong>.
+            <div class="d-flex flex-wrap gap-3 mt-1">
+              <span><strong>{{ sepa_pending_count }}</strong> SEPA vorgemerkt</span>
+              <span><strong>{{ sepa_exported_count }}</strong> SEPA exportiert</span>
+              <span><strong>{{ sepa_exportable_count }}</strong> aktuell exportierbar</span>
+            </div>
           </div>
         </div>
         <form id="sepaExportForm" method="post" action="{{ url_for('billing.invoice_sepa_export') }}"></form>
-        <div class="d-flex flex-wrap gap-2">
+        <div class="d-flex flex-wrap gap-2 sepa-export-actions">
           <button type="button" id="sepaSelectAllBtn" class="btn btn-outline-primary btn-sm">Alle SEPA-vorgemerkten auswählen</button>
           <button type="button" id="sepaSelectNoneBtn" class="btn btn-outline-secondary btn-sm">Alle abwählen</button>
           <button type="submit"
                   id="sepaExportSubmitBtn"
                   form="sepaExportForm"
-                  class="btn btn-primary btn-sm"
+                  class="btn btn-primary btn-sm text-wrap"
+                  style="white-space: normal;"
                   {% if not can_execute_sepa_export %}disabled{% endif %}>
             SEPA XML erzeugen & herunterladen
           </button>
@@ -271,8 +279,8 @@
                   </a>
                   {% if is_dev_mode and loop.first %}
                   <form method="post" action="{{ url_for('billing.invoice_sepa_export_rollback', export_id=exp.id) }}" onsubmit="return confirm('Diesen SEPA-Testexport vollständig zurückrollen?');">
-                    <button type="submit" class="btn btn-outline-danger btn-sm">
-                      SEPA-Testexport zurückrollen
+                    <button type="submit" class="btn btn-outline-danger btn-sm text-wrap" style="white-space: normal;">
+                      Zurückrollen
                     </button>
                   </form>
                   {% endif %}
@@ -330,6 +338,7 @@
               <option value="open" {% if f_status == 'open' %}selected{% endif %}>Offen</option>
               <option value="sepa_pending" {% if f_status == 'sepa_pending' %}selected{% endif %}>SEPA vorgemerkt</option>
               <option value="sepa_exported" {% if f_status == 'sepa_exported' %}selected{% endif %}>SEPA exportiert</option>
+              <option value="non_sepa" {% if f_status == 'non_sepa' %}selected{% endif %}>Nicht SEPA</option>
               <option value="paid" {% if f_status == 'paid' %}selected{% endif %}>Bezahlt</option>
               <option value="sepa_returned" {% if f_status == 'sepa_returned' %}selected{% endif %}>Rücklastschrift</option>
             </select>
@@ -398,6 +407,9 @@
               <option value="email_asc" {% if f_sort == 'email_asc' %}selected{% endif %}>E‑Mail versendet ↑</option>
               <option value="content_status_asc" {% if f_sort == 'content_status_asc' %}selected{% endif %}>Inhaltsstatus ↑</option>
               <option value="content_status_desc" {% if f_sort == 'content_status_desc' %}selected{% endif %}>Inhaltsstatus ↓</option>
+              <option value="sepa_pending_first" {% if f_sort == 'sepa_pending_first' %}selected{% endif %}>SEPA vorgemerkt zuerst</option>
+              <option value="sepa_exported_first" {% if f_sort == 'sepa_exported_first' %}selected{% endif %}>SEPA exportiert zuerst</option>
+              <option value="sepa_last" {% if f_sort == 'sepa_last' %}selected{% endif %}>SEPA zuletzt</option>
             </select>
           </div>
 
@@ -444,7 +456,6 @@
             <th role="button" class="sortable" data-sort-key="purpose">
               Verwendungszweck <span class="sort-indicator"></span>
             </th>
-            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -636,13 +647,14 @@
               {% endif %}
             </td>
 
-            <td>{{ purpose }}</td>
-
-            <td class="text-end">
-              <a href="{{ url_for('billing.invoice_detail', invoice_id=inv_no) }}"
-                 class="btn btn-sm btn-outline-primary">
-                <i class="bi bi-search"></i> Details
-              </a>
+            <td>
+              <div>{{ purpose }}</div>
+              <div class="mt-2 text-end">
+                <a href="{{ url_for('billing.invoice_detail', invoice_id=inv_no) }}"
+                   class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1">
+                  <i class="bi bi-search"></i> Details
+                </a>
+              </div>
             </td>
           </tr>
         {% endfor %}
@@ -679,6 +691,11 @@
       th.sortable{ cursor:pointer; user-select:none; }
       .paid-method-breakdown-note{ font-size:.875rem; }
       .paid-method-breakdown-row{ font-size:.92rem; }
+      .sepa-export-actions{ max-width:100%; }
+      .sepa-export-actions .btn{ max-width:100%; }
+      @media (max-width: 768px){
+        .sepa-export-actions{ width:100%; }
+      }
     </style>
 
     <!-- =============================== -->
@@ -875,6 +892,20 @@
 
 <script>
 (function () {
+  const invoiceListRoot = document.getElementById('invoiceListRoot');
+  if (invoiceListRoot) {
+    const exportId = (invoiceListRoot.getAttribute('data-sepa-download-export-id') || '').trim();
+    if (exportId) {
+      const exportUrl = '{{ url_for("billing.invoice_sepa_export_download", export_id=0) }}'.replace('/0', '/' + exportId);
+      const link = document.createElement('a');
+      link.href = exportUrl;
+      link.download = 'sepa-export.xml';
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  }
   // ---------- Helpers ----------
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));

@@ -382,6 +382,7 @@ def create_app():
     from app.models.billing_config import BillingPrice, BillingPricePeriod
     from app.models.email_config import EmailConfig
     from app.models.email_send_log import EmailSendLog
+    from app.models.sepa_config import SepaConfig
     from app.models.sepa_export import SepaExport, SepaExportInvoice
 
     # ---------------------------------------------------------

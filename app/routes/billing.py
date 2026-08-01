@@ -10,6 +10,7 @@ import time
 from xml.sax.saxutils import escape as xml_escape
 from sqlalchemy import or_, and_, func
 from sqlalchemy.exc import IntegrityError
+from werkzeug.routing.exceptions import BuildError
 
 from flask import (
     Blueprint, render_template, redirect, url_for,
@@ -27,8 +28,11 @@ from app.models.invoice_item import InvoiceItem
 from app.models.billing_config import BillingConfig, MANUAL_MAIL_BODY_TEMPLATE_DEFAULT
 from app.models.load_entry import LoadEntry
 from app.models.load import Load  # ✅ benötigt für Load.status Filter in invoice_list()
+from app.models.sepa_config import SepaConfig
 from app.models.sepa_export import SepaExport, SepaExportInvoice
 from app.services.billing_service import BillingService, _image_to_data_uri, _invoice_payment_label
+from app.services.payment_data_service import build_invoice_payment_purpose, build_payment_context
+from app.services.sepa_export_service import build_pain_008_xml
 from app.services.mailer_service import MailerService
 from app.services.pdf_service import generate_pdf_from_html
 from app.models.billing_config import BillingOrgaRule
@@ -45,6 +49,30 @@ from app.constants import (
 )
 
 bp = Blueprint("billing", __name__, url_prefix="/billing")
+
+
+def _set_no_store_headers(response) -> None:
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+
+
+def _build_invoice_list_redirect_response(*, export_id: int | None = None):
+    params = {}
+    if export_id is not None:
+        params["sepa_download_export_id"] = export_id
+
+    try:
+        location = url_for("billing.invoice_list", **params)
+    except BuildError:
+        location = "/billing/invoices"
+        if params:
+            sep = "?" if "?" not in location else "&"
+            location = f"{location}{sep}{'&'.join(f'{k}={v}' for k, v in params.items())}"
+
+    response = redirect(location)
+    _set_no_store_headers(response)
+    return response
 
 
 PAYMENT_STATE_LABELS = {
@@ -331,32 +359,26 @@ def _build_export_file_name(created_at: datetime, export_seq_no: int) -> str:
 
 
 def _build_sepa_export_placeholder_xml(export_code: str, created_at: datetime, rows: list[dict]) -> bytes:
-    lines = [
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
-        f"<sepa_export export_code=\"{xml_escape(export_code)}\" generated_at=\"{created_at.isoformat()}\" version=\"infra-v1\">",
-        "  <invoices>",
-    ]
-
-    for r in rows:
-        lines.append(
-            "    <invoice"
-            f" id=\"{int(r['invoice_id'])}\""
-            f" number=\"{xml_escape(r['invoice_number'])}\""
-            f" amount=\"{Decimal(str(r['amount'])):.2f}\""
-            f" payment_method=\"{xml_escape(r['payment_method'] or '')}\""
-            f" payment_state=\"{xml_escape(r['payment_state'])}\""
-            f" person=\"{xml_escape(r['person_name'])}\""
-            f" iban=\"{xml_escape(r['iban'] or '')}\""
-            f" mandate_reference=\"{xml_escape(r['mandate_reference'] or '')}\""
-            f" load_date_from=\"{r['load_date_from'].isoformat() if r['load_date_from'] else ''}\""
-            f" load_date_to=\"{r['load_date_to'].isoformat() if r['load_date_to'] else ''}\""
-            f" load_dates_text=\"{xml_escape(r['load_dates_text'] or '')}\""
-            " />"
+    sepa_config = SepaConfig.query.order_by(SepaConfig.id.asc()).first()
+    if not sepa_config:
+        sepa_config = SepaConfig(
+            creditor_id="",
+            creditor_name="",
+            creditor_iban="",
+            creditor_bic="",
+            creditor_country="DE",
+            pain_version="pain.008.001.02",
         )
-
-    lines.append("  </invoices>")
-    lines.append("</sepa_export>")
-    return ("\n".join(lines) + "\n").encode("utf-8")
+    collection_date = (created_at + timedelta(days=3)).date()
+    billing_config = BillingConfig.query.first()
+    return build_pain_008_xml(
+        export_code=export_code,
+        created_at=created_at,
+        rows=rows,
+        sepa_config=sepa_config,
+        collection_date=collection_date,
+        billing_config=billing_config,
+    )
 
 
 WAIVER_TEXT_SKYDIVER_DEFAULT = """Erklärung und Haftungsverzicht
@@ -685,40 +707,7 @@ def _build_invoice_payment_purpose(
     invoice_number: int | None = None,
 ) -> str:
     """Baut den Verwendungszweck fuer Anzeige und EPC-Remittance konsistent."""
-    inv_year = invoice.created_at.year if getattr(invoice, "created_at", None) else date.today().year
-    inv_no = invoice_number if invoice_number is not None else _invoice_display_number(invoice)
-    person_name = (invoice.person.full_name if getattr(invoice, "person", None) else "").strip()
-
-    has_manual_items = False
-    has_load_items = False
-    for item in list(getattr(invoice, "items", []) or []):
-        if (getattr(item, "item_source", "") or "").strip().lower() == "manual":
-            has_manual_items = True
-        if getattr(item, "load_entry", None):
-            has_load_items = True
-
-    purpose_topic = "Spruenge"
-    if has_manual_items and not has_load_items:
-        purpose_topic = (getattr(invoice, "manual_title", "") or "").strip() or "Manuelle Positionen"
-    elif has_manual_items and has_load_items:
-        purpose_topic = "Leistungen"
-
-    parts = [f"{doc_label} {inv_year}-{purpose_topic}-Nr. {inv_no}"]
-    airfield_text, start_date, end_date = _invoice_airfield_and_date_range(invoice)
-    if (not start_date or not end_date) and getattr(invoice, "service_date", None):
-        start_date = invoice.service_date
-        end_date = invoice.service_date
-    if airfield_text:
-        parts.append(airfield_text)
-
-    date_text = _format_purpose_date_range(start_date, end_date)
-    if date_text:
-        parts.append(date_text)
-
-    if person_name:
-        parts.append(person_name)
-
-    return " - ".join(parts)
+    return build_invoice_payment_purpose(invoice, doc_label=doc_label, invoice_number=invoice_number)
 
 
 @bp.context_processor
@@ -760,6 +749,9 @@ def _parse_invoice_list_filters(args) -> dict:
         INVOICE_PAYMENT_STATE_SEPA_EXPORTED,
         INVOICE_PAYMENT_STATE_PAID,
         INVOICE_PAYMENT_STATE_SEPA_RETURNED,
+        "sepa_pending",
+        "sepa_exported",
+        "non_sepa",
     }
     allowed_payment = {"", "cash", "card", "transfer", "wero", "sepa", "voucher"}
     allowed_email = {"", "not_sent", "error", "pending", "sent_unconfirmed", "sent_confirmed"}
@@ -786,6 +778,7 @@ def _parse_invoice_list_filters(args) -> dict:
         "person_asc", "person_desc",
         "email_desc", "email_asc",
         "content_status_asc", "content_status_desc",
+        "sepa_pending_first", "sepa_exported_first", "sepa_last",
     }
 
     person_id = None
@@ -1366,7 +1359,13 @@ def _invoice_matches_filters(invoice: Invoice, filters: dict | None) -> bool:
     elif person_query and person_query not in person_name:
         return False
 
-    if status and _invoice_payment_state(invoice) != status:
+    if status == "non_sepa":
+        if _invoice_payment_state(invoice) in {
+            INVOICE_PAYMENT_STATE_SEPA_PENDING,
+            INVOICE_PAYMENT_STATE_SEPA_EXPORTED,
+        }:
+            return False
+    elif status and _invoice_payment_state(invoice) != status:
         return False
 
     if payment:
@@ -1432,6 +1431,25 @@ def _billable_row_matches_filters(row: dict, filters: dict | None) -> bool:
 def _sort_invoices_for_list(invoices: list[Invoice], sort_mode: str) -> list[Invoice]:
     sort_mode = (sort_mode or "date_desc").strip()
 
+    def _invoice_sort_state(inv: Invoice) -> str:
+        return (getattr(inv, "payment_state", "") or "").strip().lower()
+
+    def _sepa_sort_priority(inv: Invoice) -> tuple[int, int, datetime]:
+        raw_state = _invoice_sort_state(inv)
+        if raw_state == INVOICE_PAYMENT_STATE_SEPA_PENDING:
+            return (0, 0, getattr(inv, "created_at", datetime.min))
+        if raw_state == INVOICE_PAYMENT_STATE_SEPA_EXPORTED:
+            return (1, 0, getattr(inv, "created_at", datetime.min))
+        return (2, 0, getattr(inv, "created_at", datetime.min))
+
+    def _sepa_sort_priority_for_exported_first(inv: Invoice) -> tuple[int, int, datetime]:
+        raw_state = _invoice_sort_state(inv)
+        if raw_state == INVOICE_PAYMENT_STATE_SEPA_EXPORTED:
+            return (0, 0, getattr(inv, "created_at", datetime.min))
+        if raw_state == INVOICE_PAYMENT_STATE_SEPA_PENDING:
+            return (1, 0, getattr(inv, "created_at", datetime.min))
+        return (2, 0, getattr(inv, "created_at", datetime.min))
+
     if sort_mode == "date_asc":
         return sorted(invoices, key=lambda inv: getattr(inv, "created_at", datetime.min))
     if sort_mode == "amount_desc":
@@ -1442,6 +1460,28 @@ def _sort_invoices_for_list(invoices: list[Invoice], sort_mode: str) -> list[Inv
         return sorted(invoices, key=lambda inv: _invoice_payment_state(inv))
     if sort_mode == "status_desc":
         return sorted(invoices, key=lambda inv: _invoice_payment_state(inv), reverse=True)
+    if sort_mode == "sepa_pending_first":
+        return sorted(
+            invoices,
+            key=lambda inv: _sepa_sort_priority(inv),
+            reverse=False,
+        )
+    if sort_mode == "sepa_exported_first":
+        return sorted(
+            invoices,
+            key=lambda inv: _sepa_sort_priority_for_exported_first(inv),
+            reverse=False,
+        )
+    if sort_mode == "sepa_last":
+        return sorted(
+            invoices,
+            key=lambda inv: (
+                0 if _invoice_sort_state(inv) == INVOICE_PAYMENT_STATE_OPEN else 1,
+                0 if _invoice_sort_state(inv) == INVOICE_PAYMENT_STATE_SEPA_PENDING else 1,
+                getattr(inv, "created_at", datetime.min),
+            ),
+            reverse=False,
+        )
     if sort_mode == "pay_asc":
         return sorted(invoices, key=lambda inv: (inv.payment_method or ""))
     if sort_mode == "pay_desc":
@@ -2723,13 +2763,13 @@ def invoice_detail(invoice_id):
             if amount > 0 and billing_config and getattr(billing_config, "iban", None):
                 remittance = invoice_purpose
 
-                payload = _build_epc_payload(
-                    bic=getattr(billing_config, "bic", "") or "",
-                    name=getattr(billing_config, "company_name", "") or "",
-                    iban=getattr(billing_config, "iban", "") or "",
+                payment_context = build_payment_context(
+                    invoice=invoice,
+                    billing_config=billing_config,
+                    invoice_number=invoice_display_number,
                     amount_eur=amount,
-                    remittance=remittance,
                 )
+                payload = payment_context["epc_payload"]
                 epc_qr_data_uri = _make_qr_data_uri(payload)
         except Exception:
             epc_qr_data_uri = None
@@ -3161,16 +3201,13 @@ def _send_invoice_email_async(invoice_id: int, is_admin: bool = False):
             try:
                 amount = Decimal(str(invoice.total_amount or 0))
                 if amount > 0 and billing_config and getattr(billing_config, "iban", None):
-                    remittance = invoice_purpose
-
-                    payload = _build_epc_payload(
-                        bic=getattr(billing_config, "bic", "") or "",
-                        name=getattr(billing_config, "company_name", "") or "",
-                        iban=getattr(billing_config, "iban", "") or "",
+                    payment_context = build_payment_context(
+                        invoice=invoice,
+                        billing_config=billing_config,
+                        invoice_number=invoice_number,
                         amount_eur=amount,
-                        remittance=remittance,
                     )
-                    epc_qr_data_uri = _make_qr_data_uri(payload)
+                    epc_qr_data_uri = _make_qr_data_uri(payment_context["epc_payload"])
             except Exception:
                 epc_qr_data_uri = None
 
@@ -4021,6 +4058,8 @@ def _apply_billing_config_form(cfg: BillingConfig, form) -> None:
     cfg.bank_name = form.get("bank_name", "").strip() or None
     cfg.iban = form.get("iban", "").strip() or None
     cfg.bic = form.get("bic", "").strip() or None
+    cfg.creditor_id = (form.get("creditor_id", "") or "").strip()
+    cfg.pain_version = (form.get("pain_version", "") or "pain.008.001.02").strip() or "pain.008.001.02"
     cfg.payment_terms = form.get("payment_terms", "").strip() or None
     cfg.transaction_fee_mode = form.get("transaction_fee_mode", "none").strip() or "none"
 
@@ -4147,6 +4186,11 @@ def invoice_sepa_export():
     actor = _current_admin_actor_label()
     created_at = now_berlin().replace(tzinfo=None)
     storage_dir = _sepa_export_storage_dir()
+    billing_config = BillingConfig.query.first()
+    creditor_id = ((getattr(billing_config, "creditor_id", None) or "").strip() or "")
+    if not creditor_id:
+        flash("SEPA-Export abgebrochen: Bitte hinterlegen Sie unter Rechnungssteller → Konfiguration eine Gläubiger-ID (Creditor-ID).", "warning")
+        return redirect(request.referrer or url_for("billing.invoice_list"))
 
     file_path_written = None
     for _attempt in range(1, 6):
@@ -4162,6 +4206,9 @@ def invoice_sepa_export():
                     file_path = os.path.join(storage_dir, file_name)
                     suffix += 1
 
+            collection_date = (created_at + timedelta(days=3)).date()
+            message_id = export_code
+            payment_information_id = f"PmtInf-{export_code}"
             export = SepaExport(
                 export_code=export_code,
                 created_at=created_at,
@@ -4169,8 +4216,13 @@ def invoice_sepa_export():
                 file_name=file_name,
                 file_path=file_path,
                 status="created",
-                xml_version="infra-v1",
+                xml_version="pain.008.001.02",
                 selection_scope="manual",
+                message_id=message_id,
+                payment_information_id=payment_information_id,
+                collection_date=collection_date,
+                control_sum=Decimal("0.00"),
+                transaction_count=0,
             )
             db.session.add(export)
             db.session.flush()
@@ -4185,6 +4237,18 @@ def invoice_sepa_export():
                 invoice_amount = Decimal(str(inv.total_amount or "0.00"))
                 payment_state_code = _invoice_payment_state(inv)
 
+                payment_context = build_payment_context(
+                    invoice=inv,
+                    billing_config=billing_config,
+                    invoice_number=invoice_number,
+                    amount_eur=invoice_amount,
+                )
+                remittance_info = payment_context["remittance_information"]
+                end_to_end_id = f"ETO-{inv.id}"
+                sequence_type = "FRST"
+                if getattr(person, "sepa_first_collection_done", False):
+                    sequence_type = "RCUR"
+
                 sepa_link = SepaExportInvoice(
                     export_id=export.id,
                     invoice_id=inv.id,
@@ -4195,6 +4259,9 @@ def invoice_sepa_export():
                     mandate_reference_snapshot=((getattr(person, "sepa_mandate_reference", "") or "").strip() or None),
                     payment_method_snapshot=((inv.payment_method or "").strip() or None),
                     payment_state_snapshot=payment_state_code,
+                    end_to_end_id_snapshot=end_to_end_id,
+                    sequence_type_snapshot=sequence_type,
+                    remittance_information_snapshot=remittance_info,
                     load_date_from=load_date_from,
                     load_date_to=load_date_to,
                     load_dates_text=load_dates_text,
@@ -4209,7 +4276,14 @@ def invoice_sepa_export():
                     "payment_state": payment_state_code,
                     "person_name": ((person.full_name if person else "") or "").strip(),
                     "iban": (getattr(person, "iban", "") or "").replace(" ", "").strip(),
+                    "bic": (getattr(person, "bic", "") or "").replace(" ", "").strip(),
                     "mandate_reference": (getattr(person, "sepa_mandate_reference", "") or "").strip(),
+                    "mandate_date": getattr(person, "sepa_mandate_date", None),
+                    "sequence_type": "FRST" if not getattr(person, "sepa_first_collection_done", False) else "RCUR",
+                    "remittance_information": remittance_info,
+                    "end_to_end_id": f"ETO-{inv.id}",
+                    "debtor_name": ((person.full_name if person else "") or "").strip(),
+                    "debtor_country": "DE",
                     "load_date_from": load_date_from,
                     "load_date_to": load_date_to,
                     "load_dates_text": load_dates_text,
@@ -4218,6 +4292,8 @@ def invoice_sepa_export():
 
             export.invoice_count = len(valid_invoices)
             export.total_amount = total_amount
+            export.control_sum = total_amount
+            export.transaction_count = len(valid_invoices)
 
             xml_bytes = _build_sepa_export_placeholder_xml(export_code, created_at, snapshot_rows)
 
@@ -4235,9 +4311,7 @@ def invoice_sepa_export():
                 msg += f" {skipped_count} Auswahl(en) waren nicht mehr exportierbar und wurden übersprungen."
             flash(msg, "success")
 
-            response = make_response(xml_bytes)
-            response.headers["Content-Type"] = "application/xml; charset=utf-8"
-            response.headers["Content-Disposition"] = f'attachment; filename="{file_name}"'
+            response = _build_invoice_list_redirect_response(export_id=export.id)
             return response
 
         except IntegrityError:
@@ -4326,7 +4400,7 @@ def invoice_sepa_export_rollback(export_id):
         db.session.rollback()
         flash(f"SEPA-Testexport konnte nicht zurückgerollt werden: {exc}", "danger")
 
-    return redirect(url_for("billing.invoice_list"))
+    return _build_invoice_list_redirect_response()
 
 
 # ---------------------------------------------------------
@@ -4335,6 +4409,7 @@ def invoice_sepa_export_rollback(export_id):
 @bp.route("/invoices")
 def invoice_list():
     period = request.args.get("period", "all")  # all / today / week / month / year / range
+    download_export_id = (request.args.get("sepa_download_export_id") or "").strip()
     from_str = (request.args.get("from") or "").strip()
     to_str = (request.args.get("to") or "").strip()
     invoice_from_str = (request.args.get("invoice_from") or "").strip()
@@ -4352,7 +4427,27 @@ def invoice_list():
         delta_scope=delta_scope,
     )
 
-    return render_template("billing/invoice_list.html", **ctx)
+    if download_export_id:
+        try:
+            export_id = int(download_export_id)
+        except Exception:
+            export_id = None
+        if export_id is not None:
+            export = SepaExport.query.get(export_id)
+            if export and export.file_path and os.path.exists(export.file_path):
+                with open(export.file_path, "rb") as fh:
+                    xml_bytes = fh.read()
+                response = make_response(render_template("billing/invoice_list.html", **ctx))
+                _set_no_store_headers(response)
+                response.headers["X-SEPA-Download-Export-Id"] = str(export_id)
+                response.headers["X-SEPA-Download-File-Name"] = export.file_name or "export.xml"
+                response.headers["X-SEPA-Download-Content-Type"] = "application/xml; charset=utf-8"
+                response.headers["X-SEPA-Download-Bytes"] = str(len(xml_bytes))
+                return response
+
+    response = make_response(render_template("billing/invoice_list.html", **ctx))
+    _set_no_store_headers(response)
+    return response
 
 
 def _build_invoice_list_context(
@@ -4537,6 +4632,8 @@ def _build_invoice_list_context(
     )
 
     sepa_pending_count = sum(1 for inv in invoices if _invoice_payment_state(inv) == INVOICE_PAYMENT_STATE_SEPA_PENDING)
+    sepa_exported_count = sum(1 for inv in invoices if _invoice_payment_state(inv) == INVOICE_PAYMENT_STATE_SEPA_EXPORTED)
+    sepa_exportable_count = sepa_pending_count
     sepa_exports = _load_recent_sepa_exports(limit=30)
 
     return {
@@ -4561,6 +4658,8 @@ def _build_invoice_list_context(
         "invoice_from_date": invoice_from_str,
         "invoice_to_date": invoice_to_str,
         "sepa_pending_count": sepa_pending_count,
+        "sepa_exported_count": sepa_exported_count,
+        "sepa_exportable_count": sepa_exportable_count,
         "sepa_exports": sepa_exports,
         "can_execute_sepa_export": _can_manage_sepa_exports(),
         "is_dev_mode": is_dev_mode(),

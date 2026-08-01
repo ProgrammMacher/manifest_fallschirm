@@ -487,6 +487,31 @@ def ensure_billing_config_manual_invoice_mail_text_column() -> None:
         db.session.commit()
 
 
+def ensure_billing_config_sepa_fields_columns() -> None:
+    """
+    Fügt fehlende SEPA-Felder in billing_config hinzu (idempotent).
+    """
+    if not _table_exists("billing_config"):
+        return
+
+    changed = False
+
+    if not _column_exists("billing_config", "creditor_id"):
+        db.session.execute(
+            text("ALTER TABLE billing_config ADD COLUMN creditor_id VARCHAR(35) NOT NULL DEFAULT ''")
+        )
+        changed = True
+
+    if not _column_exists("billing_config", "pain_version"):
+        db.session.execute(
+            text("ALTER TABLE billing_config ADD COLUMN pain_version VARCHAR(30) NOT NULL DEFAULT 'pain.008.001.02'")
+        )
+        changed = True
+
+    if changed:
+        db.session.commit()
+
+
 def ensure_invoice_email_audit_columns() -> None:
     """
     Fuegt fehlende E-Mail-Audit-Spalten in invoice hinzu (idempotent).
@@ -783,8 +808,13 @@ def ensure_sepa_export_tables() -> None:
                 file_name VARCHAR(255) NOT NULL,
                 file_path VARCHAR(1024) NOT NULL,
                 status VARCHAR(30) NOT NULL DEFAULT 'created',
-                xml_version VARCHAR(30) NOT NULL DEFAULT 'infra-v1',
+                xml_version VARCHAR(30) NOT NULL DEFAULT 'pain.008.001.02',
                 selection_scope VARCHAR(30) NOT NULL DEFAULT 'manual',
+                message_id VARCHAR(100),
+                payment_information_id VARCHAR(100),
+                collection_date DATE,
+                control_sum NUMERIC(10,2),
+                transaction_count INTEGER,
                 submitted_at DATETIME,
                 submitted_by VARCHAR(100),
                 executed_at DATETIME,
@@ -793,6 +823,18 @@ def ensure_sepa_export_tables() -> None:
                 file_deleted_by VARCHAR(100)
             )
         """))
+    else:
+        # Alt-Datenbanken auf pain.008-Metadaten erweitern.
+        if not _column_exists("sepa_export", "message_id"):
+            db.session.execute(text("ALTER TABLE sepa_export ADD COLUMN message_id VARCHAR(100)"))
+        if not _column_exists("sepa_export", "payment_information_id"):
+            db.session.execute(text("ALTER TABLE sepa_export ADD COLUMN payment_information_id VARCHAR(100)"))
+        if not _column_exists("sepa_export", "collection_date"):
+            db.session.execute(text("ALTER TABLE sepa_export ADD COLUMN collection_date DATE"))
+        if not _column_exists("sepa_export", "control_sum"):
+            db.session.execute(text("ALTER TABLE sepa_export ADD COLUMN control_sum NUMERIC(10,2)"))
+        if not _column_exists("sepa_export", "transaction_count"):
+            db.session.execute(text("ALTER TABLE sepa_export ADD COLUMN transaction_count INTEGER"))
 
     db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_sepa_export_created_at ON sepa_export (created_at)"))
     db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_sepa_export_status ON sepa_export (status)"))
@@ -810,6 +852,9 @@ def ensure_sepa_export_tables() -> None:
                 mandate_reference_snapshot VARCHAR(32),
                 payment_method_snapshot VARCHAR(20),
                 payment_state_snapshot VARCHAR(20) NOT NULL,
+                end_to_end_id_snapshot VARCHAR(100),
+                sequence_type_snapshot VARCHAR(10),
+                remittance_information_snapshot VARCHAR(500),
                 load_date_from DATE,
                 load_date_to DATE,
                 load_dates_text VARCHAR(500),
@@ -818,6 +863,14 @@ def ensure_sepa_export_tables() -> None:
                 FOREIGN KEY(invoice_id) REFERENCES invoice(id) ON DELETE RESTRICT
             )
         """))
+    else:
+        # Alt-Datenbanken auf pain.008-Snapshotfelder erweitern.
+        if not _column_exists("sepa_export_invoice", "end_to_end_id_snapshot"):
+            db.session.execute(text("ALTER TABLE sepa_export_invoice ADD COLUMN end_to_end_id_snapshot VARCHAR(100)"))
+        if not _column_exists("sepa_export_invoice", "sequence_type_snapshot"):
+            db.session.execute(text("ALTER TABLE sepa_export_invoice ADD COLUMN sequence_type_snapshot VARCHAR(10)"))
+        if not _column_exists("sepa_export_invoice", "remittance_information_snapshot"):
+            db.session.execute(text("ALTER TABLE sepa_export_invoice ADD COLUMN remittance_information_snapshot VARCHAR(500)"))
 
     db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_sepa_export_invoice_export_id ON sepa_export_invoice (export_id)"))
     db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_sepa_export_invoice_invoice_id ON sepa_export_invoice (invoice_id)"))
@@ -839,6 +892,7 @@ def run_startup_migrations() -> None:
     ensure_person_original_name_column()
     ensure_billing_config_waiver_text_columns()
     ensure_billing_config_manual_invoice_mail_text_column()
+    ensure_billing_config_sepa_fields_columns()
     ensure_invoice_email_audit_columns()
     ensure_invoice_tandem_kleinunternehmer_column()
     ensure_invoice_video_kleinunternehmer_column()

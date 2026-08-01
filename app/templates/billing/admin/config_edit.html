@@ -67,6 +67,18 @@
       </div>
     </div>
 
+    <div class="row g-2 mt-2">
+      <div class="col-md-6">
+        <label class="form-label">Creditor-ID (Gläubiger-ID)</label>
+        <input class="form-control" name="creditor_id" value="{{ cfg.creditor_id or '' }}" placeholder="DE98ZZZ09999999999">
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">pain-Version</label>
+        <input class="form-control" name="pain_version" value="{{ cfg.pain_version or '' }}" placeholder="pain.008.001.02">
+      </div>
+    </div>
+
     <div class="mt-2">
       <label class="form-label">Zahlungsbedingung</label>
       <input class="form-control" name="payment_terms" value="{{ cfg.payment_terms }}">

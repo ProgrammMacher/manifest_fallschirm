@@ -1294,6 +1294,7 @@
    <label class="form-label mb-1">Zahlungsart ändern</label>
    <div class="d-flex gap-2">
     <select name="payment_method" class="form-select form-select-sm">
+     <option value="" {% if not invoice.payment_method %}selected{% endif %}>Nicht festgelegt</option>
      <option value="cash" {% if invoice.payment_method == 'cash' %}selected{% endif %}>Bar</option>
      <option value="card" {% if invoice.payment_method == 'card' %}selected{% endif %}>Karte</option>
      <option value="transfer" {% if invoice.payment_method == 'transfer' %}selected{% endif %}>Überweisung</option>
@@ -2030,6 +2031,106 @@ document.addEventListener('DOMContentLoaded', function () {
 
 let selectedPaymentMethod = null;
 
+function applyPaymentSelection(btn) {
+  if (!btn) return;
+
+  selectedPaymentMethod = String(btn.dataset.method || '').trim().toLowerCase();
+
+  document.querySelectorAll('#payment-method-buttons .payment-btn').forEach(b => {
+    b.classList.remove('active');
+    const check = b.querySelector('.pm-check');
+    if (check) check.classList.add('d-none');
+  });
+
+  btn.classList.add('active');
+  const myCheck = btn.querySelector('.pm-check');
+  if (myCheck) myCheck.classList.remove('d-none');
+
+  document.getElementById('selectedPaymentLabel').textContent =
+    btn.textContent.replace('✔', '').trim();
+
+  const markPaidBtn = document.getElementById('markPaidBtn');
+  const form = document.getElementById('paidOkForm');
+  const currentPaymentState = {{ invoice_payment_state_code|tojson }};
+
+  if (selectedPaymentMethod === 'sepa') {
+    const isSePaExported = currentPaymentState === 'sepa_exported';
+    form.action = isSePaExported
+      ? "{{ url_for('billing.invoice_set_payment_state', invoice_id=invoice.id) }}"
+      : "{{ url_for('billing.invoice_set_payment_method', invoice_id=invoice.id) }}";
+    if (markPaidBtn) {
+      markPaidBtn.textContent = isSePaExported ? 'Als bezahlt markieren' : 'SEPA vormerken';
+      markPaidBtn.classList.remove(isSePaExported ? 'btn-primary' : 'btn-danger');
+      markPaidBtn.classList.add(isSePaExported ? 'btn-danger' : 'btn-primary');
+      markPaidBtn.disabled = false;
+    }
+
+    let hidden = form.querySelector('input[name="payment_method"]');
+    if (!hidden) {
+      hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.name = 'payment_method';
+      form.appendChild(hidden);
+    }
+    hidden.value = 'sepa';
+
+    if (isSePaExported) {
+      let stateHidden = form.querySelector('input[name="payment_state"]');
+      if (!stateHidden) {
+        stateHidden = document.createElement('input');
+        stateHidden.type = 'hidden';
+        stateHidden.name = 'payment_state';
+        form.appendChild(stateHidden);
+      }
+      stateHidden.value = 'paid';
+    } else {
+      const stateHidden = form.querySelector('input[name="payment_state"]');
+      if (stateHidden) {
+        stateHidden.remove();
+      }
+    }
+  } else {
+    const tpl = "{{ url_for('billing.invoice_pay', invoice_id=invoice.id, method='__METHOD__') }}";
+    form.action = tpl.replace('__METHOD__', selectedPaymentMethod);
+    if (markPaidBtn) {
+      markPaidBtn.textContent = 'Als bezahlt markieren';
+      markPaidBtn.classList.remove('btn-primary');
+      markPaidBtn.classList.add('btn-danger');
+      markPaidBtn.disabled = false;
+    }
+    const hidden = form.querySelector('input[name="payment_method"]');
+    if (hidden) {
+      hidden.remove();
+    }
+  }
+  syncPrepaidPreview();
+}
+
+function initializePaymentSelection() {
+  const buttons = Array.from(document.querySelectorAll('#payment-method-buttons .payment-btn'));
+  const markPaidBtn = document.getElementById('markPaidBtn');
+  const form = document.getElementById('paidOkForm');
+  if (!buttons.length || !markPaidBtn || !form) return;
+
+  const initialPaymentMethod = {{ (invoice.payment_method or '')|tojson }};
+  const initialPaymentState = {{ invoice_payment_state_code|tojson }};
+  const initialMethod = initialPaymentMethod === 'sepa' || ['sepa_pending', 'sepa_exported', 'sepa_returned'].includes(initialPaymentState)
+    ? 'sepa'
+    : initialPaymentMethod;
+
+  if (!initialMethod) {
+    markPaidBtn.disabled = true;
+    return;
+  }
+
+  const button = buttons.find((candidate) => String(candidate.dataset.method || '').trim().toLowerCase() === initialMethod);
+  if (button) {
+    applyPaymentSelection(button);
+  } else {
+    markPaidBtn.disabled = true;
+  }
+}
+
 function parseEuroInput(raw) {
 	const text = String(raw || '').trim().replace(/€/g, '').replace(/\s/g, '');
 	if (!text) return 0;
@@ -2319,60 +2420,10 @@ function closeEmailProgressModal() {
 }
 
 function selectPaymentMethod(btn) {
-  selectedPaymentMethod = btn.dataset.method;
-
-  // Haken + active korrekt setzen
-  document.querySelectorAll('#payment-method-buttons .payment-btn').forEach(b => {
-    b.classList.remove('active');
-    const check = b.querySelector('.pm-check');
-    if (check) check.classList.add('d-none');
-  });
-
-  btn.classList.add('active');
-  const myCheck = btn.querySelector('.pm-check');
-  if (myCheck) myCheck.classList.remove('d-none');
-
-  // Label aktualisieren
-  document.getElementById('selectedPaymentLabel').textContent =
-    btn.textContent.replace('✔', '').trim();
-
-	const markPaidBtn = document.getElementById('markPaidBtn');
-  const form = document.getElementById('paidOkForm');
-
-	// SEPA wird zunächst vorgemerkt (nicht direkt als bezahlt markiert).
-	if (selectedPaymentMethod === 'sepa') {
-		form.action = "{{ url_for('billing.invoice_set_payment_method', invoice_id=invoice.id) }}";
-		if (markPaidBtn) {
-			markPaidBtn.textContent = 'SEPA vormerken';
-			markPaidBtn.classList.remove('btn-danger');
-			markPaidBtn.classList.add('btn-primary');
-			markPaidBtn.disabled = false;
-		}
-
-		let hidden = form.querySelector('input[name="payment_method"]');
-		if (!hidden) {
-			hidden = document.createElement('input');
-			hidden.type = 'hidden';
-			hidden.name = 'payment_method';
-			form.appendChild(hidden);
-		}
-		hidden.value = 'sepa';
-	} else {
-		const tpl = "{{ url_for('billing.invoice_pay', invoice_id=invoice.id, method='__METHOD__') }}";
-		form.action = tpl.replace('__METHOD__', selectedPaymentMethod);
-		if (markPaidBtn) {
-			markPaidBtn.textContent = 'Als bezahlt markieren';
-			markPaidBtn.classList.remove('btn-primary');
-			markPaidBtn.classList.add('btn-danger');
-			markPaidBtn.disabled = false;
-		}
-		const hidden = form.querySelector('input[name="payment_method"]');
-		if (hidden) {
-			hidden.remove();
-		}
-	}
-	syncPrepaidPreview();
+  applyPaymentSelection(btn);
 }
+
+document.addEventListener('DOMContentLoaded', initializePaymentSelection);
 
 function selectDraftPaymentMethod(btn) {
 	const hidden = document.getElementById('draftPaymentMethod');
