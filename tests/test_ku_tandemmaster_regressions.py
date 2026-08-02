@@ -33,9 +33,11 @@ def seeded_app(tmp_path_factory):
     os.environ["MANIFEST_DB_PATH"] = str(db_file)
     os.environ["MANIFEST_ENV"] = "dev"
     os.environ["MANIFEST_AUTO_CREATE_DB"] = "1"
+    os.environ["MANIFEST_AUTO_DB_UPGRADE"] = "0"
 
     from app import create_app, db
     from app.models.aircraft import Aircraft
+    from app.models.billing_config import BillingPrice, BillingPricePeriod
     from app.models.flugplatz import Flugplatz
     from app.models.invoice import Invoice
     from app.models.invoice_item import InvoiceItem
@@ -287,6 +289,63 @@ def seeded_app(tmp_path_factory):
                     "case9": {"person_id": p9.id, "invoice_id": inv9.id, "seq": inv9.seq_number},
                 },
             }
+
+
+def test_ku_credit_payout_basis_is_taken_from_price_matrix_status_setting(seeded_app):
+    app = seeded_app["app"]
+    db = seeded_app["db"]
+    Invoice = seeded_app["models"]["Invoice"]
+    InvoiceItem = seeded_app["models"]["InvoiceItem"]
+    entry = db.session.get("app.models.load_entry.LoadEntry", 2) if False else None
+
+    with app.app_context():
+        from app.models.load_entry import LoadEntry
+        from app.models.billing_config import BillingPricePeriod, BillingPrice
+        from app.services.billing_service import BillingService
+
+        entry = db.session.query(LoadEntry).filter_by(id=2).first()
+        assert entry is not None
+
+        period = BillingPricePeriod(
+            name="Test-Periode KU-Basis",
+            valid_from=datetime(2026, 1, 1),
+            valid_to=None,
+        )
+        db.session.add(period)
+        db.session.flush()
+
+        db.session.add(
+            BillingPrice(
+                period_id=period.id,
+                status_code="TD",
+                height_m=4000,
+                price_eur=Decimal("119.00"),
+                ku_credit_payout_basis="net",
+            )
+        )
+        db.session.flush()
+
+        entry.load.pricing_model_id = period.id
+        db.session.flush()
+
+        invoice = Invoice(person_id=entry.person_id, created_at=datetime.utcnow(), stage="draft")
+        invoice.is_tandem_kleinunternehmer = True
+        db.session.add(invoice)
+        db.session.flush()
+
+        BillingService._add_jump_items(invoice, [entry], mark_billed=False)
+        db.session.flush()
+
+        item = db.session.query(InvoiceItem).filter_by(invoice_id=invoice.id).first()
+        assert item is not None
+        assert item.amount == Decimal("100.00")
+        assert item.net_amount == Decimal("100.00")
+        assert item.vat_amount == Decimal("0.00")
+        assert item.vat_rate == Decimal("0.00")
+        assert item.price_source_eur == Decimal("119.00")
+        assert item.price_source_vat_rate == Decimal("19.00")
+        assert item.ku_credit_payout_basis == "net"
+        assert item.ku_credit_payout_amount == Decimal("100.00")
 
 
 def _assert_common_endpoints(client, person_id: int, seq: int) -> None:

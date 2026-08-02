@@ -20,7 +20,7 @@ from app.models.billing_config import (
 )
 from app.models.status_definition import StatusDefinition
 from app.services.price_seed_service import PriceSeedService
-from app.helpers.status_code import normalize_status_code
+from app.helpers.status_code import is_ku_credit_payout_applicable_status, normalize_status_code
 
 # Für Safety-Guard „Matrix darf nicht geändert werden, wenn Rechnungen existieren“
 from app.models.invoice import Invoice
@@ -313,6 +313,39 @@ def _find_used_price_conflicts(period_id: int, form) -> List[str]:
     return conflicts
 
 
+def _find_inconsistent_ku_payout_basis(period_id: int, statuses: Optional[Dict[str, StatusDefinition]] = None) -> List[Dict[str, object]]:
+    """Findet innerhalb derselben Periode inkonsistente KU-Vergütungsregeln pro Status."""
+    rows = BillingPrice.query.filter_by(period_id=period_id).all()
+    grouped: Dict[str, set[str]] = {}
+
+    for row in rows:
+        code = normalize_status_code(getattr(row, "status_code", "") or "")
+        if not code or not is_ku_credit_payout_applicable_status(code):
+            continue
+        basis = (getattr(row, "ku_credit_payout_basis", None) or "gross").strip().lower()
+        if basis not in {"gross", "net"}:
+            basis = "gross"
+        grouped.setdefault(code, set()).add(basis)
+
+    inconsistencies: List[Dict[str, object]] = []
+    for code, values in sorted(grouped.items()):
+        if len(values) <= 1:
+            continue
+        label = code
+        if statuses:
+            sd = statuses.get(code)
+            if sd is not None:
+                label = _clean_label(code, sd.label or code)
+        display_values = ["Brutto" if value == "gross" else "Netto" for value in sorted(values)]
+        inconsistencies.append({
+            "code": code,
+            "label": label,
+            "values": display_values,
+        })
+
+    return inconsistencies
+
+
 # ---------------------------------------------------------
 # GET: Preismatrix
 # ---------------------------------------------------------
@@ -431,12 +464,21 @@ def pricing_matrix():
     used_price_keys: Set[str] = set()
     used_vat_codes: Set[str] = set()
     orga_price_locked = False
+    payout_basis_inconsistencies: List[Dict[str, object]] = []
 
     if selected_period_id:
         prices_map = _load_prices_map(selected_period_id)
         used_price_keys = _used_price_key_tokens(selected_period_id)
         used_vat_codes = _used_vat_status_codes(selected_period_id)
         orga_price_locked = _orga_price_is_used_by_invoices(selected_period_id)
+        payout_basis_inconsistencies = _find_inconsistent_ku_payout_basis(selected_period_id, statuses)
+        if payout_basis_inconsistencies:
+            status_labels = ", ".join(item["label"] for item in payout_basis_inconsistencies)
+            flash(
+                "Hinweis: Für folgende Status sind innerhalb der Periode unterschiedliche KU-Vergütungsregeln hinterlegt: "
+                f"{status_labels}.",
+                "warning",
+            )
 
 
     codes_for_matrix = [c for c in statuses.keys() if not _is_excluded_from_jump_matrix(c)]
@@ -497,14 +539,20 @@ def pricing_matrix():
             "label": label,
             "vat_rate": vat_rate,
             "prices": {},
+            "ku_credit_payout_basis": "gross",
+            "shows_ku_credit_payout_basis": is_ku_credit_payout_applicable_status(code),
         }
         for h in VALID_HEIGHTS:
             bp = prices_map.get((code, int(h)))
             if bp:
                 row["prices"][h] = bp.price_eur
+                if row["shows_ku_credit_payout_basis"] and bp.ku_credit_payout_basis in {"gross", "net"}:
+                    row["ku_credit_payout_basis"] = bp.ku_credit_payout_basis
             elif code == PARTNER_TOPUP_CODE:
                 fallback_bp = prices_map.get((MEMBER_TOPUP_CODE, int(h)))
                 row["prices"][h] = fallback_bp.price_eur if fallback_bp else Decimal("0.00")
+                if row["shows_ku_credit_payout_basis"] and fallback_bp and fallback_bp.ku_credit_payout_basis in {"gross", "net"}:
+                    row["ku_credit_payout_basis"] = fallback_bp.ku_credit_payout_basis
             else:
                 row["prices"][h] = Decimal("0.00")
         matrix[code] = row
@@ -781,6 +829,13 @@ def save_prices():
                     sd.vat_rate = vat_val
 
                 # Preise je Höhe
+                if is_ku_credit_payout_applicable_status(code):
+                    payout_basis = (request.form.get(f"ku_credit_basis_{code}") or "gross").strip().lower()
+                    if payout_basis not in {"gross", "net"}:
+                        payout_basis = "gross"
+                else:
+                    payout_basis = "gross"
+
                 for h in VALID_HEIGHTS:
                     price_val = _dec(
                         request.form.get(f"price_{code}_{h}"),
@@ -798,6 +853,7 @@ def save_prices():
                     )
                     if bp:
                         bp.price_eur = price_val
+                        bp.ku_credit_payout_basis = payout_basis
                     else:
                         db.session.add(
                             BillingPrice(
@@ -805,6 +861,7 @@ def save_prices():
                                 status_code=code,
                                 height_m=int(h),
                                 price_eur=price_val,
+                                ku_credit_payout_basis=payout_basis,
                             )
                         )
 

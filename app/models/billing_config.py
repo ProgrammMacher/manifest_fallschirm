@@ -399,6 +399,14 @@ class BillingPrice(db.Model):
         nullable=False,
     )
 
+    ku_credit_payout_basis = db.Column(
+        db.String(10),
+        nullable=False,
+        default="gross",
+        server_default="gross",
+        doc="Berechnungsbasis für Kleinunternehmer-Gutschriften pro Status/Periode: gross oder net",
+    )
+
     __table_args__ = (
         db.UniqueConstraint(
             "period_id",

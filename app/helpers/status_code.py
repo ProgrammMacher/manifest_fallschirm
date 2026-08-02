@@ -71,6 +71,38 @@ CANONICAL: Dict[str, str] = {
     "TD_VEREIN_SCHIRM": "TD-Vereins-Schirm",
     "TD-VEREINS-SCHIRM": "TD-Vereins-Schirm",
     "TD VEREIN SCHIRM": "TD-Vereins-Schirm",
+    "TD-VEREINS-SCHIRM": "TD-Vereins-Schirm",
+    "TD VEREINS SCHIRM": "TD-Vereins-Schirm",
+    "TD-VEREINS SCHIRM": "TD-Vereins-Schirm",
+    "TD-VEREINS-SCHIRMS": "TD-Vereins-Schirm",
+    "TD-VEREINS SCHIRM": "TD-Vereins-Schirm",
+    "TD-VEREINSSCHIRM": "TD-Vereins-Schirm",
+    "TD-VEREINS-SCHIRM": "TD-Vereins-Schirm",
+    "TD-VEREINSSCHIRM": "TD-Vereins-Schirm",
+    "TD VERREINS SCHIRM": "TD-Vereins-Schirm",
+    "TD VERREINS-SCHIRM": "TD-Vereins-Schirm",
+    "TD VEREINS SCHIRM": "TD-Vereins-Schirm",
+    "TD VEREINS-SCHIRM": "TD-Vereins-Schirm",
+    "TD-VEREINS-SCHIRM": "TD-Vereins-Schirm",
+    "TD VEREINS SCHIRMS": "TD-Vereins-Schirm",
+    "TD VEREINS-SCHIRMS": "TD-Vereins-Schirm",
+    "TD-VEREINS-SCHIRMS": "TD-Vereins-Schirm",
+    "TD_VEREINS_SCHIRM": "TD-Vereins-Schirm",
+    "TD_VEREINS_SCHIRMS": "TD-Vereins-Schirm",
+    "TD_VEREINS_SCHIRM": "TD-Vereins-Schirm",
+    "TD_VEREINSCHIRM": "TD-Vereins-Schirm",
+    "TD_VERREINS_SCHIRM": "TD-Vereins-Schirm",
+    "TD VERREIN SCHIRM": "TD-Vereins-Schirm",
+    "TD VERREIN-SCHIRM": "TD-Vereins-Schirm",
+    "TD VERREINS-SCHIRM": "TD-Vereins-Schirm",
+    "TD VERREIN S SCHIRM": "TD-Vereins-Schirm",
+    "TD-VEREIN-SCHIRM": "TD-Vereins-Schirm",
+    "TD-VEREIN SCHIRM": "TD-Vereins-Schirm",
+    "TD-VEREIN-SCHIRM": "TD-Vereins-Schirm",
+    "TD-VEREINS SCHIRM": "TD-Vereins-Schirm",
+    "TD-VEREINS-SCHIRM": "TD-Vereins-Schirm",
+    "TD-VEREINSCHIRM": "TD-Vereins-Schirm",
+    "TD_VEREIN_SCHIRM": "TD-Vereins-Schirm",
 
     "G-TD": "G-TD",
     "G TD": "G-TD",
@@ -141,6 +173,12 @@ def status_display_label(raw: str | None) -> str:
 # Zentrale Normalisierungsfunktion
 # (WIRD IM GANZEN SYSTEM VERWENDET!)
 # =========================================================
+def is_ku_credit_payout_applicable_status(raw: str | None) -> bool:
+    """Gibt an, ob ein Status die KU-Gutschrift-Basissteuerung anzeigen darf."""
+    canonical = normalize_status_code(raw)
+    return canonical in {"TD", "TD-Vereins-Schirm", "Video"}
+
+
 def normalize_status_code(raw: str | None) -> str:
     """
     Normalisiert beliebige Status-Eingaben auf einen

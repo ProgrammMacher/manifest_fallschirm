@@ -99,6 +99,28 @@ class InvoiceItem(db.Model):
     # Beschreibung (z. B. "Sprung 4000 m – Vereinsmitglied")
     description = db.Column(db.String(200), nullable=True)
 
+    # Snapshot der Preis- und Basislogik zum Zeitpunkt der Rechnungserstellung
+    price_source_eur = db.Column(
+        db.Numeric(10, 2),
+        nullable=True,
+        default=None,
+    )
+    price_source_vat_rate = db.Column(
+        db.Numeric(5, 2),
+        nullable=True,
+        default=None,
+    )
+    ku_credit_payout_basis = db.Column(
+        db.String(10),
+        nullable=True,
+        default=None,
+    )
+    ku_credit_payout_amount = db.Column(
+        db.Numeric(10, 2),
+        nullable=True,
+        default=None,
+    )
+
     @property
     def gross_decimal(self) -> Decimal:
         return Decimal(str(self.amount or 0))

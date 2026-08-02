@@ -251,12 +251,29 @@ class BillingService:
             gross = BillingService._q2(Decimal(str(getattr(item, "amount", 0) or "0.00")))
             if ku_active_for_item:
                 vat_rate = Decimal("0.00")
+                payout_basis = BillingService.get_ku_credit_payout_basis_for_entry(entry=entry)
+                payout_amount = BillingService.get_ku_credit_payout_amount_for_entry(
+                    entry=entry,
+                    fallback_gross=gross,
+                )
+                effective_amount = BillingService._q2(payout_amount if payout_amount is not None else gross)
+                net = BillingService._q2(effective_amount)
+                vat = Decimal("0.00")
+                item.amount = effective_amount
+                item.ku_credit_payout_basis = payout_basis
+                item.ku_credit_payout_amount = payout_amount
+                item.price_source_eur = BillingService._q2(BillingService.calculate_price_for_entry(entry))
+                item.price_source_vat_rate = BillingService._q2(BillingService.get_entry_vat_rate(entry))
             else:
                 vat_rate = BillingService._q2(
                     BillingService.get_entry_vat_rate(entry)
                 )
+                net, vat = BillingService.split_gross_into_net_and_vat(gross=gross, vat_rate=vat_rate)
+                item.ku_credit_payout_basis = None
+                item.ku_credit_payout_amount = None
+                item.price_source_eur = None
+                item.price_source_vat_rate = None
 
-            net, vat = BillingService.split_gross_into_net_and_vat(gross=gross, vat_rate=vat_rate)
             item.vat_rate = vat_rate
             item.net_amount = net
             item.vat_amount = vat
@@ -358,6 +375,68 @@ class BillingService:
             .first()
         )
         return Decimal(str(price.price_eur)) if price else Decimal("0.00")
+
+    @staticmethod
+    def get_ku_credit_payout_basis_for_entry(
+        *, entry: LoadEntry, period: Optional[BillingPricePeriod] = None
+    ) -> str:
+        """Liefert die für Kleinunternehmer-Gutschriften verwendete Basis für einen Entry."""
+        if not entry:
+            return "gross"
+
+        code = normalize_status_code(getattr(entry, "status_code", "") or "")
+        if code not in {"TD", "TD-Vereins-Schirm", "Video"}:
+            return "gross"
+
+        period_obj = period
+        if period_obj is None:
+            load = getattr(entry, "load", None)
+            if not load:
+                return "gross"
+            model_id = getattr(load, "pricing_model_id", None)
+            if model_id:
+                period_obj = BillingPricePeriod.query.get(int(model_id))
+            else:
+                dt = (
+                    getattr(load, "actual_time", None)
+                    or getattr(load, "scheduled_time", None)
+                    or getattr(load, "created_at", None)
+                    or getattr(entry, "created_at", None)
+                    or datetime.utcnow()
+                )
+                period_obj = BillingService.get_active_price_period(day=dt.date())
+
+        if not period_obj:
+            return "gross"
+
+        price_row = (
+            BillingPrice.query
+            .filter_by(
+                period_id=period_obj.id,
+                status_code=code,
+                height_m=int(getattr(entry, "height_m", 0) or 0),
+            )
+            .first()
+        )
+        basis = getattr(price_row, "ku_credit_payout_basis", None) or "gross"
+        return str(basis).strip().lower() if str(basis).strip().lower() in {"gross", "net"} else "gross"
+
+    @staticmethod
+    def get_ku_credit_payout_amount_for_entry(
+        *, entry: LoadEntry, period: Optional[BillingPricePeriod] = None, fallback_gross: Decimal | None = None
+    ) -> Decimal:
+        """Liefert den für eine Kleinunternehmer-Gutschrift auszuzahlenden Betrag."""
+        gross = BillingService._q2(BillingService.calculate_price_for_entry(entry))
+        if gross <= 0 and fallback_gross is not None:
+            gross = BillingService._q2(fallback_gross)
+        vat_rate = BillingService._q2(BillingService.get_entry_vat_rate(entry))
+        basis = BillingService.get_ku_credit_payout_basis_for_entry(entry=entry, period=period)
+        if basis == "net":
+            if vat_rate <= 0:
+                return gross
+            factor = Decimal("1.00") + (vat_rate / Decimal("100.00"))
+            return BillingService._q2(gross / factor)
+        return gross
 
     # ---------------------------------------------------------
     # Preisermittlung für LoadEntry
@@ -986,8 +1065,23 @@ class BillingService:
                     BillingService.get_entry_vat_rate(entry)
                 )
 
+            payout_basis = None
+            payout_amount = None
+            price_source_eur = None
+            price_source_vat_rate = None
+            effective_amount = gross
+            if ku_active_for_entry:
+                payout_basis = BillingService.get_ku_credit_payout_basis_for_entry(entry=entry)
+                payout_amount = BillingService.get_ku_credit_payout_amount_for_entry(
+                    entry=entry,
+                    fallback_gross=gross,
+                )
+                effective_amount = BillingService._q2(payout_amount if payout_amount is not None else gross)
+                price_source_eur = BillingService._q2(BillingService.calculate_price_for_entry(entry))
+                price_source_vat_rate = BillingService._q2(BillingService.get_entry_vat_rate(entry))
+
             net, vat = BillingService.split_gross_into_net_and_vat(
-                gross=gross,
+                gross=effective_amount,
                 vat_rate=vat_rate
             )
 
@@ -995,11 +1089,15 @@ class BillingService:
                 InvoiceItem(
                     invoice_id=invoice.id,
                     load_entry_id=entry.id,
-                    amount=gross,
+                    amount=effective_amount,
                     vat_rate=vat_rate,
                     net_amount=net,
                     vat_amount=vat,
                     description=f"Sprung {entry.height_m} m – {entry.status_code}",
+                    price_source_eur=price_source_eur,
+                    price_source_vat_rate=price_source_vat_rate,
+                    ku_credit_payout_basis=payout_basis,
+                    ku_credit_payout_amount=payout_amount,
                 )
             )
 
