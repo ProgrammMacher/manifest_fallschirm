@@ -5,3 +5,18 @@ dist/
 __pycache__/
 *.pyc
 venv/
+
+build/
+dist/
+*.exe
+*.zip
+__pycache__/
+*.pyc
+venv/
+
+# Lokale Daten
+data/backup/*.db
+session_data/*
+logs/*
+runtime/*
+uploads/*
