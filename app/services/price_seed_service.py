@@ -100,7 +100,7 @@ class PriceSeedService:
             .all()
         )
         existing_map: Dict[Tuple[str, int], BillingPrice] = {
-            (p.status_code, int(p.height_m)): p for p in existing
+            (normalize_status_code(p.status_code), int(p.height_m)): p for p in existing
         }
 
         created = 0
@@ -170,13 +170,13 @@ class PriceSeedService:
             .filter_by(period_id=target_period_id)
             .all()
         )
-        existing_map = {(p.status_code, int(p.height_m)): p for p in existing}
+        existing_map = {(normalize_status_code(p.status_code), int(p.height_m)): p for p in existing}
 
         created = 0
         updated = 0
         with db.session.begin_nested():
             for p in src_prices:
-                key = (p.status_code, int(p.height_m))
+                key = (normalize_status_code(p.status_code), int(p.height_m))
                 if key in existing_map:
                     if overwrite:
                         existing_map[key].price_eur = p.price_eur
