@@ -140,6 +140,20 @@ def ensure_person_video_kleinunternehmer_column() -> None:
         db.session.commit()
 
 
+def ensure_person_aff_teacher_kleinunternehmer_column() -> None:
+    """
+    Fuegt person.is_aff_teacher_kleinunternehmer hinzu (idempotent), falls nicht vorhanden.
+    """
+    if not _table_exists("person"):
+        return
+
+    if not _column_exists("person", "is_aff_teacher_kleinunternehmer"):
+        db.session.execute(
+            text("ALTER TABLE person ADD COLUMN is_aff_teacher_kleinunternehmer INTEGER NOT NULL DEFAULT 0")
+        )
+        db.session.commit()
+
+
 def ensure_person_student_column() -> None:
     """
     Fuegt person.is_student hinzu (idempotent), falls nicht vorhanden.
@@ -635,6 +649,31 @@ def ensure_invoice_video_kleinunternehmer_column() -> None:
         db.session.commit()
 
 
+def ensure_invoice_aff_teacher_kleinunternehmer_column() -> None:
+    """
+    Fuegt invoice.is_aff_teacher_kleinunternehmer hinzu (idempotent), falls nicht vorhanden.
+    """
+    if not _table_exists("invoice"):
+        return
+
+    changed = False
+    if not _column_exists("invoice", "is_aff_teacher_kleinunternehmer"):
+        db.session.execute(
+            text("ALTER TABLE invoice ADD COLUMN is_aff_teacher_kleinunternehmer INTEGER NOT NULL DEFAULT 0")
+        )
+        changed = True
+
+    db.session.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_invoice_is_aff_teacher_kleinunternehmer "
+            "ON invoice (is_aff_teacher_kleinunternehmer)"
+        )
+    )
+
+    if changed:
+        db.session.commit()
+
+
 def ensure_person_newsletter_columns() -> None:
     """Fügt newsletter_opt_out + newsletter_unsubscribe_token zu person hinzu."""
     if not _table_exists("person"):
@@ -888,6 +927,7 @@ def run_startup_migrations() -> None:
     ensure_person_tandemmaster_column()
     ensure_person_tandem_kleinunternehmer_column()
     ensure_person_video_kleinunternehmer_column()
+    ensure_person_aff_teacher_kleinunternehmer_column()
     ensure_person_student_column()
     ensure_person_original_name_column()
     ensure_billing_config_waiver_text_columns()
@@ -896,6 +936,7 @@ def run_startup_migrations() -> None:
     ensure_invoice_email_audit_columns()
     ensure_invoice_tandem_kleinunternehmer_column()
     ensure_invoice_video_kleinunternehmer_column()
+    ensure_invoice_aff_teacher_kleinunternehmer_column()
     ensure_person_sepa_columns()
     ensure_invoice_payment_state_column()
     ensure_partner_verein_status_and_prices()

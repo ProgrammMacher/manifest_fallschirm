@@ -876,6 +876,12 @@ def _person_video_ku_default(person: Person | None) -> bool:
     return _parse_form_bool(getattr(person, "is_video_kleinunternehmer", None), default=False)
 
 
+def _person_aff_teacher_ku_default(person: Person | None) -> bool:
+    if not person:
+        return False
+    return _parse_form_bool(getattr(person, "is_aff_teacher_kleinunternehmer", None), default=False)
+
+
 def _is_tandemmaster_entry(entry: LoadEntry | None) -> bool:
     if not entry:
         return False
@@ -888,8 +894,14 @@ def _is_video_entry(entry: LoadEntry | None) -> bool:
     return normalize_status_code(getattr(entry, "status_code", "") or "") in VIDEO_STATUSES
 
 
+def _is_aff_teacher_entry(entry: LoadEntry | None) -> bool:
+    if not entry:
+        return False
+    return normalize_status_code(getattr(entry, "status_code", "") or "") == "Aff-Lehrer"
+
+
 def _is_ku_eligible_entry(entry: LoadEntry | None) -> bool:
-    return _is_tandemmaster_entry(entry) or _is_video_entry(entry)
+    return _is_tandemmaster_entry(entry) or _is_video_entry(entry) or _is_aff_teacher_entry(entry)
 
 
 def _is_jump_item(item: InvoiceItem | None) -> bool:
@@ -913,8 +925,14 @@ def _is_video_jump_item(item: InvoiceItem | None) -> bool:
     return _is_video_entry(getattr(item, "load_entry", None))
 
 
+def _is_aff_teacher_jump_item(item: InvoiceItem | None) -> bool:
+    if not _is_jump_item(item):
+        return False
+    return _is_aff_teacher_entry(getattr(item, "load_entry", None))
+
+
 def _is_ku_eligible_jump_item(item: InvoiceItem | None) -> bool:
-    return _is_tandemmaster_jump_item(item) or _is_video_jump_item(item)
+    return _is_tandemmaster_jump_item(item) or _is_video_jump_item(item) or _is_aff_teacher_jump_item(item)
 
 
 def _invoice_has_tandem_jump_positions(invoice: Invoice | None) -> bool:
@@ -935,8 +953,17 @@ def _invoice_has_video_jump_positions(invoice: Invoice | None) -> bool:
     return False
 
 
+def _invoice_has_aff_teacher_jump_positions(invoice: Invoice | None) -> bool:
+    if not invoice:
+        return False
+    for item in list(getattr(invoice, "items", []) or []):
+        if _is_aff_teacher_jump_item(item):
+            return True
+    return False
+
+
 def _invoice_has_ku_jump_positions(invoice: Invoice | None) -> bool:
-    return _invoice_has_tandem_jump_positions(invoice) or _invoice_has_video_jump_positions(invoice)
+    return _invoice_has_tandem_jump_positions(invoice) or _invoice_has_video_jump_positions(invoice) or _invoice_has_aff_teacher_jump_positions(invoice)
 
 
 def _invoice_totals(invoice: Invoice | None) -> tuple[Decimal, Decimal, Decimal]:
@@ -2059,13 +2086,31 @@ def persons_overview():
             if (getattr(entry, "status_code", "") or "").strip()
         }
 
-        # 1) Sprungpreise
+        # 1) Sprungpreise (Preview) – dieselbe Effektivlogik wie in /billing/person/<id>
+        default_tandem_kleinunternehmer = _person_tandem_ku_default(person)
+        default_video_kleinunternehmer = _person_video_ku_default(person)
+        default_aff_teacher_kleinunternehmer = _person_aff_teacher_ku_default(person)
+        preview_tandem_ku_enabled = bool(getattr(person, "is_tandemmaster", False)) and default_tandem_kleinunternehmer
+        preview_video_ku_enabled = bool(getattr(person, "is_video", False)) and default_video_kleinunternehmer
+        preview_aff_teacher_ku_enabled = bool(getattr(person, "is_aff_teacher", False)) and default_aff_teacher_kleinunternehmer
+
         total_jump = Decimal("0.00")
         for e in open_entries:
             try:
-                total_jump += Decimal(
-                    str(BillingService.calculate_price_for_entry(e) or "0.00")
+                is_tandemmaster_jump = BillingService._is_tandemmaster_jump_entry(e)
+                is_video_jump = BillingService._is_video_jump_entry(e)
+                is_aff_teacher_jump = BillingService._is_aff_teacher_jump_entry(e)
+                ku_active_for_entry = (
+                    (preview_tandem_ku_enabled and is_tandemmaster_jump)
+                    or (preview_video_ku_enabled and is_video_jump)
+                    or (preview_aff_teacher_ku_enabled and is_aff_teacher_jump)
                 )
+                calc = BillingService.get_jump_item_calculation(
+                    entry=e,
+                    ku_active_for_entry=ku_active_for_entry,
+                    fallback_gross=Decimal(str(BillingService.calculate_price_for_entry(e) or "0.00")),
+                )
+                total_jump += Decimal(str(calc.get("effective_amount") or "0.00"))
             except Exception:
                 pass
 
@@ -2227,8 +2272,10 @@ def person_billing(person_id):
     open_entries = BillingService.get_open_entries_for_person(person_id)
     default_tandem_kleinunternehmer = _person_tandem_ku_default(person)
     default_video_kleinunternehmer = _person_video_ku_default(person)
+    default_aff_teacher_kleinunternehmer = _person_aff_teacher_ku_default(person)
     preview_tandem_ku_enabled = bool(getattr(person, "is_tandemmaster", False)) and default_tandem_kleinunternehmer
     preview_video_ku_enabled = bool(getattr(person, "is_video", False)) and default_video_kleinunternehmer
+    preview_aff_teacher_ku_enabled = bool(getattr(person, "is_aff_teacher", False)) and default_aff_teacher_kleinunternehmer
 
     entry_rows = []
     total_jump = Decimal("0.00")
@@ -2249,18 +2296,26 @@ def person_billing(person_id):
         if day:
             days_set.add(day)
 
-        price = Decimal(str(BillingService.calculate_price_for_entry(e) or "0.00"))
-        total_jump += price
-
-        base_vat_rate = Decimal(str(BillingService.get_entry_vat_rate(e) or "0.00"))
         is_tandemmaster_jump = BillingService._is_tandemmaster_jump_entry(e)
         is_video_jump = BillingService._is_video_jump_entry(e)
+        is_aff_teacher_jump = BillingService._is_aff_teacher_jump_entry(e)
         ku_active_for_entry = (
             (preview_tandem_ku_enabled and is_tandemmaster_jump)
             or (preview_video_ku_enabled and is_video_jump)
+            or (preview_aff_teacher_ku_enabled and is_aff_teacher_jump)
         )
-        vat_rate = Decimal("0.00") if ku_active_for_entry else base_vat_rate
-        net, vat = BillingService.split_gross_into_net_and_vat(gross=price, vat_rate=vat_rate)
+        calc = BillingService.get_jump_item_calculation(
+            entry=e,
+            ku_active_for_entry=ku_active_for_entry,
+            fallback_gross=Decimal(str(BillingService.calculate_price_for_entry(e) or "0.00")),
+        )
+        price = calc["effective_amount"]
+        total_jump += price
+
+        base_vat_rate = Decimal(str(BillingService.get_entry_vat_rate(e) or "0.00"))
+        vat_rate = calc["vat_rate"]
+        net = calc["net"]
+        vat = calc["vat"]
 
         entry_rows.append({
             "entry": e,
@@ -2275,7 +2330,8 @@ def person_billing(person_id):
             "base_vat_rate": base_vat_rate,
             "is_tandemmaster_jump": is_tandemmaster_jump,
             "is_video_jump": is_video_jump,
-            "ku_eligible": bool(is_tandemmaster_jump or is_video_jump),
+            "is_aff_teacher_jump": is_aff_teacher_jump,
+            "ku_eligible": bool(is_tandemmaster_jump or is_video_jump or is_aff_teacher_jump),
             "ku_notice": bool(ku_active_for_entry),
         })
 
@@ -2504,8 +2560,10 @@ def person_billing(person_id):
         prepaid_voucher_amount=Decimal("0.00"),
         default_tandem_kleinunternehmer=default_tandem_kleinunternehmer,
         default_video_kleinunternehmer=default_video_kleinunternehmer,
+        default_aff_teacher_kleinunternehmer=default_aff_teacher_kleinunternehmer,
         preview_tandem_ku_enabled=preview_tandem_ku_enabled,
         preview_video_ku_enabled=preview_video_ku_enabled,
+        preview_aff_teacher_ku_enabled=preview_aff_teacher_ku_enabled,
         fixed_net_preview=fixed_net_preview,
         fixed_vat_preview=fixed_vat_preview,
         total_net_preview=total_net_preview,
@@ -2528,8 +2586,10 @@ def create_invoice_for_person(person_id):
     prepaid_voucher_raw = request.form.get("prepaid_voucher_amount") or ""
     person_ku_default = _person_tandem_ku_default(person)
     person_video_ku_default = _person_video_ku_default(person)
+    person_aff_teacher_ku_default = _person_aff_teacher_ku_default(person)
     ku_form_value = request.form.get("invoice_is_tandem_kleinunternehmer")
     video_ku_form_value = request.form.get("invoice_is_video_kleinunternehmer")
+    aff_teacher_ku_form_value = request.form.get("invoice_is_aff_teacher_kleinunternehmer")
     if ku_form_value is None or str(ku_form_value).strip() == "":
         is_tandem_kleinunternehmer = person_ku_default
     else:
@@ -2544,10 +2604,19 @@ def create_invoice_for_person(person_id):
             video_ku_form_value,
             default=person_video_ku_default,
         )
+    if aff_teacher_ku_form_value is None or str(aff_teacher_ku_form_value).strip() == "":
+        is_aff_teacher_kleinunternehmer = person_aff_teacher_ku_default
+    else:
+        is_aff_teacher_kleinunternehmer = _parse_form_bool(
+            aff_teacher_ku_form_value,
+            default=person_aff_teacher_ku_default,
+        )
     if not bool(getattr(person, "is_tandemmaster", False)):
         is_tandem_kleinunternehmer = False
     if not bool(getattr(person, "is_video", False)):
         is_video_kleinunternehmer = False
+    if not bool(getattr(person, "is_aff_teacher", False)):
+        is_aff_teacher_kleinunternehmer = False
 
     # Vorschau-Eingabe validieren: nur Tandem-/Mitflieger-Einträge dürfen Vorkasse/Gutschein nutzen.
     open_entries_for_precheck = BillingService.get_open_entries_for_person(person_id)
@@ -2571,6 +2640,7 @@ def create_invoice_for_person(person_id):
         prepaid_voucher_amount=parsed_prepaid,
         is_tandem_kleinunternehmer=is_tandem_kleinunternehmer,
         is_video_kleinunternehmer=is_video_kleinunternehmer,
+        is_aff_teacher_kleinunternehmer=is_aff_teacher_kleinunternehmer,
     )
 
     if not invoice:
@@ -2716,6 +2786,7 @@ def invoice_detail(invoice_id):
             invoice_payment_state_label=_invoice_payment_state_label(invoice),
             invoice_has_tandem_jump_positions=_invoice_has_tandem_jump_positions(invoice),
             invoice_has_video_jump_positions=_invoice_has_video_jump_positions(invoice),
+            invoice_has_aff_teacher_jump_positions=_invoice_has_aff_teacher_jump_positions(invoice),
             invoice_has_ku_jump_positions=_invoice_has_ku_jump_positions(invoice),
             invoice_ku_regular_vat_rates=invoice_ku_regular_vat_rates,
             invoice_dynamic_fixed_net=invoice_dynamic_fixed_net,
@@ -2920,6 +2991,10 @@ def invoice_save(invoice_id):
             request.form.get("invoice_is_video_kleinunternehmer"),
             default=bool(getattr(invoice, "is_video_kleinunternehmer", False)),
         )
+        invoice.is_aff_teacher_kleinunternehmer = _parse_form_bool(
+            request.form.get("invoice_is_aff_teacher_kleinunternehmer"),
+            default=bool(getattr(invoice, "is_aff_teacher_kleinunternehmer", False)),
+        )
         BillingService.recalculate_invoice_ku_tax(invoice)
 
     if invoice.seq_number is None:
@@ -2968,6 +3043,10 @@ def invoice_set_tandem_kleinunternehmer(invoice_id):
     invoice.is_video_kleinunternehmer = _parse_form_bool(
         request.form.get("invoice_is_video_kleinunternehmer"),
         default=bool(getattr(invoice, "is_video_kleinunternehmer", False)),
+    )
+    invoice.is_aff_teacher_kleinunternehmer = _parse_form_bool(
+        request.form.get("invoice_is_aff_teacher_kleinunternehmer"),
+        default=bool(getattr(invoice, "is_aff_teacher_kleinunternehmer", False)),
     )
     BillingService.recalculate_invoice_ku_tax(invoice)
     db.session.commit()

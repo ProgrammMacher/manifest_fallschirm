@@ -329,6 +329,15 @@
                     </select>
                 </div>
 
+                <div class="col-md-4 {% if is_aff_teacher_val != 'true' %}d-none{% endif %}" id="affTeacherKleinunternehmerWrap">
+                    <label class="form-label fw-bold">Kleinunternehmer (§ 19 UStG)</label>
+                    {% set is_aff_teacher_kleinunternehmer_val = sel('is_aff_teacher_kleinunternehmer', person.is_aff_teacher_kleinunternehmer if person else False) %}
+                    <select name="is_aff_teacher_kleinunternehmer" class="form-select">
+                        <option value="false" {% if is_aff_teacher_kleinunternehmer_val == 'false' %}selected{% endif %}>Nein</option>
+                        <option value="true"  {% if is_aff_teacher_kleinunternehmer_val == 'true' %}selected{% endif %}>Ja</option>
+                    </select>
+                </div>
+
                 <div class="col-md-4">
                     <label class="form-label fw-bold">Ablaufdatum Lehrerlizenz</label>
                     <input type="date" name="teacher_license_expires"
@@ -591,6 +600,9 @@ document.addEventListener("DOMContentLoaded", function () {
     const videoSelect = document.querySelector('select[name="is_video"]');
     const videoKleinunternehmerWrap = document.getElementById("videoKleinunternehmerWrap");
     const videoKleinunternehmerSelect = document.querySelector('select[name="is_video_kleinunternehmer"]');
+    const affTeacherSelect = document.querySelector('select[name="is_aff_teacher"]');
+    const affTeacherKleinunternehmerWrap = document.getElementById("affTeacherKleinunternehmerWrap");
+    const affTeacherKleinunternehmerSelect = document.querySelector('select[name="is_aff_teacher_kleinunternehmer"]');
     const sepaEnabledSelect = document.getElementById("sepaEnabledSelect");
     const sepaMandateDateInput = document.getElementById("sepaMandateDateInput");
     const sepaMandateDateWrap = document.getElementById("sepaMandateDateWrap");
@@ -677,6 +689,22 @@ document.addEventListener("DOMContentLoaded", function () {
     if (videoSelect) {
         videoSelect.addEventListener("change", syncVideoKleinunternehmer);
         syncVideoKleinunternehmer();
+    }
+
+    function syncAffTeacherKleinunternehmer() {
+        if (!affTeacherSelect || !affTeacherKleinunternehmerWrap || !affTeacherKleinunternehmerSelect) {
+            return;
+        }
+        const isAffTeacher = affTeacherSelect.value === "true";
+        affTeacherKleinunternehmerWrap.classList.toggle("d-none", !isAffTeacher);
+        if (!isAffTeacher) {
+            affTeacherKleinunternehmerSelect.value = "false";
+        }
+    }
+
+    if (affTeacherSelect) {
+        affTeacherSelect.addEventListener("change", syncAffTeacherKleinunternehmer);
+        syncAffTeacherKleinunternehmer();
     }
 
     function formatIbanUi(value) {

@@ -180,6 +180,7 @@ def _collect_and_validate(form):
     is_video = is_true(form.get("is_video"))
     is_video_kleinunternehmer = is_true(form.get("is_video_kleinunternehmer"))
     is_aff_teacher = is_true(form.get("is_aff_teacher"))
+    is_aff_teacher_kleinunternehmer = is_true(form.get("is_aff_teacher_kleinunternehmer"))
     is_aff_student = is_true(form.get("is_aff_student"))
 
     # Feld ist nur fuer Tandemmaster fachlich relevant.
@@ -189,6 +190,10 @@ def _collect_and_validate(form):
     # Feld ist nur fuer Video fachlich relevant.
     if not is_video:
         is_video_kleinunternehmer = False
+
+    # Feld ist nur fuer AFF-Lehrer fachlich relevant.
+    if not is_aff_teacher:
+        is_aff_teacher_kleinunternehmer = False
 
     # ---- Validierung (wie bisher, nicht strenger) ----
     if not first_name:
@@ -336,6 +341,7 @@ def _collect_and_validate(form):
         is_video=is_video,
         is_video_kleinunternehmer=is_video_kleinunternehmer,
         is_aff_teacher=is_aff_teacher,
+        is_aff_teacher_kleinunternehmer=is_aff_teacher_kleinunternehmer,
         is_aff_student=is_aff_student,
         is_teacher=is_teacher,
         teacher_license_expires=teacher_license_expires,

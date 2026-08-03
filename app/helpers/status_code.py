@@ -176,7 +176,7 @@ def status_display_label(raw: str | None) -> str:
 def is_ku_credit_payout_applicable_status(raw: str | None) -> bool:
     """Gibt an, ob ein Status die KU-Gutschrift-Basissteuerung anzeigen darf."""
     canonical = normalize_status_code(raw)
-    return canonical in {"TD", "TD-Vereins-Schirm", "Video"}
+    return canonical in {"TD", "TD-Vereins-Schirm", "Video", "Aff-Lehrer"}
 
 
 def normalize_status_code(raw: str | None) -> str:

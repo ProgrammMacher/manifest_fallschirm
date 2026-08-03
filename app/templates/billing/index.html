@@ -26,16 +26,24 @@
       margin-top: 0.2rem;
     }
 
+    .pricing-info-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      vertical-align: middle;
+      line-height: 1;
+    }
+
     .pricing-info-icon {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.125rem;
+      font-size: 1rem;
       line-height: 1;
       color: #0d6efd;
       cursor: help;
-      vertical-align: text-bottom;
-      margin-left: 0.25rem;
+      vertical-align: middle;
+      flex-shrink: 0;
     }
 
     .pricing-info-icon:hover {
@@ -348,14 +356,7 @@
             {% for h in heights %}
               <th class="text-end">{{ h }} m</th>
             {% endfor %}
-            <th class="text-end">
-              <span class="d-inline-flex align-items-center gap-1">
-                <span>Kleinunternehmer erhält</span>
-                <span class="pricing-info-icon" data-bs-toggle="tooltip" data-bs-placement="top" title="Legt fest, ob für Kleinunternehmer der hinterlegte Bruttopreis oder der daraus berechnete Nettopreis verwendet wird.&#10;&#10;Bruttopreis:&#10;Der hinterlegte Preis wird vollständig übernommen.&#10;&#10;Nettopreis:&#10;Der hinterlegte Preis wird um die MwSt. bereinigt.&#10;&#10;Die Gutschrift weist weiterhin immer 0 % MwSt. aus." tabindex="0" role="button" aria-label="Weitere Informationen zu Kleinunternehmer-Gutschrift">
-                  ⓘ
-                </span>
-              </span>
-            </th>
+            <th class="text-end">Kleinunternehmer erhält</th>
             <th class="text-end">MwSt %</th>
           </tr>
         </thead>
@@ -392,10 +393,15 @@
 
             {% if row.shows_ku_credit_payout_basis %}
             <td class="text-end">
-              <select name="ku_credit_basis_{{ code }}" class="form-select form-select-sm" style="width:150px" title="Legt fest, ob für Kleinunternehmer-Gutschriften der hinterlegte Bruttopreis oder der daraus berechnete Nettopreis verwendet wird. Die Umsatzsteuer auf der Gutschrift bleibt immer 0 %.">
-                <option value="gross" {% if row.ku_credit_payout_basis == 'gross' %}selected{% endif %}>Bruttopreis</option>
-                <option value="net" {% if row.ku_credit_payout_basis == 'net' %}selected{% endif %}>Nettopreis</option>
-              </select>
+              <span class="pricing-info-inline">
+                <select name="ku_credit_basis_{{ code }}" class="form-select form-select-sm" style="width:150px" title="Legt fest, ob für Kleinunternehmer-Gutschriften der hinterlegte Bruttopreis oder der daraus berechnete Nettopreis verwendet wird. Die Umsatzsteuer auf der Gutschrift bleibt immer 0 %.">
+                  <option value="gross" {% if row.ku_credit_payout_basis == 'gross' %}selected{% endif %}>Bruttopreis</option>
+                  <option value="net" {% if row.ku_credit_payout_basis == 'net' %}selected{% endif %}>Nettopreis</option>
+                </select>
+                <span class="pricing-info-icon" data-bs-toggle="tooltip" data-bs-placement="top" title="Legt fest, ob für Kleinunternehmer der hinterlegte Bruttopreis oder der daraus berechnete Nettopreis verwendet wird.&#10;&#10;Bruttopreis:&#10;Der hinterlegte Preis wird vollständig übernommen.&#10;&#10;Nettopreis:&#10;Der hinterlegte Preis wird um die MwSt. bereinigt.&#10;&#10;Die Gutschrift weist weiterhin immer 0 % MwSt. aus." tabindex="0" role="button" aria-label="Weitere Informationen zu Kleinunternehmer-Gutschrift">
+                  ⓘ
+                </span>
+              </span>
             </td>
             {% else %}
             <td></td>

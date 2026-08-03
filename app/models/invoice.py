@@ -180,6 +180,15 @@ class Invoice(db.Model):
         index=True,
     )
 
+    # §19 UStG-Override auf Beleg-Ebene (nur AFF-Lehrer-Sprungpositionen)
+    is_aff_teacher_kleinunternehmer = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default="0",
+        index=True,
+    )
+
     # ---------------------------------------------------------
     # Methoden
     # ---------------------------------------------------------

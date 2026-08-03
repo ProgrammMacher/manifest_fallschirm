@@ -108,7 +108,14 @@
 							<option value="true" {% if invoice.is_video_kleinunternehmer %}selected{% endif %}>Ja (nur Video-Sprung 0 % MwSt)</option>
 						</select>
 					{% endif %}
-					<div class="form-text">Ändert nur ku-fähige Sprungpositionen dieser Rechnung (Tandem/Video).</div>
+					{% if invoice_has_aff_teacher_jump_positions %}
+						<label for="draftInvoiceIsAffTeacherKleinunternehmer" class="form-label mb-1 mt-2">Kleinunternehmer AFF-Lehrer (§ 19 UStG)</label>
+						<select id="draftInvoiceIsAffTeacherKleinunternehmer" name="invoice_is_aff_teacher_kleinunternehmer" class="form-select">
+							<option value="false" {% if not invoice.is_aff_teacher_kleinunternehmer %}selected{% endif %}>Nein (Regelbesteuerung)</option>
+							<option value="true" {% if invoice.is_aff_teacher_kleinunternehmer %}selected{% endif %}>Ja (nur AFF-Lehrer-Sprung 0 % MwSt)</option>
+						</select>
+					{% endif %}
+					<div class="form-text">Ändert nur ku-fähige Sprungpositionen dieser Rechnung (Tandem/Video/AFF-Lehrer).</div>
 				{% else %}
 					<div class="small text-muted">Hinweis</div>
 					<div class="text-muted">Die ausgewählte Zahlungsart wird mit der Rechnung gespeichert.</div>
@@ -282,6 +289,13 @@
 				<select id="invoiceIsVideoKleinunternehmer" name="invoice_is_video_kleinunternehmer" class="form-select">
 					<option value="false" {% if not invoice.is_video_kleinunternehmer %}selected{% endif %}>Nein (Regelbesteuerung)</option>
 					<option value="true" {% if invoice.is_video_kleinunternehmer %}selected{% endif %}>Ja (nur Video-Sprung 0 % MwSt)</option>
+				</select>
+				{% endif %}
+				{% if invoice_has_aff_teacher_jump_positions %}
+				<label for="invoiceIsAffTeacherKleinunternehmer" class="form-label mb-1 mt-2">Kleinunternehmer AFF-Lehrer (§ 19 UStG)</label>
+				<select id="invoiceIsAffTeacherKleinunternehmer" name="invoice_is_aff_teacher_kleinunternehmer" class="form-select">
+					<option value="false" {% if not invoice.is_aff_teacher_kleinunternehmer %}selected{% endif %}>Nein (Regelbesteuerung)</option>
+					<option value="true" {% if invoice.is_aff_teacher_kleinunternehmer %}selected{% endif %}>Ja (nur AFF-Lehrer-Sprung 0 % MwSt)</option>
 				</select>
 				{% endif %}
 			</div>
@@ -719,10 +733,12 @@
 			  {% set status_code = (le.status_code or '') if le else '' %}
 			  {% set is_tandem_ku_eligible = status_code in ['TD', 'TD-Vereins-Schirm'] %}
 			  {% set is_video_ku_eligible = status_code in ['Video', 'Videomann'] %}
-			  {% set is_ku_eligible = is_tandem_ku_eligible or is_video_ku_eligible %}
+			  {% set is_aff_teacher_ku_eligible = status_code == 'Aff-Lehrer' %}
+			  {% set is_ku_eligible = is_tandem_ku_eligible or is_video_ku_eligible or is_aff_teacher_ku_eligible %}
 			  {% set is_tandem_ku_row = invoice.is_tandem_kleinunternehmer and is_tandem_ku_eligible %}
 			  {% set is_video_ku_row = invoice.is_video_kleinunternehmer and is_video_ku_eligible %}
-			  {% set is_ku_row = is_tandem_ku_row or is_video_ku_row %}
+			  {% set is_aff_teacher_ku_row = invoice.is_aff_teacher_kleinunternehmer and is_aff_teacher_ku_eligible %}
+			  {% set is_ku_row = is_tandem_ku_row or is_video_ku_row or is_aff_teacher_ku_row %}
 			  {% set row_base_vat_rate = invoice_ku_regular_vat_rates.get(item.id, (item.vat_rate or 0)) %}
 			  {% set j.net = j.net + (item.net_amount or 0) %}
 			  {% set j.vat = j.vat + (item.vat_amount or 0) %}
@@ -732,6 +748,7 @@
 				  data-ku-eligible="{{ 1 if is_ku_eligible else 0 }}"
 				  data-is-tm="{{ 1 if is_tandem_ku_eligible else 0 }}"
 				  data-is-video="{{ 1 if is_video_ku_eligible else 0 }}"
+				  data-is-aff-teacher="{{ 1 if is_aff_teacher_ku_eligible else 0 }}"
 				  data-base-vat-rate="{{ '{:.2f}'.format(row_base_vat_rate or 0).replace(',', '.') }}">
 				<td>{{ dt.strftime('%d.%m.%Y') if dt else '–' }}</td>
 				<td>{{ dt.strftime('%H:%M') if dt else '–' }}</td>
@@ -2197,13 +2214,15 @@ function parseDataNumber(raw) {
 function recalculateInvoiceKuView() {
 	const tandemKuSelect = document.getElementById('invoiceIsTandemKleinunternehmer') || document.getElementById('draftInvoiceIsTandemKleinunternehmer');
 	const videoKuSelect = document.getElementById('invoiceIsVideoKleinunternehmer') || document.getElementById('draftInvoiceIsVideoKleinunternehmer');
-	if (!tandemKuSelect && !videoKuSelect) return;
+	const affTeacherKuSelect = document.getElementById('invoiceIsAffTeacherKleinunternehmer') || document.getElementById('draftInvoiceIsAffTeacherKleinunternehmer');
+	if (!tandemKuSelect && !videoKuSelect && !affTeacherKuSelect) return;
 
 	const rows = Array.from(document.querySelectorAll('.js-invoice-jump-row'));
 	if (!rows.length) return;
 
 	const tandemKuActive = tandemKuSelect && String(tandemKuSelect.value || '').toLowerCase() === 'true';
 	const videoKuActive = videoKuSelect && String(videoKuSelect.value || '').toLowerCase() === 'true';
+	const affTeacherKuActive = affTeacherKuSelect && String(affTeacherKuSelect.value || '').toLowerCase() === 'true';
 	let jumpNet = 0;
 	let jumpVat = 0;
 
@@ -2212,7 +2231,8 @@ function recalculateInvoiceKuView() {
 		const baseVatRate = parseDataNumber(row.dataset.baseVatRate);
 		const isTm = String(row.dataset.isTm || '0') === '1';
 		const isVideo = String(row.dataset.isVideo || '0') === '1';
-		const kuActiveForRow = (tandemKuActive && isTm) || (videoKuActive && isVideo);
+		const isAffTeacher = String(row.dataset.isAffTeacher || '0') === '1';
+		const kuActiveForRow = (tandemKuActive && isTm) || (videoKuActive && isVideo) || (affTeacherKuActive && isAffTeacher);
 		const effectiveVatRate = kuActiveForRow ? 0 : baseVatRate;
 		const split = splitGrossIntoNetVat(gross, effectiveVatRate);
 
@@ -2257,6 +2277,8 @@ function bindInvoiceKuToggleRecalc() {
 		document.getElementById('draftInvoiceIsTandemKleinunternehmer'),
 		document.getElementById('invoiceIsVideoKleinunternehmer'),
 		document.getElementById('draftInvoiceIsVideoKleinunternehmer'),
+		document.getElementById('invoiceIsAffTeacherKleinunternehmer'),
+		document.getElementById('draftInvoiceIsAffTeacherKleinunternehmer'),
 	].filter(Boolean);
 
 	kuSelects.forEach((sel) => {

@@ -14,7 +14,7 @@ import io
 from flask import render_template  # ✅ Punkt 2.1: Template serverseitig rendern
 
 from sqlalchemy.orm import joinedload
-from sqlalchemy import or_  # ✅ FIX: für korrekten OR-Filter in get_active_price_period
+from sqlalchemy import or_, func  # ✅ FIX: für korrekten OR-Filter und case-insensitive Status-Lookups
 
 from app import db
 from app.models.invoice import Invoice
@@ -194,11 +194,70 @@ class BillingService:
         return BillingService._is_video_jump_entry(getattr(item, "load_entry", None))
 
     @staticmethod
+    def _is_aff_teacher_jump_entry(entry: LoadEntry | None) -> bool:
+        if not entry:
+            return False
+        return normalize_status_code(getattr(entry, "status_code", "") or "") == "Aff-Lehrer"
+
+    @staticmethod
+    def _is_aff_teacher_jump_item(item: InvoiceItem | None) -> bool:
+        if not item:
+            return False
+        desc = (getattr(item, "description", "") or "").strip()
+        if not desc.startswith("Sprung"):
+            return False
+        return BillingService._is_aff_teacher_jump_entry(getattr(item, "load_entry", None))
+
+    @staticmethod
     def _is_ku_eligible_jump_item(item: InvoiceItem | None) -> bool:
         return (
             BillingService._is_tandemmaster_jump_item(item)
             or BillingService._is_video_jump_item(item)
+            or BillingService._is_aff_teacher_jump_item(item)
         )
+
+    @staticmethod
+    def get_jump_item_calculation(
+        *,
+        entry: LoadEntry | None,
+        ku_active_for_entry: bool,
+        fallback_gross: Decimal | None = None,
+    ) -> Dict[str, Any]:
+        """Berechnet den effektiven Betrag, MwSt und KU-Gutschriftsdaten für eine Sprungposition."""
+        gross = BillingService._q2(BillingService.calculate_price_for_entry(entry)) if entry else Decimal("0.00")
+        if gross == 0 and fallback_gross is not None:
+            gross = BillingService._q2(fallback_gross)
+
+        if ku_active_for_entry:
+            vat_rate = Decimal("0.00")
+            payout_basis = BillingService.get_ku_credit_payout_basis_for_entry(entry=entry)
+            payout_amount = BillingService.get_ku_credit_payout_amount_for_entry(
+                entry=entry,
+                fallback_gross=gross,
+            )
+            effective_amount = BillingService._q2(payout_amount if payout_amount is not None else gross)
+            price_source_eur = BillingService._q2(BillingService.calculate_price_for_entry(entry)) if entry else Decimal("0.00")
+            price_source_vat_rate = BillingService._q2(BillingService.get_entry_vat_rate(entry)) if entry else Decimal("0.00")
+        else:
+            vat_rate = BillingService._q2(BillingService.get_entry_vat_rate(entry)) if entry else Decimal("0.00")
+            payout_basis = None
+            payout_amount = None
+            effective_amount = gross
+            price_source_eur = None
+            price_source_vat_rate = None
+
+        net, vat = BillingService.split_gross_into_net_and_vat(gross=effective_amount, vat_rate=vat_rate)
+        return {
+            "gross": gross,
+            "effective_amount": effective_amount,
+            "vat_rate": vat_rate,
+            "net": net,
+            "vat": vat,
+            "payout_basis": payout_basis,
+            "payout_amount": payout_amount,
+            "price_source_eur": price_source_eur,
+            "price_source_vat_rate": price_source_vat_rate,
+        }
 
     @staticmethod
     def recalculate_invoice_tandemmaster_tax(invoice: Invoice) -> None:
@@ -235,6 +294,7 @@ class BillingService:
         """
         is_tandem_ku = bool(getattr(invoice, "is_tandem_kleinunternehmer", False))
         is_video_ku = bool(getattr(invoice, "is_video_kleinunternehmer", False))
+        is_aff_teacher_ku = bool(getattr(invoice, "is_aff_teacher_kleinunternehmer", False))
 
         for item in list(getattr(invoice, "items", []) or []):
             if not BillingService._is_ku_eligible_jump_item(item):
@@ -243,40 +303,35 @@ class BillingService:
             entry = getattr(item, "load_entry", None)
             is_tandem_item = BillingService._is_tandemmaster_jump_entry(entry)
             is_video_item = BillingService._is_video_jump_entry(entry)
+            is_aff_teacher_item = BillingService._is_aff_teacher_jump_entry(entry)
             ku_active_for_item = (
                 (is_tandem_item and is_tandem_ku)
                 or (is_video_item and is_video_ku)
+                or (is_aff_teacher_item and is_aff_teacher_ku)
             )
 
             gross = BillingService._q2(Decimal(str(getattr(item, "amount", 0) or "0.00")))
+            calc = BillingService.get_jump_item_calculation(
+                entry=entry,
+                ku_active_for_entry=ku_active_for_item,
+                fallback_gross=gross,
+            )
             if ku_active_for_item:
-                vat_rate = Decimal("0.00")
-                payout_basis = BillingService.get_ku_credit_payout_basis_for_entry(entry=entry)
-                payout_amount = BillingService.get_ku_credit_payout_amount_for_entry(
-                    entry=entry,
-                    fallback_gross=gross,
-                )
-                effective_amount = BillingService._q2(payout_amount if payout_amount is not None else gross)
-                net = BillingService._q2(effective_amount)
-                vat = Decimal("0.00")
-                item.amount = effective_amount
-                item.ku_credit_payout_basis = payout_basis
-                item.ku_credit_payout_amount = payout_amount
-                item.price_source_eur = BillingService._q2(BillingService.calculate_price_for_entry(entry))
-                item.price_source_vat_rate = BillingService._q2(BillingService.get_entry_vat_rate(entry))
+                item.amount = calc["effective_amount"]
+                item.ku_credit_payout_basis = calc["payout_basis"]
+                item.ku_credit_payout_amount = calc["payout_amount"]
+                item.price_source_eur = calc["price_source_eur"]
+                item.price_source_vat_rate = calc["price_source_vat_rate"]
             else:
-                vat_rate = BillingService._q2(
-                    BillingService.get_entry_vat_rate(entry)
-                )
-                net, vat = BillingService.split_gross_into_net_and_vat(gross=gross, vat_rate=vat_rate)
+                item.amount = calc["effective_amount"]
                 item.ku_credit_payout_basis = None
                 item.ku_credit_payout_amount = None
                 item.price_source_eur = None
                 item.price_source_vat_rate = None
 
-            item.vat_rate = vat_rate
-            item.net_amount = net
-            item.vat_amount = vat
+            item.vat_rate = calc["vat_rate"]
+            item.net_amount = calc["net"]
+            item.vat_amount = calc["vat"]
 
         invoice.calculate_total()
 
@@ -309,13 +364,41 @@ class BillingService:
         if getattr(entry, "status_definition", None) and entry.status_definition.vat_rate is not None:
             return Decimal(str(entry.status_definition.vat_rate))
 
-        # 2) Fallback: query active status definition by code
-        sd = (
-            StatusDefinition.query
-            .filter_by(code=entry.status_code, is_active=True)
-            .order_by(StatusDefinition.valid_from.desc())
-            .first()
-        )
+        # 2) Fallback: query active status definition by canonical code first
+        code = normalize_status_code(getattr(entry, "status_code", "") or "")
+        sd = None
+        if code:
+            sd = (
+                StatusDefinition.query
+                .filter_by(code=code, is_active=True)
+                .order_by(StatusDefinition.valid_from.desc())
+                .first()
+            )
+
+        # 3) Fallback: also resolve case-insensitive / variant matches
+        if not sd and code:
+            sd = (
+                StatusDefinition.query
+                .filter(StatusDefinition.code.is_not(None), StatusDefinition.code != "")
+                .filter(StatusDefinition.is_active.is_(True))
+                .filter(func.upper(StatusDefinition.code) == func.upper(code))
+                .order_by(StatusDefinition.valid_from.desc())
+                .first()
+            )
+
+        # 4) Fallback: direct raw-code lookup for legacy rows
+        if not sd:
+            raw_code = getattr(entry, "status_code", "") or ""
+            if raw_code:
+                sd = (
+                    StatusDefinition.query
+                    .filter(StatusDefinition.code.is_not(None), StatusDefinition.code != "")
+                    .filter(StatusDefinition.is_active.is_(True))
+                    .filter(func.upper(StatusDefinition.code) == func.upper(raw_code))
+                    .order_by(StatusDefinition.valid_from.desc())
+                    .first()
+                )
+
         if sd and sd.vat_rate is not None:
             return Decimal(str(sd.vat_rate))
 
@@ -385,7 +468,7 @@ class BillingService:
             return "gross"
 
         code = normalize_status_code(getattr(entry, "status_code", "") or "")
-        if code not in {"TD", "TD-Vereins-Schirm", "Video"}:
+        if code not in {"TD", "TD-Vereins-Schirm", "Video", "Aff-Lehrer"}:
             return "gross"
 
         period_obj = period
@@ -427,7 +510,7 @@ class BillingService:
     ) -> Decimal:
         """Liefert den für eine Kleinunternehmer-Gutschrift auszuzahlenden Betrag."""
         gross = BillingService._q2(BillingService.calculate_price_for_entry(entry))
-        if gross <= 0 and fallback_gross is not None:
+        if gross == 0 and fallback_gross is not None:
             gross = BillingService._q2(fallback_gross)
         vat_rate = BillingService._q2(BillingService.get_entry_vat_rate(entry))
         basis = BillingService.get_ku_credit_payout_basis_for_entry(entry=entry, period=period)
@@ -1057,33 +1140,20 @@ class BillingService:
             ku_active_for_entry = (
                 (bool(getattr(invoice, "is_tandem_kleinunternehmer", False)) and BillingService._is_tandemmaster_jump_entry(entry))
                 or (bool(getattr(invoice, "is_video_kleinunternehmer", False)) and BillingService._is_video_jump_entry(entry))
+                or (bool(getattr(invoice, "is_aff_teacher_kleinunternehmer", False)) and BillingService._is_aff_teacher_jump_entry(entry))
             )
-            if ku_active_for_entry:
-                vat_rate = Decimal("0.00")
-            else:
-                vat_rate = BillingService._q2(
-                    BillingService.get_entry_vat_rate(entry)
-                )
-
-            payout_basis = None
-            payout_amount = None
-            price_source_eur = None
-            price_source_vat_rate = None
-            effective_amount = gross
-            if ku_active_for_entry:
-                payout_basis = BillingService.get_ku_credit_payout_basis_for_entry(entry=entry)
-                payout_amount = BillingService.get_ku_credit_payout_amount_for_entry(
-                    entry=entry,
-                    fallback_gross=gross,
-                )
-                effective_amount = BillingService._q2(payout_amount if payout_amount is not None else gross)
-                price_source_eur = BillingService._q2(BillingService.calculate_price_for_entry(entry))
-                price_source_vat_rate = BillingService._q2(BillingService.get_entry_vat_rate(entry))
-
-            net, vat = BillingService.split_gross_into_net_and_vat(
-                gross=effective_amount,
-                vat_rate=vat_rate
+            calc = BillingService.get_jump_item_calculation(
+                entry=entry,
+                ku_active_for_entry=ku_active_for_entry,
+                fallback_gross=gross,
             )
+            vat_rate = calc["vat_rate"]
+            payout_basis = calc["payout_basis"]
+            payout_amount = calc["payout_amount"]
+            price_source_eur = calc["price_source_eur"]
+            price_source_vat_rate = calc["price_source_vat_rate"]
+            effective_amount = calc["effective_amount"]
+            net, vat = calc["net"], calc["vat"]
 
             db.session.add(
                 InvoiceItem(
@@ -1283,6 +1353,7 @@ class BillingService:
         prepaid_voucher_amount: Decimal | None = None,
         is_tandem_kleinunternehmer: bool | None = None,
         is_video_kleinunternehmer: bool | None = None,
+        is_aff_teacher_kleinunternehmer: bool | None = None,
     ) -> Optional[Invoice]:
         # 1) Offene Sprünge prüfen (VOR Transaktion)
         open_entries = BillingService.get_open_entries_for_person(person_id)
@@ -1300,8 +1371,10 @@ class BillingService:
             person = db.session.get(Person, person_id)
             person_ku_default = bool(getattr(person, "is_tandem_kleinunternehmer", False)) if person else False
             person_video_ku_default = bool(getattr(person, "is_video_kleinunternehmer", False)) if person else False
+            person_aff_teacher_ku_default = bool(getattr(person, "is_aff_teacher_kleinunternehmer", False)) if person else False
             invoice_ku_flag = person_ku_default if is_tandem_kleinunternehmer is None else bool(is_tandem_kleinunternehmer)
             invoice_video_ku_flag = person_video_ku_default if is_video_kleinunternehmer is None else bool(is_video_kleinunternehmer)
+            invoice_aff_teacher_ku_flag = person_aff_teacher_ku_default if is_aff_teacher_kleinunternehmer is None else bool(is_aff_teacher_kleinunternehmer)
 
             # ✅ SCHUTZ: Alte Entwurfs-Rechnungen der Person entfernen (inkl. Items)
             old_drafts = Invoice.query.filter_by(
@@ -1327,6 +1400,7 @@ class BillingService:
                 billing_address_email=billing_address_email,
                 is_tandem_kleinunternehmer=invoice_ku_flag,
                 is_video_kleinunternehmer=invoice_video_ku_flag,
+                is_aff_teacher_kleinunternehmer=invoice_aff_teacher_ku_flag,
             )
             db.session.add(invoice)
 

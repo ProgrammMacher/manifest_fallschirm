@@ -68,6 +68,14 @@ class Person(db.Model):
         server_default="0",
     )
 
+    # Kleinunternehmerregelung (§19 UStG) fuer AFF-Lehrer
+    is_aff_teacher_kleinunternehmer = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default="0",
+    )
+
     # Lehrer (manuell)
     is_teacher = db.Column(db.Boolean, nullable=False, default=False, server_default="0")
     teacher_license_expires = db.Column(db.Date, nullable=True)

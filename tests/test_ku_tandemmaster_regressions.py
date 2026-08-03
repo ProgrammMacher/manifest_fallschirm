@@ -90,7 +90,15 @@ def seeded_app(tmp_path_factory):
             is_active=True,
             valid_from=datetime.utcnow(),
         )
-        db.session.add_all([sd_td, sd_verein, sd_video, sd_gast7])
+        sd_aff = StatusDefinition(
+            code="Aff-Lehrer",
+            label="AFF-Lehrer",
+            sort_order=35,
+            vat_rate=Decimal("19.00"),
+            is_active=True,
+            valid_from=datetime.utcnow(),
+        )
+        db.session.add_all([sd_td, sd_verein, sd_video, sd_gast7, sd_aff])
 
         p1 = Person(first_name="Case1", last_name="Regel", phone="111", email="c1@example.org", weight_kg=80, is_tandemmaster=True)
         p2 = Person(
@@ -127,7 +135,16 @@ def seeded_app(tmp_path_factory):
         )
         p8 = Person(first_name="Case8", last_name="VideoNachtraeglich", phone="888", email="c8@example.org", weight_kg=87, is_video=True)
         p9 = Person(first_name="Case9", last_name="Mixed7", phone="999", email="c9@example.org", weight_kg=88, is_tandemmaster=True)
-        db.session.add_all([p1, p2, p3, p4, p5, p6, p7, p8, p9])
+        p10 = Person(
+            first_name="Case10",
+            last_name="AFFKU",
+            phone="1010",
+            email="c10@example.org",
+            weight_kg=89,
+            is_aff_teacher=True,
+            is_aff_teacher_kleinunternehmer=True,
+        )
+        db.session.add_all([p1, p2, p3, p4, p5, p6, p7, p8, p9, p10])
         db.session.flush()
 
         def add_load_entry(person: Person, status_code: str, status_def: StatusDefinition, load_no: int) -> LoadEntry:
@@ -171,17 +188,21 @@ def seeded_app(tmp_path_factory):
         e8 = add_load_entry(p8, "Video", sd_video, 110)
         e9_td = add_load_entry(p9, "TD", sd_td, 111)
         e9_gast7 = add_load_entry(p9, "Gast-7", sd_gast7, 112)
+        e10_aff = add_load_entry(p10, "Aff-Lehrer", sd_aff, 113)
 
         # Offene Einträge für /billing/person/{id} Vorschau-Tests
         preview_e1 = add_load_entry(p1, "TD", sd_td, 201)
         preview_e2 = add_load_entry(p2, "TD", sd_td, 202)
         preview_e6 = add_load_entry(p6, "Video", sd_video, 203)
+        preview_e10 = add_load_entry(p10, "Aff-Lehrer", sd_aff, 204)
         preview_e1.billed = False
         preview_e1.billed_at = None
         preview_e2.billed = False
         preview_e2.billed_at = None
         preview_e6.billed = False
         preview_e6.billed_at = None
+        preview_e10.billed = False
+        preview_e10.billed_at = None
 
         def add_invoice(
             *,
@@ -264,6 +285,16 @@ def seeded_app(tmp_path_factory):
             entries_with_amounts=[(e9_td, Decimal("-75.00")), (e9_gast7, Decimal("35.00"))],
             created_at=datetime(2026, 7, 1, 18, 0, 0),
         )
+        inv10 = add_invoice(
+            person=p10,
+            seq=7010,
+            ku=False,
+            entries_with_amounts=[(e10_aff, Decimal("119.00"))],
+            created_at=datetime(2026, 7, 1, 19, 0, 0),
+        )
+        inv10.is_aff_teacher_kleinunternehmer = True
+        BillingService.recalculate_invoice_ku_tax(inv10)
+        inv10.calculate_total()
 
         db.session.commit()
 
@@ -287,6 +318,7 @@ def seeded_app(tmp_path_factory):
                     "case7": {"person_id": p7.id, "invoice_id": inv7.id, "seq": inv7.seq_number},
                     "case8": {"person_id": p8.id, "invoice_id": inv8.id, "seq": inv8.seq_number},
                     "case9": {"person_id": p9.id, "invoice_id": inv9.id, "seq": inv9.seq_number},
+                    "case10": {"person_id": p10.id, "invoice_id": inv10.id, "seq": inv10.seq_number},
                 },
             }
 
@@ -346,6 +378,240 @@ def test_ku_credit_payout_basis_is_taken_from_price_matrix_status_setting(seeded
         assert item.price_source_vat_rate == Decimal("19.00")
         assert item.ku_credit_payout_basis == "net"
         assert item.ku_credit_payout_amount == Decimal("100.00")
+
+
+def test_case_10_aff_teacher_ku_recalc_uses_zero_vat_and_payout_basis(seeded_app):
+    app = seeded_app["app"]
+    Invoice = seeded_app["models"]["Invoice"]
+    case = seeded_app["ids"]["case10"]
+
+    with app.app_context():
+        inv = Invoice.query.get(case["invoice_id"])
+        assert inv is not None
+        assert inv.is_aff_teacher_kleinunternehmer is True
+        item = inv.items[0]
+        assert _q2(item.amount) == Decimal("119.00")
+        assert _q2(item.net_amount) == Decimal("119.00")
+        assert _q2(item.vat_amount) == Decimal("0.00")
+        assert _q2(item.vat_rate) == Decimal("0.00")
+        assert item.ku_credit_payout_basis == "gross"
+
+
+def test_preview_aff_teacher_toggle_is_available_and_updates_rows(seeded_app):
+    client = seeded_app["client"]
+    case = seeded_app["ids"]["case10"]
+
+    r = client.get(f"/billing/person/{case['person_id']}")
+    assert r.status_code == 200
+    html = r.data.decode("utf-8", errors="ignore")
+
+    assert 'id="invoice_is_aff_teacher_kleinunternehmer"' in html
+    assert 'data-is-aff-teacher="' in html
+    assert 'const affTeacherKuSelect = document.getElementById("invoice_is_aff_teacher_kleinunternehmer");' in html
+
+
+def test_aff_teacher_vat_lookup_uses_normalized_status_code(seeded_app):
+    app = seeded_app["app"]
+    db = seeded_app["db"]
+
+    with app.app_context():
+        from app.models.load_entry import LoadEntry
+        from app.models.status_definition import StatusDefinition
+        from app.services.billing_service import BillingService
+
+        entry = db.session.query(LoadEntry).filter_by(status_code="Aff-Lehrer").first()
+        assert entry is not None
+
+        entry.status_definition_id = None
+        entry.status_definition = None
+        db.session.flush()
+
+        sd_upper = StatusDefinition(
+            code="AFF-LEHRER",
+            label="AFF-LEHRER",
+            sort_order=35,
+            vat_rate=Decimal("19.00"),
+            is_active=True,
+            valid_from=datetime.utcnow(),
+        )
+        db.session.add(sd_upper)
+        db.session.flush()
+
+        vat_rate = BillingService.get_entry_vat_rate(entry)
+        assert vat_rate == Decimal("19.00")
+
+
+def test_aff_teacher_vat_lookup_falls_back_to_case_insensitive_status_definition(seeded_app):
+    app = seeded_app["app"]
+    db = seeded_app["db"]
+
+    with app.app_context():
+        from app.models.load_entry import LoadEntry
+        from app.models.status_definition import StatusDefinition
+        from app.services.billing_service import BillingService
+
+        entry = db.session.query(LoadEntry).filter_by(status_code="Aff-Lehrer").first()
+        assert entry is not None
+
+        entry.status_definition_id = None
+        entry.status_definition = None
+        db.session.flush()
+
+        for existing in db.session.query(StatusDefinition).filter(StatusDefinition.code == "Aff-Lehrer").all():
+            db.session.delete(existing)
+
+        sd_upper = StatusDefinition(
+            code="AFF-LEHRER",
+            label="AFF-LEHRER",
+            sort_order=35,
+            vat_rate=Decimal("19.00"),
+            is_active=True,
+            valid_from=datetime.utcnow(),
+        )
+        db.session.add(sd_upper)
+        db.session.flush()
+
+        vat_rate = BillingService.get_entry_vat_rate(entry)
+        assert vat_rate == Decimal("19.00")
+
+
+def test_get_jump_item_calculation_keeps_negative_gross_for_ku_payout(seeded_app):
+    app = seeded_app["app"]
+    db = seeded_app["db"]
+
+    with app.app_context():
+        from app.models.billing_config import BillingPrice, BillingPricePeriod
+        from app.models.load_entry import LoadEntry
+        from app.services.billing_service import BillingService
+
+        entry = db.session.query(LoadEntry).filter_by(status_code="TD").first()
+        assert entry is not None
+
+        period = BillingPricePeriod(
+            name="Test-Periode Negativ-Gross",
+            valid_from=datetime(2026, 1, 1),
+            valid_to=None,
+        )
+        db.session.add(period)
+        db.session.flush()
+
+        db.session.add(
+            BillingPrice(
+                period_id=period.id,
+                status_code="TD",
+                height_m=4000,
+                price_eur=Decimal("-89.25"),
+                ku_credit_payout_basis="net",
+            )
+        )
+        entry.load.pricing_model_id = period.id
+        db.session.flush()
+
+        calc = BillingService.get_jump_item_calculation(
+            entry=entry,
+            ku_active_for_entry=True,
+            fallback_gross=Decimal("-63.03"),
+        )
+
+        assert calc["gross"] == Decimal("-89.25")
+        assert calc["effective_amount"] == Decimal("-75.00")
+        assert calc["net"] == Decimal("-75.00")
+        assert calc["vat"] == Decimal("0.00")
+        assert calc["vat_rate"] == Decimal("0.00")
+        assert calc["payout_basis"] == "net"
+        assert calc["payout_amount"] == Decimal("-75.00")
+
+
+def test_preview_aff_teacher_ku_uses_payout_basis_for_aff_teacher_rows(seeded_app):
+    app = seeded_app["app"]
+    db = seeded_app["db"]
+    case = seeded_app["ids"]["case10"]
+
+    with app.app_context():
+        from app.models.billing_config import BillingPrice, BillingPricePeriod
+        from app.models.load_entry import LoadEntry
+
+        entry = db.session.query(LoadEntry).filter_by(person_id=case["person_id"], status_code="Aff-Lehrer").order_by(LoadEntry.id.desc()).first()
+        assert entry is not None
+
+        period = BillingPricePeriod(
+            name="Test-Periode AFF-Preview",
+            valid_from=datetime(2026, 1, 1),
+            valid_to=None,
+        )
+        db.session.add(period)
+        db.session.flush()
+
+        db.session.add(
+            BillingPrice(
+                period_id=period.id,
+                status_code="Aff-Lehrer",
+                height_m=4000,
+                price_eur=Decimal("119.00"),
+                ku_credit_payout_basis="net",
+            )
+        )
+        entry.load.pricing_model_id = period.id
+        db.session.flush()
+        db.session.commit()
+
+        client = app.test_client()
+        r = client.get(f"/billing/person/{case['person_id']}")
+        assert r.status_code == 200
+        html = r.data.decode("utf-8", errors="ignore")
+        assert "100,00" in html
+
+
+def test_persons_overview_aff_teacher_uses_preview_payout_amount(seeded_app):
+    app = seeded_app["app"]
+    db = seeded_app["db"]
+    case = seeded_app["ids"]["case10"]
+
+    with app.app_context():
+        from app.models.billing_config import BillingPrice, BillingPricePeriod
+        from app.models.load_entry import LoadEntry
+
+        entry = db.session.query(LoadEntry).filter_by(person_id=case["person_id"], status_code="Aff-Lehrer").order_by(LoadEntry.id.desc()).first()
+        assert entry is not None
+
+        period = BillingPricePeriod(
+            name="Test-Periode AFF-Overview",
+            valid_from=datetime(2026, 1, 1),
+            valid_to=None,
+        )
+        db.session.add(period)
+        db.session.flush()
+
+        db.session.add(
+            BillingPrice(
+                period_id=period.id,
+                status_code="Aff-Lehrer",
+                height_m=4000,
+                price_eur=Decimal("119.00"),
+                ku_credit_payout_basis="net",
+            )
+        )
+        entry.load.pricing_model_id = period.id
+        db.session.flush()
+        db.session.commit()
+
+    client = app.test_client()
+    r = client.get("/billing/persons")
+    assert r.status_code == 200
+    html = r.data.decode("utf-8", errors="ignore")
+    assert "100,00" in html
+
+
+def test_invoice_detail_aff_teacher_toggle_supports_recalc(seeded_app):
+    client = seeded_app["client"]
+    case = seeded_app["ids"]["case10"]
+
+    r = client.get(f"/billing/invoice/{case['seq']}")
+    assert r.status_code == 200
+    html = r.data.decode("utf-8", errors="ignore")
+
+    assert 'id="invoiceIsAffTeacherKleinunternehmer"' in html
+    assert "const affTeacherKuSelect = document.getElementById('invoiceIsAffTeacherKleinunternehmer') || document.getElementById('draftInvoiceIsAffTeacherKleinunternehmer');" in html
 
 
 def _assert_common_endpoints(client, person_id: int, seq: int) -> None:

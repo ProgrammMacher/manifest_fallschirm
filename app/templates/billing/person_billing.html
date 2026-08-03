@@ -108,6 +108,7 @@ Abrechnung – {{ person.full_name }}
             data-base-vat-rate="{{ '{:.2f}'.format(r.base_vat_rate or 0).replace(',', '.') }}"
           data-is-tm="{{ 1 if r.is_tandemmaster_jump else 0 }}"
           data-is-video="{{ 1 if r.is_video_jump else 0 }}"
+          data-is-aff-teacher="{{ 1 if r.is_aff_teacher_jump else 0 }}"
           data-ku-eligible="{{ 1 if r.ku_eligible else 0 }}">
           <td>{{ r.date.strftime('%d.%m.%Y') if r.date else '–' }}</td>
           <td>{{ r.date.strftime('%H:%M') if r.date else '–' }}</td>
@@ -443,6 +444,17 @@ Abrechnung – {{ person.full_name }}
           </div>
           {% endif %}
 
+          {% if person.is_aff_teacher %}
+          <div class="col-md-4">
+            <label for="invoice_is_aff_teacher_kleinunternehmer" class="form-label">Kleinunternehmer (§ 19 UStG)</label>
+            <select class="form-select" id="invoice_is_aff_teacher_kleinunternehmer" name="invoice_is_aff_teacher_kleinunternehmer">
+              <option value="false" {% if not default_aff_teacher_kleinunternehmer %}selected{% endif %}>Nein (Regelbesteuerung)</option>
+              <option value="true" {% if default_aff_teacher_kleinunternehmer %}selected{% endif %}>Ja (kein USt-Ausweis für AFF-Lehrer-Sprung)</option>
+            </select>
+            <div class="form-text">Voreinstellung aus Stammdaten. Gilt nur für diese Rechnung und nur für AFF-Lehrer-Sprungpositionen.</div>
+          </div>
+          {% endif %}
+
           <div class="col-md-4">
             <label for="prepaid_voucher_amount" class="form-label">Vorkasse / Gutschein (Brutto)</label>
             <input type="text"
@@ -469,12 +481,13 @@ Abrechnung – {{ person.full_name }}
     </button>
   </form>
 
-  {% if person.is_tandemmaster or person.is_video %}
+  {% if person.is_tandemmaster or person.is_video or person.is_aff_teacher %}
   <script>
     (function () {
       const tandemKuSelect = document.getElementById("invoice_is_tandem_kleinunternehmer");
       const videoKuSelect = document.getElementById("invoice_is_video_kleinunternehmer");
-      if (!tandemKuSelect && !videoKuSelect) {
+      const affTeacherKuSelect = document.getElementById("invoice_is_aff_teacher_kleinunternehmer");
+      if (!tandemKuSelect && !videoKuSelect && !affTeacherKuSelect) {
         return;
       }
 
@@ -511,6 +524,7 @@ Abrechnung – {{ person.full_name }}
       function recalculatePreview() {
         const tandemKuActive = tandemKuSelect && String(tandemKuSelect.value || "").toLowerCase() === "true";
         const videoKuActive = videoKuSelect && String(videoKuSelect.value || "").toLowerCase() === "true";
+        const affTeacherKuActive = affTeacherKuSelect && String(affTeacherKuSelect.value || "").toLowerCase() === "true";
         let entryNetSum = 0;
         let entryVatSum = 0;
 
@@ -519,7 +533,8 @@ Abrechnung – {{ person.full_name }}
           const baseVatRate = Number(row.dataset.baseVatRate || "0") || 0;
           const isTm = String(row.dataset.isTm || "0") === "1";
           const isVideo = String(row.dataset.isVideo || "0") === "1";
-          const kuActiveForRow = (tandemKuActive && isTm) || (videoKuActive && isVideo);
+          const isAffTeacher = String(row.dataset.isAffTeacher || "0") === "1";
+          const kuActiveForRow = (tandemKuActive && isTm) || (videoKuActive && isVideo) || (affTeacherKuActive && isAffTeacher);
           const effectiveVatRate = kuActiveForRow ? 0 : baseVatRate;
           const split = splitGross(gross, effectiveVatRate);
 
@@ -554,6 +569,9 @@ Abrechnung – {{ person.full_name }}
       }
       if (videoKuSelect) {
         videoKuSelect.addEventListener("change", recalculatePreview);
+      }
+      if (affTeacherKuSelect) {
+        affTeacherKuSelect.addEventListener("change", recalculatePreview);
       }
       recalculatePreview();
     })();
