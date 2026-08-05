@@ -63,8 +63,26 @@ def _invoice_has_tandem_guest_context(invoice: Any | None) -> bool:
     return False
 
 
+def _invoice_has_deviating_billing_recipient(invoice: Any | None) -> bool:
+    if not invoice:
+        return False
+
+    return any(
+        (getattr(invoice, field_name, "") or "").strip()
+        for field_name in (
+            "billing_address_name",
+            "billing_address_street",
+            "billing_address_zip",
+            "billing_address_city",
+            "billing_address_email",
+        )
+    )
+
+
 def _invoice_allows_sepa(invoice: Any | None) -> bool:
     if not invoice:
+        return False
+    if _invoice_has_deviating_billing_recipient(invoice):
         return False
     if not _person_allows_sepa(getattr(invoice, "person", None)):
         return False

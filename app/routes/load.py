@@ -1040,6 +1040,7 @@ def api_person_search():
             Person.first_name.ilike(f"%{q}%"),
             Person.last_name.ilike(f"%{q}%"),
             Person.phone.ilike(f"%{q}%"),
+            Person.email.ilike(f"%{q}%"),
         ))
 
     persons = (
@@ -1054,6 +1055,10 @@ def api_person_search():
         {
             "id": p.id,
             "name": p.full_name,
+            "email": p.email,
+            "street_and_number": p.street_and_number,
+            "zip_code": p.zip_code,
+            "city": p.city,
             "is_member": p.is_member,
             "is_partner_verein": getattr(p, "is_partner_verein", False),
             "is_tandem_guest": p.is_tandem_guest,

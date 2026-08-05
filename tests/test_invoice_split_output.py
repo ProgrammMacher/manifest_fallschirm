@@ -4,7 +4,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.routes.billing import _finalize_invoice_for_billing, _assemble_split_preview_buckets
+from app.routes.billing import (
+    _finalize_invoice_for_billing,
+    _assemble_split_preview_buckets,
+    _sort_invoices_for_list,
+    _invoice_matches_filters,
+    _split_output_entries_and_allowed,
+)
 from app.services.billing_service import BillingService
 
 
@@ -152,3 +158,143 @@ def test_assemble_split_preview_buckets_groups_entries_by_bucket(monkeypatch):
     assert [row["entry"].id for row in buckets["buckets"]["positive"]] == [1, 3]
     assert buckets["totals"]["negative"] == Decimal("-75.00")
     assert buckets["totals"]["positive"] == Decimal("35.00")
+
+
+def test_split_output_entries_and_allowed_requires_positive_and_negative(monkeypatch):
+    entries = [SimpleNamespace(id=1), SimpleNamespace(id=2)]
+
+    def fake_get_jump_item_calculation(entry, **kwargs):
+        if entry.id == 1:
+            return {"effective_amount": Decimal("15.00")}
+        return {"effective_amount": Decimal("0.00")}
+
+    monkeypatch.setattr(BillingService, "get_jump_item_calculation", fake_get_jump_item_calculation)
+
+    grouped, allowed = _split_output_entries_and_allowed(
+        entries,
+        is_tandem_kleinunternehmer=False,
+        is_video_kleinunternehmer=False,
+        is_aff_teacher_kleinunternehmer=False,
+    )
+
+    assert allowed is False
+    assert grouped["negative"] == []
+    assert [e.id for e in grouped["positive"]] == [1, 2]
+
+
+def test_create_invoice_route_falls_back_to_single_invoice_when_split_not_allowed(app_with_temp_db, monkeypatch):
+    from app import db
+    from app.models.person import Person
+
+    app = app_with_temp_db
+    with app.app_context():
+        person = db.session.query(Person).one()
+
+    fake_entries = [SimpleNamespace(id=1)]
+    monkeypatch.setattr(
+        BillingService,
+        "get_open_entries_for_person",
+        staticmethod(lambda person_id: fake_entries),
+    )
+    monkeypatch.setattr(
+        BillingService,
+        "_split_entries_for_invoice_output",
+        staticmethod(lambda entries, **kwargs: {"negative": [], "positive": list(entries or [])}),
+    )
+
+    calls = []
+
+    def fake_create_invoice_for_person(person_id, **kwargs):
+        calls.append(kwargs.get("entries_override"))
+        return SimpleNamespace(
+            id=42,
+            seq_number=42,
+            payment_method="cash",
+            person=SimpleNamespace(
+                is_tandem_guest=False,
+                sepa_enabled=False,
+                iban=None,
+                account_holder=None,
+                sepa_mandate_date=None,
+            ),
+            items=[],
+            total_amount=Decimal("10.00"),
+            stage="draft",
+        )
+
+    monkeypatch.setattr(BillingService, "create_invoice_for_person", staticmethod(fake_create_invoice_for_person))
+
+    with app.test_client() as client:
+        response = client.post(
+            f"/billing/person/{person.id}/create_invoice",
+            data={"split_output": "1"},
+            follow_redirects=False,
+        )
+
+    assert response.status_code in (302, 303)
+    assert calls == [None]
+
+
+def test_invoice_number_sort_uses_visible_display_number():
+    inv_a = SimpleNamespace(id=100, seq_number=5, created_at=None, payment_method=None, person=None)
+    inv_b = SimpleNamespace(id=10, seq_number=50, created_at=None, payment_method=None, person=None)
+    inv_c = SimpleNamespace(id=70, seq_number=12, created_at=None, payment_method=None, person=None)
+
+    asc = _sort_invoices_for_list([inv_a, inv_b, inv_c], "inv_asc")
+    desc = _sort_invoices_for_list([inv_a, inv_b, inv_c], "inv_desc")
+
+    assert [inv.seq_number for inv in asc] == [5, 12, 50]
+    assert [inv.seq_number for inv in desc] == [50, 12, 5]
+
+
+def test_invoice_list_person_filter_uses_billing_recipient_name():
+    inv = SimpleNamespace(
+        person_id=17,
+        person=SimpleNamespace(full_name="Tandemmaster Gewerbe-Umsatzsteuer"),
+        billing_address_name="Fallschirmsportverein Zerbst",
+        items=[],
+        payment_method=None,
+        email_last_attempt_at=None,
+        email_sent_ok=False,
+        email_last_error=None,
+        email_sent_at=None,
+        email_delivery_confirmed_at=None,
+    )
+
+    filters = {
+        "invoice_source": "all",
+        "person_id": 999,
+        "person": "Fallschirmsportverein Zerbst",
+        "text": "",
+        "status": "",
+        "payment": "",
+        "email": "",
+        "content_status": "",
+    }
+
+    assert _invoice_matches_filters(inv, filters)
+
+
+def test_invoice_list_person_sort_prefers_billing_recipient_name():
+    inv_a = SimpleNamespace(
+        id=1,
+        seq_number=1,
+        created_at=None,
+        payment_method=None,
+        person=SimpleNamespace(first_name="A", last_name="Person", full_name="A Person"),
+        billing_address_name="B Empfaenger",
+    )
+    inv_b = SimpleNamespace(
+        id=2,
+        seq_number=2,
+        created_at=None,
+        payment_method=None,
+        person=SimpleNamespace(first_name="Z", last_name="Person", full_name="Z Person"),
+        billing_address_name="A Empfaenger",
+    )
+
+    asc = _sort_invoices_for_list([inv_a, inv_b], "person_asc")
+    desc = _sort_invoices_for_list([inv_a, inv_b], "person_desc")
+
+    assert [inv.id for inv in asc] == [2, 1]
+    assert [inv.id for inv in desc] == [1, 2]

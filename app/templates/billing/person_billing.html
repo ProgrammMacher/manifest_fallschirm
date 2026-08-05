@@ -478,6 +478,18 @@ Abrechnung – {{ person.full_name }}
     <div class="card mb-3">
       <div class="card-body">
         <h5 class="fw-bold mb-3">Abweichende Rechnungsanschrift (optional)</h5>
+        <div class="row g-2 mb-3">
+          <div class="col-md-6 position-relative">
+            <label for="billingRecipientLookup" class="form-label">Empfänger aus gespeicherten Personen übernehmen</label>
+            <input type="text"
+                   class="form-control"
+                   id="billingRecipientLookup"
+                   placeholder="Person suchen…"
+                   autocomplete="off">
+            <div id="billingRecipientLookupList" class="list-group position-absolute w-100" style="z-index:1000; display:none; max-height:260px; overflow:auto;"></div>
+            <div class="form-text">Übernimmt Name, Adresse und E-Mail als Vorlage. Danach frei bearbeitbar.</div>
+          </div>
+        </div>
         <div class="row g-2 mb-2">
           <div class="col-md-6">
             <label for="billing_address_name" class="form-label">Empfänger (Name/Firma)</label>
@@ -570,6 +582,82 @@ Abrechnung – {{ person.full_name }}
   {% if person.is_tandemmaster or person.is_video or person.is_aff_teacher %}
   <script>
     (function () {
+      const lookupInput = document.getElementById("billingRecipientLookup");
+      const lookupList = document.getElementById("billingRecipientLookupList");
+      const fieldName = document.getElementById("billing_address_name");
+      const fieldStreet = document.getElementById("billing_address_street");
+      const fieldZip = document.getElementById("billing_address_zip");
+      const fieldCity = document.getElementById("billing_address_city");
+      const fieldEmail = document.getElementById("billing_address_email");
+
+      if (lookupInput && lookupList) {
+        let searchTimer = null;
+
+        async function searchPersons(q) {
+          try {
+            const res = await fetch(`/loads/api/person/search?q=${encodeURIComponent(q || "")}`);
+            if (!res.ok) return [];
+            const data = await res.json();
+            return Array.isArray(data) ? data : [];
+          } catch {
+            return [];
+          }
+        }
+
+        function applyPersonToBillingAddress(person) {
+          if (fieldName) fieldName.value = (person && person.name) || "";
+          if (fieldStreet) fieldStreet.value = (person && person.street_and_number) || "";
+          if (fieldZip) fieldZip.value = (person && person.zip_code) || "";
+          if (fieldCity) fieldCity.value = (person && person.city) || "";
+          if (fieldEmail) fieldEmail.value = (person && person.email) || "";
+        }
+
+        function renderLookup(persons) {
+          lookupList.innerHTML = "";
+          if (!persons.length) {
+            lookupList.style.display = "none";
+            return;
+          }
+
+          persons.slice(0, 12).forEach((p) => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "list-group-item list-group-item-action";
+            btn.textContent = p.name || "";
+            btn.addEventListener("click", () => {
+              lookupInput.value = p.name || "";
+              applyPersonToBillingAddress(p);
+              lookupList.style.display = "none";
+            });
+            lookupList.appendChild(btn);
+          });
+
+          lookupList.style.display = "block";
+        }
+
+        lookupInput.addEventListener("input", () => {
+          const q = lookupInput.value.trim();
+          if (searchTimer) clearTimeout(searchTimer);
+
+          if (!q) {
+            lookupList.style.display = "none";
+            lookupList.innerHTML = "";
+            return;
+          }
+
+          searchTimer = setTimeout(async () => {
+            const persons = await searchPersons(q);
+            renderLookup(persons);
+          }, 120);
+        });
+
+        document.addEventListener("click", (ev) => {
+          if (ev.target === lookupInput) return;
+          if (lookupList.contains(ev.target)) return;
+          lookupList.style.display = "none";
+        });
+      }
+
       const splitHidden = document.getElementById("splitOutputHidden");
       const splitToggle = document.getElementById("splitOutputToggle");
       if (splitHidden && splitToggle) {

@@ -18,7 +18,7 @@
   {% set f_email = (filters.get('email') or '') if filters else '' %}
   {% set f_content_status = (filters.get('content_status') or '') if filters else '' %}
   {% set f_invoice_source = (filters.get('invoice_source') or 'all') if filters else 'all' %}
-  {% set f_sort = (filters.get('sort') or 'date_desc') if filters else 'date_desc' %}
+  {% set f_sort = (filters.get('sort') or 'inv_desc') if filters else 'inv_desc' %}
   {% set f_delta_scope = delta_scope|default('visible') %}
   {% set load_from = from_date|default(request.args.get('from', '')) %}
   {% set load_to = to_date|default(request.args.get('to', '')) %}
@@ -462,6 +462,7 @@
 
         {% for inv in invoices %}
           {% set inv_no = invoice_display_number(inv) %}
+          {% set inv_person_display = (inv.billing_address_name or '').strip() or inv.person.full_name %}
           {% set _content_csv = invoice_content_status_codes_csv(inv) %}
           {% set _is_manual_invoice = 'manual' in _content_csv.split(',') %}
           {% set inv_label = inv.created_at.strftime('%Y') ~ ('-manuell #' if _is_manual_invoice else '-Sprünge #') ~ inv_no %}
@@ -519,10 +520,11 @@
 
           <tr class="invoice-row"
               data-inv-id="{{ inv.id }}"
+              data-inv-no="{{ inv_no }}"
               data-person-id="{{ inv.person.id }}"
-              data-person="{{ inv.person.full_name|lower }}"
-              data-person-sort="{{ (inv.person.last_name ~ ' ' ~ inv.person.first_name)|lower }}"
-              data-search="{{ (inv_label ~ ' ' ~ inv.person.full_name ~ ' ' ~ pm_label)|lower }}"
+              data-person="{{ inv_person_display|lower }}"
+              data-person-sort="{{ inv_person_display|lower }}"
+              data-search="{{ (inv_label ~ ' ' ~ inv_person_display ~ ' ' ~ pm_label)|lower }}"
               data-status="{{ pstate }}"
               data-payment="{{ pm }}"
               data-prepaid="{{ prepaid_amount }}"
@@ -549,7 +551,7 @@
 
             <td><strong>{{ inv_label }}</strong></td>
             <td>
-              {{ inv.person.full_name }}
+              {{ inv_person_display }}
               {% if _is_manual_invoice %}
                 <span class="badge bg-dark ms-1">Manuell</span>
               {% endif %}
@@ -1050,7 +1052,7 @@
     if (sortKey === "email" && sortDir === "asc") return "email_asc";
     if (sortKey === "content_status" && sortDir === "asc") return "content_status_asc";
     if (sortKey === "content_status" && sortDir === "desc") return "content_status_desc";
-    return "date_desc";
+    return "inv_desc";
   }
 
   function syncSortSelectToCurrentMode() {
@@ -1176,7 +1178,7 @@
 
   function getSortValue(row) {
     switch (sortKey) {
-      case "inv_id":  return Number(row.dataset.invId || 0);
+      case "inv_id":  return Number(row.dataset.invNo || row.dataset.invId || 0);
       case "person":  return (row.dataset.personSort || row.dataset.person || "");
       case "date":    return Number(row.dataset.date || 0);
       case "amount":  return Number(row.dataset.amount || 0);
@@ -1396,7 +1398,7 @@
     if (mode === "content_status_asc")  { sortKey = "content_status"; sortDir = "asc";  return; }
     if (mode === "content_status_desc") { sortKey = "content_status"; sortDir = "desc"; return; }
 
-    sortKey = "date";
+    sortKey = "inv_id";
     sortDir = "desc";
   }
 
@@ -1441,7 +1443,7 @@
       const rowContentStatus = "," + (row.dataset.contentStatus || "") + ",";
 
       const matchPerson =
-        (pid && rowPid === pid) ||
+        (pid && (rowPid === pid || (!!personText && rowPerson.includes(personText)))) ||
         (!pid && (!personText || rowPerson.includes(personText)));
 
       const matchText   = !text   || rowSearch.includes(text);
@@ -1614,8 +1616,8 @@
     if (filterBillableContentStatus) filterBillableContentStatus.value = "";
     if (sortBillableBy) sortBillableBy.value = "name_asc";
 
-    selectSort.value = "date_desc";
-    sortKey = "date";
+    selectSort.value = "inv_desc";
+    sortKey = "inv_id";
     sortDir = "desc";
 
     closeAutocomplete();

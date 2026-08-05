@@ -692,9 +692,9 @@ def _parse_invoice_list_filters(args) -> dict:
     if content_status not in allowed_content_status:
         content_status = ""
 
-    sort = (args.get("sort") or "date_desc").strip()
+    sort = (args.get("sort") or "inv_desc").strip()
     if sort not in allowed_sort:
-        sort = "date_desc"
+        sort = "inv_desc"
 
     invoice_source = (args.get("invoice_source") or "all").strip().lower()
     if invoice_source not in allowed_invoice_source:
@@ -928,6 +928,23 @@ def _assemble_split_preview_buckets(entries, *, preview_tandem_ku_enabled: bool,
         totals[bucket] += preview_row["effective_amount"]
 
     return {"buckets": buckets, "totals": totals}
+
+
+def _split_output_entries_and_allowed(
+    entries,
+    *,
+    is_tandem_kleinunternehmer: bool,
+    is_video_kleinunternehmer: bool,
+    is_aff_teacher_kleinunternehmer: bool,
+) -> tuple[dict[str, list[LoadEntry]], bool]:
+    split_entries = BillingService._split_entries_for_invoice_output(
+        entries,
+        is_tandem_kleinunternehmer=is_tandem_kleinunternehmer,
+        is_video_kleinunternehmer=is_video_kleinunternehmer,
+        is_aff_teacher_kleinunternehmer=is_aff_teacher_kleinunternehmer,
+    )
+    split_allowed = bool(split_entries.get("negative")) and bool(split_entries.get("positive"))
+    return split_entries, split_allowed
 
 
 def _parse_form_bool(value, *, default: bool = False) -> bool:
@@ -1284,6 +1301,16 @@ def _billable_person_content_status_codes(person: Person | None, entries: list[L
 
     return codes
 
+
+def _invoice_list_person_display(invoice: Invoice | None) -> str:
+    if not invoice:
+        return ""
+    recipient = (getattr(invoice, "billing_address_name", None) or "").strip()
+    if recipient:
+        return recipient
+    person = getattr(invoice, "person", None)
+    return ((person.full_name or "") if person else "").strip()
+
 def _invoice_matches_filters(invoice: Invoice, filters: dict | None) -> bool:
     if not filters:
         return True
@@ -1298,7 +1325,7 @@ def _invoice_matches_filters(invoice: Invoice, filters: dict | None) -> bool:
     content_status = filters.get("content_status") or ""
 
     person = getattr(invoice, "person", None)
-    person_name = (person.full_name if person else "").casefold()
+    person_name = _invoice_list_person_display(invoice).casefold()
 
     has_manual_items = False
     has_load_items = False
@@ -1315,7 +1342,8 @@ def _invoice_matches_filters(invoice: Invoice, filters: dict | None) -> bool:
 
     if person_id is not None:
         if getattr(invoice, "person_id", None) != person_id:
-            return False
+            if not person_query or person_query not in person_name:
+                return False
     elif person_query and person_query not in person_name:
         return False
 
@@ -1347,7 +1375,7 @@ def _invoice_matches_filters(invoice: Invoice, filters: dict | None) -> bool:
             invoice_label = f"{invoice.created_at.strftime('%Y')}-Sprünge #{_invoice_display_number(invoice)}"
         search_text = " ".join([
             invoice_label,
-            person.full_name if person else "",
+            _invoice_list_person_display(invoice),
             _invoice_payment_label(getattr(invoice, "payment_method", None)),
         ]).casefold()
         if text_query not in search_text:
@@ -1389,7 +1417,7 @@ def _billable_row_matches_filters(row: dict, filters: dict | None) -> bool:
 
 
 def _sort_invoices_for_list(invoices: list[Invoice], sort_mode: str) -> list[Invoice]:
-    sort_mode = (sort_mode or "date_desc").strip()
+    sort_mode = (sort_mode or "inv_desc").strip()
 
     def _invoice_sort_state(inv: Invoice) -> str:
         return (getattr(inv, "payment_state", "") or "").strip().lower()
@@ -1447,24 +1475,18 @@ def _sort_invoices_for_list(invoices: list[Invoice], sort_mode: str) -> list[Inv
     if sort_mode == "pay_desc":
         return sorted(invoices, key=lambda inv: (inv.payment_method or ""), reverse=True)
     if sort_mode == "inv_asc":
-        return sorted(invoices, key=lambda inv: getattr(inv, "id", 0))
+        return sorted(invoices, key=lambda inv: _invoice_display_number_for_detail(inv))
     if sort_mode == "inv_desc":
-        return sorted(invoices, key=lambda inv: getattr(inv, "id", 0), reverse=True)
+        return sorted(invoices, key=lambda inv: _invoice_display_number_for_detail(inv), reverse=True)
     if sort_mode == "person_asc":
         return sorted(
             invoices,
-            key=lambda inv: (
-                ((inv.person.last_name or "") + " " + (inv.person.first_name or "")).casefold()
-                if inv.person else ""
-            ),
+            key=lambda inv: _invoice_list_person_display(inv).casefold(),
         )
     if sort_mode == "person_desc":
         return sorted(
             invoices,
-            key=lambda inv: (
-                ((inv.person.last_name or "") + " " + (inv.person.first_name or "")).casefold()
-                if inv.person else ""
-            ),
+            key=lambda inv: _invoice_list_person_display(inv).casefold(),
             reverse=True,
         )
     if sort_mode == "email_asc":
@@ -1518,7 +1540,7 @@ def _build_invoice_filter_labels(filters: dict | None) -> list[str]:
         labels.append(f"E-Mail: {email_map.get(filters['email'], filters['email'])}")
     if filters.get("content_status"):
         labels.append(f"Inhaltsstatus: {_invoice_content_status_label(filters['content_status'])}")
-    if (filters.get("sort") or "date_desc") != "date_desc":
+    if (filters.get("sort") or "inv_desc") != "inv_desc":
         labels.append(f"Sortierung: {filters['sort']}")
     return labels
 
@@ -2294,6 +2316,12 @@ def persons_overview():
             "amount": total_jump + rent_total + orga_total,
             "main_status": main_status,
             "secondary_statuses": secondary_statuses,
+            "split_output_allowed": _split_output_entries_and_allowed(
+                open_entries,
+                is_tandem_kleinunternehmer=preview_tandem_ku_enabled,
+                is_video_kleinunternehmer=preview_video_ku_enabled,
+                is_aff_teacher_kleinunternehmer=preview_aff_teacher_ku_enabled,
+            )[1],
         })
 
     reverse = direction == "desc"
@@ -2720,16 +2748,38 @@ def create_invoice_for_person(person_id):
     created_invoices = []
 
     if split_output:
-        split_entries = BillingService._split_entries_for_invoice_output(
+        split_entries, split_output_allowed = _split_output_entries_and_allowed(
             open_entries_for_precheck,
             is_tandem_kleinunternehmer=is_tandem_kleinunternehmer,
             is_video_kleinunternehmer=is_video_kleinunternehmer,
             is_aff_teacher_kleinunternehmer=is_aff_teacher_kleinunternehmer,
         )
-        for bucket_name in ("negative", "positive"):
-            bucket_entries = split_entries.get(bucket_name, [])
-            if not bucket_entries:
-                continue
+        if split_output_allowed:
+            for bucket_name in ("negative", "positive"):
+                bucket_entries = split_entries.get(bucket_name, [])
+                if not bucket_entries:
+                    continue
+                invoice = BillingService.create_invoice_for_person(
+                    person_id,
+                    billing_address_name=billing_address_name,
+                    billing_address_street=billing_address_street,
+                    billing_address_zip=billing_address_zip,
+                    billing_address_city=billing_address_city,
+                    billing_address_email=billing_address_email,
+                    prepaid_voucher_amount=parsed_prepaid,
+                    is_tandem_kleinunternehmer=is_tandem_kleinunternehmer,
+                    is_video_kleinunternehmer=is_video_kleinunternehmer,
+                    is_aff_teacher_kleinunternehmer=is_aff_teacher_kleinunternehmer,
+                    entries_override=bucket_entries,
+                    clear_existing_drafts=False,
+                )
+                if invoice:
+                    if not (getattr(invoice, "payment_method", "") or "").strip() and _invoice_allows_sepa(invoice):
+                        invoice.payment_method = "sepa"
+                    _finalize_invoice_for_billing(invoice)
+                    created_invoices.append(invoice)
+            db.session.commit()
+        else:
             invoice = BillingService.create_invoice_for_person(
                 person_id,
                 billing_address_name=billing_address_name,
@@ -2741,15 +2791,12 @@ def create_invoice_for_person(person_id):
                 is_tandem_kleinunternehmer=is_tandem_kleinunternehmer,
                 is_video_kleinunternehmer=is_video_kleinunternehmer,
                 is_aff_teacher_kleinunternehmer=is_aff_teacher_kleinunternehmer,
-                entries_override=bucket_entries,
-                clear_existing_drafts=False,
             )
             if invoice:
                 if not (getattr(invoice, "payment_method", "") or "").strip() and _invoice_allows_sepa(invoice):
                     invoice.payment_method = "sepa"
-                _finalize_invoice_for_billing(invoice)
                 created_invoices.append(invoice)
-        db.session.commit()
+            split_output = False
     else:
         invoice = BillingService.create_invoice_for_person(
             person_id,
@@ -4660,7 +4707,7 @@ def _build_invoice_list_context(
 
     if filters:
         invoices = [inv for inv in invoices if _invoice_matches_filters(inv, filters)]
-        invoices = _sort_invoices_for_list(invoices, filters.get("sort") or "date_desc")
+        invoices = _sort_invoices_for_list(invoices, filters.get("sort") or "inv_desc")
 
     invoices_for_delta = invoices if delta_scope == "visible" else invoices_all
 

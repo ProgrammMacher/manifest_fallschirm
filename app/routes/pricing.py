@@ -781,29 +781,33 @@ def save_prices():
         return redirect(url_for("pricing.pricing_matrix"))
 
     # -----------------------------------------------------
-    # 1) SAFETY-GUARD:
-    #    Preismodell darf nicht geändert werden,
-    #    wenn es bereits von Rechnungen verwendet wird
-    # -----------------------------------------------------
-    try:
-        conflicts = _find_used_price_conflicts(period_id, request.form)
-        if conflicts:
-            flash(
-                "Preise für "
-                + ", ".join(conflicts)
-                + " wurden schon für die Rechnungserstellung verwendet. "
-                "Lege eine neue Preismatrix (Kopie) an.",
-                "danger",
-            )
-            return redirect(url_for("pricing.pricing_matrix", period_id=period_id))
-    except Exception:
-        # konservativ: Guard nicht blockierend, falls Feld/Join noch nicht existiert
-        pass
-
-    # -----------------------------------------------------
-    # 2) Status-Codes aus dem Formular
+    # 1) Status-Codes aus dem Formular
     # -----------------------------------------------------
     status_codes = request.form.getlist("status_code")
+
+    used_price_tokens: Set[str] = set()
+    used_vat_codes: Set[str] = set()
+    orga_is_locked = False
+    locked_labels: List[str] = []
+    seen_locked_labels: Set[str] = set()
+
+    try:
+        used_price_tokens = _used_price_key_tokens(period_id)
+        used_vat_codes = _used_vat_status_codes(period_id)
+        orga_is_locked = _orga_price_is_used_by_invoices(period_id)
+    except Exception:
+        # konservativ: Feldsperren nicht blockierend, falls Feld/Join noch nicht existiert
+        used_price_tokens = set()
+        used_vat_codes = set()
+        orga_is_locked = False
+
+    statuses = _active_status_defs_canonical()
+
+    def _remember_locked(label: str) -> None:
+        if label in seen_locked_labels:
+            return
+        seen_locked_labels.add(label)
+        locked_labels.append(label)
 
     try:
         with db.session.begin_nested():
@@ -825,8 +829,17 @@ def save_prices():
                     .order_by(StatusDefinition.valid_from.desc())
                     .first()
                 )
+                old_vat = (
+                    Decimal(str(sd.vat_rate))
+                    if sd is not None and sd.vat_rate is not None
+                    else Decimal("0.00")
+                )
                 if sd:
-                    sd.vat_rate = vat_val
+                    if vat_val != old_vat and code in used_vat_codes:
+                        label = _clean_label(code, sd.label or code)
+                        _remember_locked(f"MwSt für {label}")
+                    else:
+                        sd.vat_rate = vat_val
 
                 # Preise je Höhe
                 if is_ku_credit_payout_applicable_status(code):
@@ -841,6 +854,7 @@ def save_prices():
                         request.form.get(f"price_{code}_{h}"),
                         default=Decimal("0.00"),
                     )
+                    token = f"{code}|{int(h)}"
 
                     bp = (
                         BillingPrice.query
@@ -851,6 +865,25 @@ def save_prices():
                         )
                         .first()
                     )
+                    old_price = (
+                        Decimal(str(bp.price_eur))
+                        if bp is not None and bp.price_eur is not None
+                        else Decimal("0.00")
+                    )
+                    old_basis = (
+                        (bp.ku_credit_payout_basis or "gross").strip().lower()
+                        if bp is not None
+                        else "gross"
+                    )
+
+                    is_locked_change = token in used_price_tokens and (
+                        price_val != old_price or payout_basis != old_basis
+                    )
+
+                    if is_locked_change:
+                        _remember_locked(_format_price_conflict_label(code, int(h), statuses))
+                        continue
+
                     if bp:
                         bp.price_eur = price_val
                         bp.ku_credit_payout_basis = payout_basis
@@ -916,50 +949,60 @@ def save_prices():
             # =================================================
             # 7) ORGA-KONFIGURATION (billing_orga_config)
             # =================================================
+            old_orga_amount = Decimal(str(_load_orga_for_period(period_id).get("amount") or "0.00"))
             orga_amount = _dec(request.form.get("orga_fee_eur"), default=Decimal("0.00"))
             orga_mode = (request.form.get("orga_fee_mode") or "period").strip()
             vat_strategy = (request.form.get("orga_fee_vat_strategy") or "max_status").strip()
 
-            _upsert_orga_cfg_db(
-                period_id=period_id,
-                amount=orga_amount,
-                mode=orga_mode,
-                vat_strategy=vat_strategy,
-            )
-
-            # Perioden-Default (Fallback)
-            period = BillingPricePeriod.query.get(period_id)
-            if period:
-                period.orga_fee_eur = orga_amount
-                period.orga_fee_mode = orga_mode
-                period.orga_fee_vat_strategy = vat_strategy
-
-            # Legacy: BillingPrice(status_code="Orga", height_m=0)
-            bp_orga = (
-                BillingPrice.query
-                .filter_by(
-                    period_id=period_id,
-                    status_code="Orga",
-                    height_m=0,
-                )
-                .first()
-            )
-            if bp_orga:
-                bp_orga.price_eur = orga_amount
+            if orga_amount != old_orga_amount and orga_is_locked:
+                _remember_locked("Orga – Organisationspauschale")
             else:
-                db.session.add(
-                    BillingPrice(
+                _upsert_orga_cfg_db(
+                    period_id=period_id,
+                    amount=orga_amount,
+                    mode=orga_mode,
+                    vat_strategy=vat_strategy,
+                )
+
+                # Perioden-Default (Fallback)
+                period = BillingPricePeriod.query.get(period_id)
+                if period:
+                    period.orga_fee_eur = orga_amount
+                    period.orga_fee_mode = orga_mode
+                    period.orga_fee_vat_strategy = vat_strategy
+
+                # Legacy: BillingPrice(status_code="Orga", height_m=0)
+                bp_orga = (
+                    BillingPrice.query
+                    .filter_by(
                         period_id=period_id,
                         status_code="Orga",
                         height_m=0,
-                        price_eur=orga_amount,
                     )
+                    .first()
                 )
+                if bp_orga:
+                    bp_orga.price_eur = orga_amount
+                else:
+                    db.session.add(
+                        BillingPrice(
+                            period_id=period_id,
+                            status_code="Orga",
+                            height_m=0,
+                            price_eur=orga_amount,
+                        )
+                    )
 
             # =================================================
             # 8) COMMIT
             # =================================================
             db.session.commit()
+            if locked_labels:
+                flash(
+                    "Folgende bereits verwendete Felder wurden nicht gespeichert: "
+                    + ", ".join(locked_labels),
+                    "warning",
+                )
             flash("Preismatrix gespeichert.", "success")
 
     except Exception as e:
