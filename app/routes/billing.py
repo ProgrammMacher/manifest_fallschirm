@@ -428,6 +428,16 @@ def _invoice_display_number(invoice: Invoice) -> int:
     return int(getattr(invoice, "id", 0) or 0)
 
 
+def _invoice_document_label(invoice: Invoice | None) -> str:
+    try:
+        total_amount = Decimal(str(getattr(invoice, "total_amount", 0) or 0))
+    except Exception:
+        total_amount = Decimal("0.00")
+    if total_amount < Decimal("0.00"):
+        return "Gutschrift"
+    return "Rechnung"
+
+
 def _next_free_invoice_seq(used_numbers: set[int]) -> int:
     candidate = 1
     while candidate in used_numbers:
@@ -468,6 +478,22 @@ def _draft_virtual_display_numbers() -> dict[int, int]:
         used_numbers.add(next_number)
 
     return virtual_map
+
+
+def _finalize_invoice_for_billing(invoice: Invoice) -> None:
+    """Finalisiert eine Rechnung wie der normale Save-Pfad."""
+    if invoice.seq_number is None:
+        invoice.seq_number = _invoice_display_number_for_detail(invoice)
+
+    invoice.stage = "final"
+
+    for item in getattr(invoice, "items", []) or []:
+        le = getattr(item, "load_entry", None)
+        if le is not None:
+            le.billed = True
+            le.billed_at = now_berlin().replace(tzinfo=None)
+
+    db.session.flush()
 
 
 def _invoice_display_number_for_detail(invoice: Invoice) -> int:
@@ -856,6 +882,52 @@ def _invoice_split_payment_label(invoice: Invoice | None) -> str:
             return f"{onsite_label} + Vorkasse / Gutschein"
         return "Vorkasse / Gutschein"
     return onsite_label
+
+
+def _assemble_split_preview_buckets(entries, *, preview_tandem_ku_enabled: bool, preview_video_ku_enabled: bool, preview_aff_teacher_ku_enabled: bool) -> dict:
+    buckets = {"negative": [], "positive": []}
+    totals = {"negative": Decimal("0.00"), "positive": Decimal("0.00")}
+
+    for entry in list(entries or []):
+        try:
+            ku_active_for_entry = bool(
+                (preview_tandem_ku_enabled and BillingService._is_tandemmaster_jump_entry(entry))
+                or (preview_video_ku_enabled and BillingService._is_video_jump_entry(entry))
+                or (preview_aff_teacher_ku_enabled and BillingService._is_aff_teacher_jump_entry(entry))
+            )
+            calc = BillingService.get_jump_item_calculation(
+                entry=entry,
+                ku_active_for_entry=ku_active_for_entry,
+                fallback_gross=Decimal(str(BillingService.calculate_price_for_entry(entry) or "0.00")),
+            )
+            effective_amount = Decimal(str(calc.get("effective_amount") or "0.00"))
+            preview_row = {
+                "entry": entry,
+                "effective_amount": effective_amount,
+                "net": Decimal(str(calc.get("net") or "0.00")),
+                "vat": Decimal(str(calc.get("vat") or "0.00")),
+                "vat_rate": Decimal(str(calc.get("vat_rate") or "0.00")),
+                "ku_active": ku_active_for_entry,
+            }
+        except Exception:
+            preview_row = {
+                "entry": entry,
+                "effective_amount": Decimal("0.00"),
+                "net": Decimal("0.00"),
+                "vat": Decimal("0.00"),
+                "vat_rate": Decimal("0.00"),
+                "ku_active": False,
+            }
+
+        if preview_row["effective_amount"] < Decimal("0.00"):
+            bucket = "negative"
+        else:
+            bucket = "positive"
+
+        buckets[bucket].append(preview_row)
+        totals[bucket] += preview_row["effective_amount"]
+
+    return {"buckets": buckets, "totals": totals}
 
 
 def _parse_form_bool(value, *, default: bool = False) -> bool:
@@ -2525,6 +2597,16 @@ def person_billing(person_id):
     total_preview = total_jump + rent_total + orga_total
     prepaid_allowed = _entries_allow_prepaid_voucher(open_entries)
 
+    split_preview = _assemble_split_preview_buckets(
+        open_entries,
+        preview_tandem_ku_enabled=preview_tandem_ku_enabled,
+        preview_video_ku_enabled=preview_video_ku_enabled,
+        preview_aff_teacher_ku_enabled=preview_aff_teacher_ku_enabled,
+    )
+    split_negative_total = split_preview["totals"]["negative"]
+    split_positive_total = split_preview["totals"]["positive"]
+    split_preview_beleg_count = int(split_negative_total != Decimal("0.00")) + int(split_positive_total != Decimal("0.00"))
+
     # Netto/MwSt Summen (optional für Anzeige)
     fixed_net_preview = (
         sum(rl["net"] for rl in rent_lines)
@@ -2556,6 +2638,10 @@ def person_billing(person_id):
         orga_lines=orga_lines,
         days_sorted=days_sorted,
         total_preview=total_preview,
+        split_preview_negative=split_negative_total,
+        split_preview_positive=split_positive_total,
+        split_preview_beleg_count=split_preview_beleg_count,
+        split_preview_buckets=split_preview["buckets"],
         prepaid_allowed=prepaid_allowed,
         prepaid_voucher_amount=Decimal("0.00"),
         default_tandem_kleinunternehmer=default_tandem_kleinunternehmer,
@@ -2630,28 +2716,70 @@ def create_invoice_for_person(person_id):
         flash(prepaid_error, "warning")
         return redirect(url_for("billing.person_billing", person_id=person_id))
 
-    invoice = BillingService.create_invoice_for_person(
-        person_id,
-        billing_address_name=billing_address_name,
-        billing_address_street=billing_address_street,
-        billing_address_zip=billing_address_zip,
-        billing_address_city=billing_address_city,
-        billing_address_email=billing_address_email,
-        prepaid_voucher_amount=parsed_prepaid,
-        is_tandem_kleinunternehmer=is_tandem_kleinunternehmer,
-        is_video_kleinunternehmer=is_video_kleinunternehmer,
-        is_aff_teacher_kleinunternehmer=is_aff_teacher_kleinunternehmer,
-    )
+    split_output = _parse_form_bool(request.form.get("split_output"), default=False)
+    created_invoices = []
 
-    if not invoice:
+    if split_output:
+        split_entries = BillingService._split_entries_for_invoice_output(
+            open_entries_for_precheck,
+            is_tandem_kleinunternehmer=is_tandem_kleinunternehmer,
+            is_video_kleinunternehmer=is_video_kleinunternehmer,
+            is_aff_teacher_kleinunternehmer=is_aff_teacher_kleinunternehmer,
+        )
+        for bucket_name in ("negative", "positive"):
+            bucket_entries = split_entries.get(bucket_name, [])
+            if not bucket_entries:
+                continue
+            invoice = BillingService.create_invoice_for_person(
+                person_id,
+                billing_address_name=billing_address_name,
+                billing_address_street=billing_address_street,
+                billing_address_zip=billing_address_zip,
+                billing_address_city=billing_address_city,
+                billing_address_email=billing_address_email,
+                prepaid_voucher_amount=parsed_prepaid,
+                is_tandem_kleinunternehmer=is_tandem_kleinunternehmer,
+                is_video_kleinunternehmer=is_video_kleinunternehmer,
+                is_aff_teacher_kleinunternehmer=is_aff_teacher_kleinunternehmer,
+                entries_override=bucket_entries,
+                clear_existing_drafts=False,
+            )
+            if invoice:
+                if not (getattr(invoice, "payment_method", "") or "").strip() and _invoice_allows_sepa(invoice):
+                    invoice.payment_method = "sepa"
+                _finalize_invoice_for_billing(invoice)
+                created_invoices.append(invoice)
+        db.session.commit()
+    else:
+        invoice = BillingService.create_invoice_for_person(
+            person_id,
+            billing_address_name=billing_address_name,
+            billing_address_street=billing_address_street,
+            billing_address_zip=billing_address_zip,
+            billing_address_city=billing_address_city,
+            billing_address_email=billing_address_email,
+            prepaid_voucher_amount=parsed_prepaid,
+            is_tandem_kleinunternehmer=is_tandem_kleinunternehmer,
+            is_video_kleinunternehmer=is_video_kleinunternehmer,
+            is_aff_teacher_kleinunternehmer=is_aff_teacher_kleinunternehmer,
+        )
+        if invoice:
+            if not (getattr(invoice, "payment_method", "") or "").strip() and _invoice_allows_sepa(invoice):
+                invoice.payment_method = "sepa"
+            created_invoices.append(invoice)
+
+    if not created_invoices:
         flash("Keine offenen Sprünge für diese Person.", "warning")
         return redirect(url_for("billing.person_billing", person_id=person_id))
 
-    if not (getattr(invoice, "payment_method", "") or "").strip() and _invoice_allows_sepa(invoice):
-        invoice.payment_method = "sepa"
+    if split_output:
+        flash(f"{len(created_invoices)} Belege wurden erstellt.", "success")
+        if len(created_invoices) == 1:
+            return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number(created_invoices[0])))
+        return redirect(url_for("billing.invoice_list"))
 
     flash("Rechnung wurde erstellt.", "success")
-    return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number(invoice)))
+    return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number(created_invoices[0])))
 
 
 # ---------------------------------------------------------
@@ -2674,8 +2802,10 @@ def invoice_detail(invoice_id):
         billing_config = BillingConfig.query.first()
         invoice_display_number = _invoice_display_number_for_detail(invoice)
 
+        invoice_doc_label = _invoice_document_label(invoice)
         invoice_purpose = _build_invoice_payment_purpose(
             invoice,
+            doc_label=invoice_doc_label,
             invoice_number=invoice_display_number,
         )
 
@@ -2997,18 +3127,7 @@ def invoice_save(invoice_id):
         )
         BillingService.recalculate_invoice_ku_tax(invoice)
 
-    if invoice.seq_number is None:
-        # Bei Entwürfen die gleiche Anzeige-/Vorschaunummer als finale Nummer übernehmen.
-        invoice.seq_number = _invoice_display_number_for_detail(invoice)
-
-    invoice.stage = "final"
-
-    # ✅ JETZT erst wirklich abrechnen
-    for item in invoice.items:
-        le = getattr(item, "load_entry", None)
-        if le:
-            le.billed = True
-            le.billed_at = now_berlin().replace(tzinfo=None)
+    _finalize_invoice_for_billing(invoice)
 
     db.session.commit()
 

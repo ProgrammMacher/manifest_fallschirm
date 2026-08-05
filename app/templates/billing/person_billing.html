@@ -23,12 +23,17 @@ Abrechnung – {{ person.full_name }}
     </div>
   </div>
 
-  <!-- Toggle Netto / MwSt -->
-  <div class="d-flex justify-content-end align-items-center mb-3">
+  <div class="d-flex justify-content-end align-items-center gap-3 mb-3">
     <div class="form-check form-switch">
       <input class="form-check-input" type="checkbox" id="toggleNetVat" checked>
       <label class="form-check-label" for="toggleNetVat">
         Netto &amp; MwSt anzeigen
+      </label>
+    </div>
+    <div class="form-check form-switch">
+      <input class="form-check-input" type="checkbox" id="splitOutputToggle" name="split_output" value="1" {% if split_preview_beleg_count > 1 %}checked{% endif %}>
+      <label class="form-check-label" for="splitOutputToggle">
+        Getrennte Belege
       </label>
     </div>
   </div>
@@ -56,10 +61,17 @@ Abrechnung – {{ person.full_name }}
 
   <!-- Toggle Logic -->
   <script>
-    (function () {
+    document.addEventListener("DOMContentLoaded", function () {
       const root = document.getElementById("personBillingRoot");
       const cb = document.getElementById("toggleNetVat");
+      const splitToggle = document.getElementById("splitOutputToggle");
+      const normalPreviewPane = document.getElementById("normalPreviewPane");
+      const splitPreviewPane = document.getElementById("splitPreviewPane");
       const key = "person_billing_show_netvat";
+
+      if (!root || !cb) {
+        return;
+      }
 
       const saved = localStorage.getItem(key);
       if (saved === "0") {
@@ -76,7 +88,18 @@ Abrechnung – {{ person.full_name }}
           localStorage.setItem(key, "0");
         }
       });
-    })();
+
+      if (splitToggle && normalPreviewPane && splitPreviewPane) {
+        const syncSplitPreview = () => {
+          const active = splitToggle.checked;
+          normalPreviewPane.style.display = active ? "none" : "block";
+          splitPreviewPane.style.display = active ? "block" : "none";
+          splitToggle.value = active ? "1" : "0";
+        };
+        splitToggle.addEventListener("change", syncSplitPreview);
+        syncSplitPreview();
+      }
+    });
   </script>
 
   {% if entry_rows and entry_rows|length > 0 %}
@@ -160,11 +183,12 @@ Abrechnung – {{ person.full_name }}
 
     <h5 class="fw-bold mb-3">Vorschau – Inhalt der Rechnung</h5>
 
-    <!-- Sprünge – Teilsumme -->
-    <div class="d-flex justify-content-end fw-bold mb-2">
-      Sprünge gesamt:&nbsp;
-      {{ "{:,.2f}".format(total_jump).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
-    </div>
+    <div id="normalPreviewPane">
+      <!-- Sprünge – Teilsumme -->
+      <div class="d-flex justify-content-end fw-bold mb-2">
+        Sprünge gesamt:&nbsp;
+        {{ "{:,.2f}".format(total_jump).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+      </div>
 
     {% if rent_lines %}
     <h5 class="fw-bold mt-4">Schirmmiete</h5>
@@ -365,30 +389,91 @@ Abrechnung – {{ person.full_name }}
     <hr>
 
 
-<!-- Gesamtbetrag – rechtsbündig -->
-<div class="d-flex justify-content-end">
-  <div class="text-end">
-    <div class="fw-bold fs-5">
-      Gesamt (Brutto):
-      {{ "{:,.2f}".format(total_preview).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+      <!-- Gesamtbetrag – rechtsbündig -->
+      <div class="d-flex justify-content-end">
+        <div class="text-end">
+          <div class="fw-bold fs-5">
+            Gesamt (Brutto):
+            {{ "{:,.2f}".format(total_preview).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+          </div>
+
+          <div class="text-muted col-netvat-foot">
+            Netto:
+            <span id="previewTotalNet">{{ "{:,.2f}".format(total_net_preview).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span> €
+            &nbsp;·&nbsp;
+            MwSt:
+            <span id="previewTotalVat">{{ "{:,.2f}".format(total_vat_preview).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span> €
+          </div>
+
+          <small class="text-muted">
+            Vorschau – verbindlich wird erst bei Rechnungserstellung.
+          </small>
+        </div>
+      </div>
     </div>
 
-    <div class="text-muted col-netvat-foot">
-      Netto:
-      <span id="previewTotalNet">{{ "{:,.2f}".format(total_net_preview).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span> €
-      &nbsp;·&nbsp;
-      MwSt:
-      <span id="previewTotalVat">{{ "{:,.2f}".format(total_vat_preview).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span> €
+    <div id="splitPreviewPane" style="display:none">
+      <div class="alert alert-info py-2 mb-3">
+        <strong>Getrennte Belege aktiv</strong>
+        <div class="mt-1">
+          Gutschrift: {{ "{:,.2f}".format(split_preview_negative).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+        </div>
+        <div>
+          Rechnung: {{ "{:,.2f}".format(split_preview_positive).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+        </div>
+        <div>
+          Saldo: {{ "{:,.2f}".format(total_preview).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+        </div>
+        <div class="small">Es werden {{ split_preview_beleg_count }} Belege erzeugt.</div>
+      </div>
+
+      <div class="row g-3 mb-3">
+        <div class="col-md-6">
+          <div class="border rounded p-3">
+            <h6 class="fw-bold mb-2">Gutschrift</h6>
+            {% if split_preview_buckets.negative %}
+            <ul class="mb-0 small">
+              {% for row in split_preview_buckets.negative %}
+              <li>
+                {{ row.entry.status_code | status_label }}
+                {% if row.entry.load and row.entry.load.load_number %}· Load {{ row.entry.load.load_number }}{% endif %}
+                · {{ "{:,.2f}".format(row.effective_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+              </li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <div class="text-muted small">Keine Positionen.</div>
+            {% endif %}
+            <div class="mt-3 pt-2 border-top fw-bold {% if split_preview_negative < 0 %}text-danger{% else %}text-dark{% endif %}">
+              Summe Gutschrift: {{ "{:+,.2f}".format(split_preview_negative).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="border rounded p-3">
+            <h6 class="fw-bold mb-2">Rechnung</h6>
+            {% if split_preview_buckets.positive %}
+            <ul class="mb-0 small">
+              {% for row in split_preview_buckets.positive %}
+              <li>
+                {{ row.entry.status_code | status_label }}
+                {% if row.entry.load and row.entry.load.load_number %}· Load {{ row.entry.load.load_number }}{% endif %}
+                · {{ "{:,.2f}".format(row.effective_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+              </li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <div class="text-muted small">Keine Positionen.</div>
+            {% endif %}
+            <div class="mt-3 pt-2 border-top fw-bold text-dark">
+              Summe Rechnung: {{ "{:+,.2f}".format(split_preview_positive).replace(',', 'X').replace('.', ',').replace('X', '.') }} €
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <small class="text-muted">
-      Vorschau – verbindlich wird erst bei Rechnungserstellung.
-    </small>
-  </div>
-</div>
-
-
-  <!-- Formular für abweichende Rechnungsanschrift und E-Mail -->
+    <!-- Formular für abweichende Rechnungsanschrift und E-Mail -->
   <form method="post" action="{{ url_for('billing.create_invoice_for_person', person_id=person.id) }}" class="mb-4">
     <div class="card mb-3">
       <div class="card-body">
@@ -473,6 +558,7 @@ Abrechnung – {{ person.full_name }}
         </div>
       </div>
     </div>
+    <input type="hidden" name="split_output" id="splitOutputHidden" value="0">
     <button type="submit"
             class="btn btn-primary"
             onclick="return confirm('Rechnung für {{ person.full_name }} erzeugen?');">
@@ -484,6 +570,16 @@ Abrechnung – {{ person.full_name }}
   {% if person.is_tandemmaster or person.is_video or person.is_aff_teacher %}
   <script>
     (function () {
+      const splitHidden = document.getElementById("splitOutputHidden");
+      const splitToggle = document.getElementById("splitOutputToggle");
+      if (splitHidden && splitToggle) {
+        const syncSplitHidden = () => {
+          splitHidden.value = splitToggle.checked ? "1" : "0";
+        };
+        splitToggle.addEventListener("change", syncSplitHidden);
+        syncSplitHidden();
+      }
+
       const tandemKuSelect = document.getElementById("invoice_is_tandem_kleinunternehmer");
       const videoKuSelect = document.getElementById("invoice_is_video_kleinunternehmer");
       const affTeacherKuSelect = document.getElementById("invoice_is_aff_teacher_kleinunternehmer");

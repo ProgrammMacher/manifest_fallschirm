@@ -1343,6 +1343,46 @@ class BillingService:
     # Rechnung erzeugen
     # =========================================================
     @staticmethod
+    def _split_entries_for_invoice_output(
+        entries: List[LoadEntry] | None,
+        *,
+        is_tandem_kleinunternehmer: bool = False,
+        is_video_kleinunternehmer: bool = False,
+        is_aff_teacher_kleinunternehmer: bool = False,
+    ) -> Dict[str, List[LoadEntry]]:
+        negative_entries: List[LoadEntry] = []
+        positive_entries: List[LoadEntry] = []
+
+        for entry in list(entries or []):
+            try:
+                is_tandemmaster_jump = BillingService._is_tandemmaster_jump_entry(entry)
+                is_video_jump = BillingService._is_video_jump_entry(entry)
+                is_aff_teacher_jump = BillingService._is_aff_teacher_jump_entry(entry)
+                ku_active_for_entry = (
+                    (is_tandem_kleinunternehmer and is_tandemmaster_jump)
+                    or (is_video_kleinunternehmer and is_video_jump)
+                    or (is_aff_teacher_kleinunternehmer and is_aff_teacher_jump)
+                )
+                calc = BillingService.get_jump_item_calculation(
+                    entry=entry,
+                    ku_active_for_entry=ku_active_for_entry,
+                    fallback_gross=Decimal(str(BillingService.calculate_price_for_entry(entry) or "0.00")),
+                )
+                amount = Decimal(str(calc.get("effective_amount") or "0.00"))
+            except Exception:
+                amount = Decimal("0.00")
+
+            if amount < Decimal("0.00"):
+                negative_entries.append(entry)
+            else:
+                positive_entries.append(entry)
+
+        return {
+            "negative": negative_entries,
+            "positive": positive_entries,
+        }
+
+    @staticmethod
     def create_invoice_for_person(
         person_id: int,
         billing_address_name: str = None,
@@ -1354,9 +1394,11 @@ class BillingService:
         is_tandem_kleinunternehmer: bool | None = None,
         is_video_kleinunternehmer: bool | None = None,
         is_aff_teacher_kleinunternehmer: bool | None = None,
+        entries_override: Optional[List[LoadEntry]] = None,
+        clear_existing_drafts: bool = True,
     ) -> Optional[Invoice]:
         # 1) Offene Sprünge prüfen (VOR Transaktion)
-        open_entries = BillingService.get_open_entries_for_person(person_id)
+        open_entries = list(entries_override or BillingService.get_open_entries_for_person(person_id))
         if not open_entries:
             return None
 
@@ -1376,16 +1418,17 @@ class BillingService:
             invoice_video_ku_flag = person_video_ku_default if is_video_kleinunternehmer is None else bool(is_video_kleinunternehmer)
             invoice_aff_teacher_ku_flag = person_aff_teacher_ku_default if is_aff_teacher_kleinunternehmer is None else bool(is_aff_teacher_kleinunternehmer)
 
-            # ✅ SCHUTZ: Alte Entwurfs-Rechnungen der Person entfernen (inkl. Items)
-            old_drafts = Invoice.query.filter_by(
-                person_id=person_id,
-                stage="draft"
-            ).all()
-            for draft in old_drafts:
-                # Alle zugehörigen InvoiceItems löschen
-                for item in getattr(draft, "items", []):
-                    db.session.delete(item)
-                db.session.delete(draft)
+            if clear_existing_drafts:
+                # ✅ SCHUTZ: Alte Entwurfs-Rechnungen der Person entfernen (inkl. Items)
+                old_drafts = Invoice.query.filter_by(
+                    person_id=person_id,
+                    stage="draft"
+                ).all()
+                for draft in old_drafts:
+                    # Alle zugehörigen InvoiceItems löschen
+                    for item in getattr(draft, "items", []):
+                        db.session.delete(item)
+                    db.session.delete(draft)
 
             # ✅ Neue Entwurfs-Rechnung erzeugen
             invoice = Invoice(

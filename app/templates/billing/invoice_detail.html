@@ -1,8 +1,9 @@
 {% extends "base.html" %}
+{% set invoice_doc_label = invoice_doc_label|default('Rechnung') %}
 {% set inv_label = invoice.created_at.strftime('%Y') ~ '-Sprünge #' ~ (invoice_display_number if invoice_display_number is defined else (invoice.seq_number if invoice.seq_number is not none else invoice.id)) ~ ' – ' ~ (invoice.person.full_name if invoice.person else '') %}
 
-{% block title %}Rechnung {{ inv_label }}{% endblock %}
-{% block header %}Rechnung {{ inv_label }}{% endblock %}
+{% block title %}{{ invoice_doc_label }} {{ inv_label }}{% endblock %}
+{% block header %}{{ invoice_doc_label }} {{ inv_label }}{% endblock %}
 
 {% block content %}
 

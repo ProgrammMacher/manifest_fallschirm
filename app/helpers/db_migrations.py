@@ -176,6 +176,9 @@ def ensure_partner_verein_status_and_prices() -> None:
     if not _table_exists("status_definitions"):
         return
 
+    if not _column_exists("status_definitions", "vat_rate"):
+        return
+
     # Aktive Statusdefinitionen ergänzen/angleichen
     db.session.execute(
         text(
@@ -427,16 +430,32 @@ def ensure_billing_config_partner_canopy_rent_columns() -> None:
         changed = True
 
     if changed:
-        db.session.execute(
-            text(
-                """
-                UPDATE billing_config
-                   SET canopy_rent_partner_member_eur = COALESCE(canopy_rent_member_eur, canopy_rent_partner_member_eur),
-                       canopy_rent_partner_member_max_count = COALESCE(canopy_rent_member_max_count, canopy_rent_partner_member_max_count),
-                       canopy_rent_partner_member_vat_rate = COALESCE(canopy_rent_member_vat_rate, canopy_rent_partner_member_vat_rate)
-                """
+        if (
+            _column_exists("billing_config", "canopy_rent_member_eur")
+            and _column_exists("billing_config", "canopy_rent_member_max_count")
+            and _column_exists("billing_config", "canopy_rent_member_vat_rate")
+        ):
+            db.session.execute(
+                text(
+                    """
+                    UPDATE billing_config
+                       SET canopy_rent_partner_member_eur = COALESCE(canopy_rent_member_eur, canopy_rent_partner_member_eur),
+                           canopy_rent_partner_member_max_count = COALESCE(canopy_rent_member_max_count, canopy_rent_partner_member_max_count),
+                           canopy_rent_partner_member_vat_rate = COALESCE(canopy_rent_member_vat_rate, canopy_rent_partner_member_vat_rate)
+                    """
+                )
             )
-        )
+        else:
+            db.session.execute(
+                text(
+                    """
+                    UPDATE billing_config
+                       SET canopy_rent_partner_member_eur = COALESCE(canopy_rent_partner_member_eur, 15),
+                           canopy_rent_partner_member_max_count = COALESCE(canopy_rent_partner_member_max_count, 3),
+                           canopy_rent_partner_member_vat_rate = COALESCE(canopy_rent_partner_member_vat_rate, 7)
+                    """
+                )
+            )
         db.session.commit()
 
 
