@@ -1695,12 +1695,16 @@ class BillingService:
             _invoice_allows_prepaid_voucher,
             _invoice_onsite_amount,
             _invoice_prepaid_amount,
+            _invoice_payment_state,
+            _invoice_payment_state_label,
             _invoice_split_payment_label,
         )
 
         prepaid_voucher_amount = _invoice_prepaid_amount(invoice)
         onsite_amount = _invoice_onsite_amount(invoice)
         prepaid_allowed = _invoice_allows_prepaid_voucher(invoice)
+        invoice_payment_state_code = _invoice_payment_state(invoice)
+        invoice_payment_state_label = _invoice_payment_state_label(invoice)
 
         # --------------------------------------------------
         # Bilder als Data-URIs laden (für PDF-Kompatibilität)
@@ -1767,6 +1771,8 @@ class BillingService:
             prepaid_voucher_amount=prepaid_voucher_amount,
             onsite_amount=onsite_amount,
             prepaid_allowed=prepaid_allowed,
+            invoice_payment_state_code=invoice_payment_state_code,
+            invoice_payment_state_label=invoice_payment_state_label,
             invoice_split_payment_label=_invoice_split_payment_label,
             invoice_has_tandem_jump_positions=has_tandem_ku_rows,
             invoice_has_video_jump_positions=has_video_ku_rows,
