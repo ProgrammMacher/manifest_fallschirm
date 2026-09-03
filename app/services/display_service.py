@@ -94,3 +94,17 @@ def build_display_qr_url() -> tuple[bool, str]:
         return False, ""
 
     return True, display_url
+
+
+def build_local_qr_url(path: str) -> tuple[bool, str]:
+    """Baut eine QR-Ziel-URL unter derselben LAN-Herkunft wie das Display."""
+    qr_available, display_url = build_display_qr_url()
+    if not qr_available or not display_url:
+        return False, ""
+
+    try:
+        parsed = urlparse(display_url)
+        normalized_path = "/" + path.lstrip("/")
+        return True, f"{parsed.scheme}://{parsed.netloc}{normalized_path}"
+    except Exception:
+        return False, ""

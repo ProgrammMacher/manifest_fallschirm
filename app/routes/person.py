@@ -3,17 +3,41 @@
 import os
 import re
 from io import BytesIO
+import base64
+import hashlib
+from datetime import timedelta
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
+from flask import Blueprint, jsonify, render_template, request, redirect, url_for, flash, send_file
 from sqlalchemy import or_, and_, case
 from datetime import datetime, date
 from app import db
 from app.models.person import Person  # WICHTIG: Model kommt aus models/, nicht hier definieren!
+from app.models.mobile_person_intake_draft import (
+    MOBILE_PERSON_INTAKE_MODE_JUMPER,
+    MOBILE_PERSON_INTAKE_STATUS_OPEN,
+    MOBILE_PERSON_INTAKE_STATUS_SUBMITTED,
+    MobilePersonIntakeDraft,
+)
 from app.models.billing_config import BillingConfig
 from app.security.admin import admin_required, is_admin
 from app.services.billing_service import _image_to_data_uri
+from app.services.display_service import build_local_qr_url, generate_qr_png_buffer
+from app.services.mobile_person_intake_service import (
+    accept_draft,
+    create_draft,
+    expire_draft_if_needed,
+    generate_submission_token,
+    get_draft_by_submission_token,
+    list_open_drafts,
+    submit_draft,
+)
 
 bp_person = Blueprint("person", __name__, url_prefix="/persons")
+
+
+@bp_person.app_template_filter("b64encode")
+def b64encode(value: bytes) -> str:
+    return base64.b64encode(value).decode("ascii")
 
 
 # ---------------------------------------------------------
@@ -465,6 +489,9 @@ def list_persons():
         primary = primary.desc()
 
     persons = query.order_by(primary, Person.last_name.asc(), Person.first_name.asc()).all()
+    mobile_draft_count = MobilePersonIntakeDraft.query.filter_by(
+        status=MOBILE_PERSON_INTAKE_STATUS_SUBMITTED
+    ).count()
 
     return render_template(
         "person/list.html",
@@ -474,15 +501,204 @@ def list_persons():
         filters_list=filters_list,
         sort=sort,
         direction=direction,
+        mobile_draft_count=mobile_draft_count,
+    )
+
+
+@bp_person.route("/mobile-drafts")
+def mobile_drafts():
+    return render_template(
+        "person/mobile_drafts.html",
+        drafts=list_open_drafts(),
+    )
+
+
+@bp_person.route("/mobile-drafts/count")
+def mobile_draft_count():
+    count = MobilePersonIntakeDraft.query.filter_by(
+        status=MOBILE_PERSON_INTAKE_STATUS_SUBMITTED
+    ).count()
+    return jsonify({"count": count})
+
+
+@bp_person.route("/mobile-intake", methods=["GET", "POST"])
+def mobile_intake_new():
+    if request.method == "GET":
+        return render_template("person/mobile_intake_new.html")
+
+    mode = (request.form.get("mode") or "").strip()
+    if mode not in {"tandem_guest", "jumper"}:
+        flash("Bitte wählen Sie Tandemgast oder Springer aus.", "danger")
+        return render_template("person/mobile_intake_new.html"), 400
+
+    token, token_hash = generate_submission_token()
+    draft = create_draft(
+        mode=mode,
+        submission_token_hash=token_hash,
+        expires_at=datetime.utcnow() + timedelta(minutes=60),
+    )
+    qr_available, mobile_url = build_local_qr_url(
+        f"persons/mobile-intake/{token}"
+    )
+    if not qr_available:
+        flash("Keine lokale Netzwerkadresse für den QR-Code verfügbar.", "danger")
+        return redirect(url_for("person.mobile_drafts"))
+
+    return render_template(
+        "person/mobile_intake_qr.html",
+        draft=draft,
+        mobile_url=mobile_url,
+        qr_image=generate_qr_png_buffer(mobile_url, size=320).getvalue(),
+    )
+
+
+def _mobile_intake_values(form, mode: str) -> tuple[dict, dict]:
+    values = {
+        "first_name": (form.get("first_name") or "").strip(),
+        "last_name": (form.get("last_name") or "").strip(),
+        "phone": normalize_phone(form.get("phone")),
+        "email": normalize_email(form.get("email")),
+        "street_and_number": (form.get("street_and_number") or "").strip(),
+        "zip_code": (form.get("zip_code") or "").strip(),
+        "city": (form.get("city") or "").strip(),
+        "emergency_name": (form.get("emergency_name") or "").strip(),
+        "emergency_relation": (form.get("emergency_relation") or "").strip(),
+        "emergency_phone": normalize_phone(form.get("emergency_phone")),
+    }
+    errors = {}
+    for field_name, label in (("first_name", "Vorname"), ("last_name", "Nachname")):
+        if not values[field_name]:
+            errors[field_name] = f"{label} ist erforderlich."
+    if len(values["phone"]) < 5:
+        errors["phone"] = "Bitte geben Sie eine gültige Telefonnummer ein."
+
+    for field_name, label, minimum, maximum in (
+        ("weight_kg", "Gewicht", 20, 200),
+        ("height_cm", "Größe", 140, 220),
+    ):
+        raw_value = (form.get(field_name) or "").strip()
+        if not raw_value:
+            values[field_name] = None
+            if field_name == "weight_kg":
+                errors[field_name] = "Gewicht ist erforderlich."
+        elif not raw_value.isdigit() or not minimum <= int(raw_value) <= maximum:
+            errors[field_name] = f"{label} muss zwischen {minimum} und {maximum} liegen."
+        else:
+            values[field_name] = int(raw_value)
+
+    for field_name in ("birthdate", "license_valid_until"):
+        raw_value = (form.get(field_name) or "").strip()
+        values[field_name] = None
+        if raw_value:
+            parsed_value = parse_date_flexible(raw_value)
+            if parsed_value is None:
+                errors[field_name] = "Bitte geben Sie ein gültiges Datum ein."
+            else:
+                values[field_name] = parsed_value
+
+    if values["email"] and "@" not in values["email"]:
+        errors["email"] = "Bitte geben Sie eine gültige E-Mail-Adresse ein."
+
+    if mode == MOBILE_PERSON_INTAKE_MODE_JUMPER:
+        values.update(
+            {
+                "license_number": (form.get("license_number") or "").strip(),
+                "insurance_provider": (form.get("insurance_provider") or "").strip(),
+                "insurance_number": (form.get("insurance_number") or "").strip(),
+                "is_member": is_true(form.get("is_member")),
+                "is_partner_verein": is_true(form.get("is_partner_verein")),
+            }
+        )
+    return values, errors
+
+
+@bp_person.route("/mobile-intake/<token>", methods=["GET", "POST"])
+def mobile_intake_form(token):
+    draft = get_draft_by_submission_token(token)
+    if draft is None:
+        return render_template("person/mobile_intake_unavailable.html"), 404
+    if expire_draft_if_needed(draft):
+        return render_template("person/mobile_intake_unavailable.html", expired=True), 410
+    if draft.status != MOBILE_PERSON_INTAKE_STATUS_OPEN:
+        return render_template("person/mobile_intake_unavailable.html"), 410
+
+    if request.method == "POST":
+        values, field_errors = _mobile_intake_values(request.form, draft.mode)
+        if field_errors:
+            return render_template(
+                "person/mobile_intake_form.html",
+                draft=draft,
+                field_errors=field_errors,
+                form_data=request.form,
+            ), 400
+        try:
+            submit_draft(
+                draft,
+                values=values,
+                idempotency_key_hash=hashlib.sha256(token.encode("utf-8")).hexdigest(),
+            )
+        except ValueError:
+            return render_template("person/mobile_intake_unavailable.html", expired=True), 410
+        return render_template("person/mobile_intake_success.html")
+
+    return render_template(
+        "person/mobile_intake_form.html",
+        draft=draft,
+        field_errors={},
+        form_data=None,
     )
 
 
 # ---------------------------------------------------------
 # CRUD – Neue Person anlegen
 # ---------------------------------------------------------
+def _mobile_draft_form_data(draft: MobilePersonIntakeDraft) -> dict:
+    def date_value(value):
+        return value.strftime("%Y-%m-%d") if value else ""
+
+    return {
+        "mobile_draft_id": str(draft.id),
+        "first_name": draft.first_name or "",
+        "last_name": draft.last_name or "",
+        "phone": draft.phone or "",
+        "email": draft.email or "",
+        "weight_kg": str(draft.weight_kg) if draft.weight_kg is not None else "",
+        "height_cm": str(draft.height_cm) if draft.height_cm is not None else "",
+        "birthdate": date_value(draft.birthdate),
+        "street_and_number": draft.street_and_number or "",
+        "zip_code": draft.zip_code or "",
+        "city": draft.city or "",
+        "emergency_name": draft.emergency_name or "",
+        "emergency_relation": draft.emergency_relation or "",
+        "emergency_phone": draft.emergency_phone or "",
+        "license_number": draft.license_number or "",
+        "insurance_provider": draft.insurance_provider or "",
+        "insurance_number": draft.insurance_number or "",
+        "is_member": "true" if draft.is_member else "false",
+        "is_partner_verein": "true" if draft.is_partner_verein else "false",
+        "is_tandem_guest": "true" if draft.mode == "tandem_guest" else "false",
+    }
+
+
+def _submitted_mobile_draft(draft_id: str | None) -> MobilePersonIntakeDraft | None:
+    try:
+        draft_id_int = int(draft_id or "")
+    except (TypeError, ValueError):
+        return None
+    draft = db.session.get(MobilePersonIntakeDraft, draft_id_int)
+    if draft and draft.status == MOBILE_PERSON_INTAKE_STATUS_SUBMITTED:
+        return draft
+    return None
+
+
 @bp_person.route("/new", methods=["GET", "POST"])
 def new_person():
     if request.method == "POST":
+        mobile_draft = _submitted_mobile_draft(request.form.get("mobile_draft_id"))
+        if request.form.get("mobile_draft_id") and mobile_draft is None:
+            flash("Dieser mobile Entwurf kann nicht mehr übernommen werden.", "warning")
+            return redirect(url_for("person.mobile_drafts"))
+
         data, field_errors, warnings = _collect_and_validate(request.form)
 
         if field_errors:
@@ -496,20 +712,43 @@ def new_person():
             )
 
         p = Person(**data)
-        db.session.add(p)
-        db.session.commit()
-        if _ensure_sepa_mandate_reference(p):
+        try:
+            db.session.add(p)
+            db.session.flush()
+            _ensure_sepa_mandate_reference(p)
+            if mobile_draft is not None:
+                accept_draft(
+                    mobile_draft,
+                    reviewed_by="Manifest-Benutzer",
+                    person_id=p.id,
+                    commit=False,
+                )
             db.session.commit()
+        except Exception:
+            db.session.rollback()
+            flash("Person konnte nicht angelegt werden.", "danger")
+            return render_template(
+                "person/form.html",
+                person=Person(**data),
+                field_errors={},
+                form_data=request.form,
+                format_iban_for_display=_format_iban_for_display,
+            ), 500
         for warning in warnings:
             flash(warning, "warning")
         flash("Person erfolgreich angelegt.", "success")
         return redirect(url_for("person.list_persons"))
 
+    mobile_draft = _submitted_mobile_draft(request.args.get("mobile_draft_id"))
+    if request.args.get("mobile_draft_id") and mobile_draft is None:
+        flash("Dieser mobile Entwurf kann nicht mehr übernommen werden.", "warning")
+        return redirect(url_for("person.mobile_drafts"))
+
     return render_template(
         "person/form.html",
         person=None,
         field_errors={},
-        form_data=None,
+        form_data=_mobile_draft_form_data(mobile_draft) if mobile_draft else None,
         format_iban_for_display=_format_iban_for_display,
     )
 

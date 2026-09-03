@@ -32,6 +32,10 @@
       enctype="multipart/form-data"
       novalidate>
 
+{% if not is_edit and form_data and form_data.get('mobile_draft_id') %}
+<input type="hidden" name="mobile_draft_id" value="{{ form_data.get('mobile_draft_id') }}">
+{% endif %}
+
 <div class="container">
 
     <!-- ARCHIV-HINWEIS -->
@@ -162,73 +166,93 @@
                     {% endif %}
                 </div>
 
-                <div class="col-md-6">
-                    <label class="form-label fw-bold">Tandemgast *</label>
-                    {% set is_tandem_val = sel('is_tandem_guest', person.is_tandem_guest if person else False) %}
-                    <select name="is_tandem_guest" class="form-select" required>
-                        <option value="false" {% if is_tandem_val == 'false' %}selected{% endif %}>Nein</option>
-                        <option value="true"  {% if is_tandem_val == 'true' %}selected{% endif %}>Ja</option>
-                    </select>
-                    {% if field_errors.get('is_tandem_guest') %}
-                    <div class="invalid-feedback d-block">{{ field_errors.get('is_tandem_guest') }}</div>
-                    {% endif %}
-                    <div id="tandemGuestHint" class="form-text text-warning d-none">
-                        Bei Tandemgast sind nur Vorname, Nachname und Gewicht Pflicht. Fehlende Telefon-, E-Mail-, Adress- und Notfallkontaktdaten werden als Warnung angezeigt.
+                <div class="col-12">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Tandemgast *</label>
+                            {% set is_tandem_val = sel('is_tandem_guest', person.is_tandem_guest if person else False) %}
+                            <select name="is_tandem_guest" class="form-select" required>
+                                <option value="false" {% if is_tandem_val == 'false' %}selected{% endif %}>Nein</option>
+                                <option value="true"  {% if is_tandem_val == 'true' %}selected{% endif %}>Ja</option>
+                            </select>
+                            {% if field_errors.get('is_tandem_guest') %}
+                            <div class="invalid-feedback d-block">{{ field_errors.get('is_tandem_guest') }}</div>
+                            {% endif %}
+                            <div id="tandemGuestHint" class="form-text text-warning d-none">
+                                Bei Tandemgast sind nur Vorname, Nachname und Gewicht Pflicht. Fehlende Telefon-, E-Mail-, Adress- und Notfallkontaktdaten werden als Warnung angezeigt.
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="col-md-6">
-                    <label class="form-label fw-bold">Tandemmaster *</label>
-                    {% set is_tandemmaster_val = sel('is_tandemmaster', person.is_tandemmaster if person else False) %}
-                    <select name="is_tandemmaster" class="form-select" required>
-                        <option value="false" {% if is_tandemmaster_val == 'false' %}selected{% endif %}>Nein</option>
-                        <option value="true"  {% if is_tandemmaster_val == 'true' %}selected{% endif %}>Ja</option>
-                    </select>
+                <div class="col-12">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Tandemmaster *</label>
+                            {% set is_tandemmaster_val = sel('is_tandemmaster', person.is_tandemmaster if person else False) %}
+                            <select name="is_tandemmaster" class="form-select" required>
+                                <option value="false" {% if is_tandemmaster_val == 'false' %}selected{% endif %}>Nein</option>
+                                <option value="true"  {% if is_tandemmaster_val == 'true' %}selected{% endif %}>Ja</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-6 {% if is_tandemmaster_val != 'true' %}d-none{% endif %}" id="tandemKleinunternehmerWrap">
+                            <label class="form-label fw-bold">Kleinunternehmer (§ 19 UStG)</label>
+                            {% set is_tandem_kleinunternehmer_val = sel('is_tandem_kleinunternehmer', person.is_tandem_kleinunternehmer if person else False) %}
+                            <select name="is_tandem_kleinunternehmer" class="form-select">
+                                <option value="false" {% if is_tandem_kleinunternehmer_val == 'false' %}selected{% endif %}>Nein</option>
+                                <option value="true"  {% if is_tandem_kleinunternehmer_val == 'true' %}selected{% endif %}>Ja</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="col-md-6 {% if is_tandemmaster_val != 'true' %}d-none{% endif %}" id="tandemKleinunternehmerWrap">
-                    <label class="form-label fw-bold">Kleinunternehmer (§ 19 UStG)</label>
-                    {% set is_tandem_kleinunternehmer_val = sel('is_tandem_kleinunternehmer', person.is_tandem_kleinunternehmer if person else False) %}
-                    <select name="is_tandem_kleinunternehmer" class="form-select">
-                        <option value="false" {% if is_tandem_kleinunternehmer_val == 'false' %}selected{% endif %}>Nein</option>
-                        <option value="true"  {% if is_tandem_kleinunternehmer_val == 'true' %}selected{% endif %}>Ja</option>
-                    </select>
+                <div class="col-12">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Video *</label>
+                            {% set is_video_val = sel('is_video', person.is_video if person else False) %}
+                            <select name="is_video" class="form-select" required>
+                                <option value="false" {% if is_video_val == 'false' %}selected{% endif %}>Nein</option>
+                                <option value="true"  {% if is_video_val == 'true' %}selected{% endif %}>Ja</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-6 {% if is_video_val != 'true' %}d-none{% endif %}" id="videoKleinunternehmerWrap">
+                            <label class="form-label fw-bold">Kleinunternehmer (§ 19 UStG)</label>
+                            {% set is_video_kleinunternehmer_val = sel('is_video_kleinunternehmer', person.is_video_kleinunternehmer if person else False) %}
+                            <select name="is_video_kleinunternehmer" class="form-select">
+                                <option value="false" {% if is_video_kleinunternehmer_val == 'false' %}selected{% endif %}>Nein</option>
+                                <option value="true"  {% if is_video_kleinunternehmer_val == 'true' %}selected{% endif %}>Ja</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="col-md-6">
-                    <label class="form-label fw-bold">Schüler *</label>
-                    {% set is_student_val = sel('is_student', person.is_student if person else False) %}
-                    <select name="is_student" class="form-select" required>
-                        <option value="false" {% if is_student_val == 'false' %}selected{% endif %}>Nein</option>
-                        <option value="true"  {% if is_student_val == 'true' %}selected{% endif %}>Ja</option>
-                    </select>
+                <div class="col-12">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Schüler *</label>
+                            {% set is_student_val = sel('is_student', person.is_student if person else False) %}
+                            <select name="is_student" class="form-select" required>
+                                <option value="false" {% if is_student_val == 'false' %}selected{% endif %}>Nein</option>
+                                <option value="true"  {% if is_student_val == 'true' %}selected{% endif %}>Ja</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="col-md-6">
-                    <label class="form-label fw-bold">Video *</label>
-                    {% set is_video_val = sel('is_video', person.is_video if person else False) %}
-                    <select name="is_video" class="form-select" required>
-                        <option value="false" {% if is_video_val == 'false' %}selected{% endif %}>Nein</option>
-                        <option value="true"  {% if is_video_val == 'true' %}selected{% endif %}>Ja</option>
-                    </select>
-                </div>
-
-                <div class="col-md-6 {% if is_video_val != 'true' %}d-none{% endif %}" id="videoKleinunternehmerWrap">
-                    <label class="form-label fw-bold">Kleinunternehmer (§ 19 UStG)</label>
-                    {% set is_video_kleinunternehmer_val = sel('is_video_kleinunternehmer', person.is_video_kleinunternehmer if person else False) %}
-                    <select name="is_video_kleinunternehmer" class="form-select">
-                        <option value="false" {% if is_video_kleinunternehmer_val == 'false' %}selected{% endif %}>Nein</option>
-                        <option value="true"  {% if is_video_kleinunternehmer_val == 'true' %}selected{% endif %}>Ja</option>
-                    </select>
-                </div>
-
-                <div class="col-md-6">
-                    <label class="form-label fw-bold">Schüler-AFF *</label>
-                    {% set is_aff_student_val = sel('is_aff_student', person.is_aff_student if person else False) %}
-                    <select name="is_aff_student" class="form-select" required>
-                        <option value="false" {% if is_aff_student_val == 'false' %}selected{% endif %}>Nein</option>
-                        <option value="true"  {% if is_aff_student_val == 'true' %}selected{% endif %}>Ja</option>
-                    </select>
+                <div class="col-12">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Schüler-AFF *</label>
+                            {% set is_aff_student_val = sel('is_aff_student', person.is_aff_student if person else False) %}
+                            <select name="is_aff_student" class="form-select" required>
+                                <option value="false" {% if is_aff_student_val == 'false' %}selected{% endif %}>Nein</option>
+                                <option value="true"  {% if is_aff_student_val == 'true' %}selected{% endif %}>Ja</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
 
             </div>
@@ -537,6 +561,30 @@
         </div>
     </div>
 
+    <!-- FORMULAR-AKTIONEN -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 bg-light border-top border-bottom px-3 py-4 mt-5 mb-4">
+        <a href="{{ url_for('person.list_persons') }}" class="btn btn-secondary btn-lg px-4 py-3 fs-5">
+            Abbrechen
+        </a>
+
+        {% if is_edit %}
+        <a href="{{ url_for('person.waiver_pdf', id=person.id) }}"
+           class="btn btn-outline-dark btn-lg px-4 py-3 fs-5"
+           target="_blank"
+           rel="noopener">
+            Enthaftung drucken / PDF
+        </a>
+        {% endif %}
+
+        <button type="submit" class="btn btn-primary btn-lg px-4 py-3 fs-5 fw-bold shadow-sm">
+            {% if is_edit %}
+                Änderungen speichern
+            {% else %}
+                Person anlegen
+            {% endif %}
+        </button>
+    </div>
+
     <!-- NEWSLETTER-STATUS (nur im Bearbeiten-Modus, manuelle Steuerung mit sicherem Standard) -->
     {% if is_edit and person %}
     {% set nl_action = form_data.get('newsletter_opt_out_action', '') if form_data else '' %}
@@ -559,30 +607,6 @@
         <div class="form-text mt-1">Der Status wird nur geaendert, wenn hier explizit eine Aktion ausgewaehlt wird.</div>
     </div>
     {% endif %}
-
-    <!-- FORMULAR-AKTIONEN -->
-    <div class="d-flex justify-content-between mb-5">
-        <a href="{{ url_for('person.list_persons') }}" class="btn btn-secondary">
-            Abbrechen
-        </a>
-
-        {% if is_edit %}
-        <a href="{{ url_for('person.waiver_pdf', id=person.id) }}"
-           class="btn btn-outline-dark"
-           target="_blank"
-           rel="noopener">
-            Enthaftung drucken / PDF
-        </a>
-        {% endif %}
-
-        <button type="submit" class="btn btn-primary">
-            {% if is_edit %}
-                Änderungen speichern
-            {% else %}
-                Person anlegen
-            {% endif %}
-        </button>
-    </div>
 
 </div> <!-- container -->
 

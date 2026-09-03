@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Mobile Entwürfe{% endblock %}
+{% block header %}Mobile Entwürfe{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <a href="{{ url_for('person.list_persons') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Personen
+        </a>
+        <a href="{{ url_for('person.mobile_intake_new') }}" class="btn btn-success">
+            <i class="bi bi-phone"></i> Neue Person über Mobilgerät
+        </a>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            {% if drafts %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Name</th>
+                            <th>Erfassungsart</th>
+                            <th>Status</th>
+                            <th>Eingang</th>
+                            <th class="text-end">Aktion</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for draft in drafts %}
+                        <tr>
+                            <td>{{ ((draft.first_name or '') ~ ' ' ~ (draft.last_name or ''))|trim or 'Noch nicht übermittelt' }}</td>
+                            <td>{{ 'Tandemgast' if draft.mode == 'tandem_guest' else 'Springer' }}</td>
+                            <td>
+                                {% if draft.status == 'submitted' %}
+                                <span class="badge bg-primary">Eingegangen</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Erfassung offen</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ draft.submitted_at.strftime('%d.%m.%Y %H:%M') if draft.submitted_at else 'Noch nicht übermittelt' }}</td>
+                            <td class="text-end">
+                                {% if draft.status == 'submitted' %}
+                                <a href="{{ url_for('person.new_person', mobile_draft_id=draft.id) }}" class="btn btn-sm btn-primary">
+                                    <i class="bi bi-person-plus"></i> Im Personenformular öffnen
+                                </a>
+                                {% else %}
+                                <span class="text-muted">Noch keine Daten</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-muted">Keine offenen mobilen Entwürfe vorhanden.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

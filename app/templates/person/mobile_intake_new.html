@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Neue Person über Mobilgerät{% endblock %}
+{% block header %}Neue Person über Mobilgerät{% endblock %}
+
+{% block content %}
+<style>
+    .mobile-intake-mode {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .mobile-intake-mode-card {
+        display: block;
+        min-height: 120px;
+        padding: 1.25rem;
+        border: 2px solid var(--bs-border-color);
+        border-radius: 8px;
+        cursor: pointer;
+    }
+
+    .mobile-intake-mode:checked + .mobile-intake-mode-card {
+        border-color: var(--bs-success);
+        background: var(--bs-success-bg-subtle);
+    }
+
+    .mobile-intake-mode:focus-visible + .mobile-intake-mode-card {
+        outline: 3px solid rgba(var(--bs-success-rgb), 0.35);
+        outline-offset: 2px;
+    }
+</style>
+<div class="container" style="max-width: 760px;">
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <form method="post">
+                <fieldset class="mb-4">
+                    <legend class="fs-5 fw-bold mb-3">Erfassungsart</legend>
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6">
+                            <input class="mobile-intake-mode" type="radio" name="mode" id="mobileIntakeTandemGuest" value="tandem_guest" required>
+                            <label class="mobile-intake-mode-card" for="mobileIntakeTandemGuest">
+                                <i class="bi bi-person-heart fs-2 text-success" aria-hidden="true"></i>
+                                <span class="d-block fs-4 fw-bold mt-2">Tandemgast</span>
+                                <span class="d-block text-muted mt-1">Erfassung für einen Tandemsprung</span>
+                            </label>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <input class="mobile-intake-mode" type="radio" name="mode" id="mobileIntakeJumper" value="jumper" required>
+                            <label class="mobile-intake-mode-card" for="mobileIntakeJumper">
+                                <i class="bi bi-person-badge fs-2 text-primary" aria-hidden="true"></i>
+                                <span class="d-block fs-4 fw-bold mt-2">Springer</span>
+                                <span class="d-block text-muted mt-1">Erfassung mit Lizenz und Versicherung</span>
+                            </label>
+                        </div>
+                    </div>
+                </fieldset>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-qr-code"></i> QR-Code erzeugen
+                    </button>
+                    <a href="{{ url_for('person.list_persons') }}" class="btn btn-outline-secondary">Abbrechen</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

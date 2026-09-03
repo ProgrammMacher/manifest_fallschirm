@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}QR-Code mobile Personenerfassung{% endblock %}
+{% block header %}QR-Code mobile Personenerfassung{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 760px;">
+    <div class="card shadow-sm">
+        <div class="card-body text-center">
+            <h4 class="fw-bold mb-2">{{ 'Tandemgast' if draft.mode == 'tandem_guest' else 'Springer' }} erfassen</h4>
+            <p class="text-muted">QR-Code mit dem Mobilgerät scannen. Der Link ist bis {{ draft.expires_at.strftime('%d.%m.%Y %H:%M') }} gültig.</p>
+            <img src="data:image/png;base64,{{ qr_image|b64encode }}"
+                 alt="QR-Code für mobile Personenerfassung"
+                 width="320" height="320" class="img-fluid border mb-3">
+            <div class="text-break small text-muted mb-3">{{ mobile_url }}</div>
+            <a href="{{ url_for('person.mobile_drafts') }}" class="btn btn-outline-secondary">Zu mobilen Entwürfen</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
