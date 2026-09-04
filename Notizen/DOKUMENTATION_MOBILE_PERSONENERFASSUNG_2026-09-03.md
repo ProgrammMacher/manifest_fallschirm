@@ -92,3 +92,29 @@ Git-Commit erstellen.
 Commit-Text:
 
 `feat: mobile Personenerfassung mit Entwurfsworkflow und QR-Code integriert`
+
+## Aenderungen 04.09.2026
+
+- Einfuehrung eines Kiosk-Modus fuer die mobile Personenerfassung.
+- Betrifft ausschliesslich:
+  - `mobile_intake_new.html`
+  - `mobile_intake_qr.html`
+- Sidebar, Navigation, Dashboard-Menues und Standardkopf werden im separaten Erfassungsfenster ausgeblendet.
+- Hauptfenster der Personenverwaltung bleibt unveraendert.
+- QR-Code-Darstellung wurde vergroessert und fuer Tresenmonitore optimiert.
+- Auswahlkarten Tandemgast und Springer bleiben unveraendert erhalten.
+- Backend, Routing, Berechtigungen und Datenmodell wurden nicht geaendert.
+- Praxistest erfolgreich:
+  - QR-Code-Fenster oeffnet korrekt.
+  - Kiosk-Modus funktioniert.
+  - Hauptfenster bleibt voll funktionsfaehig.
+- Test zu nicht verwendeten QR-Codes:
+  - Mehrere QR-Codes erzeugt.
+  - Keine Dateneingaben vorgenommen.
+  - Fenster geschlossen.
+  - Keine negativen Auswirkungen festgestellt.
+  - Keine zusaetzliche Verwaltung offener Mobilentwuerfe erforderlich.
+- Entscheidung:
+  - Ungenutzte QR-Codes werden aktuell nicht gesondert verwaltet.
+  - Beim naechsten Erfassungsvorgang wird einfach ein neuer QR-Code erzeugt.
+  - Keine weitere UX-Anpassung notwendig.
