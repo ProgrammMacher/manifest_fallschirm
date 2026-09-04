@@ -1,4 +1,5 @@
 {% extends "base_display.html" %}
 {% block title %}Erfassung nicht verfügbar{% endblock %}
 {% block header %}Erfassung nicht verfügbar{% endblock %}
+{% block mobile_branding %}{% include "partials/mobile_application_branding.html" %}{% endblock %}
 {% block content %}<main class="container py-5" style="max-width: 620px;"><div class="alert alert-warning mb-0">{% if expired %}Dieser QR-Code ist abgelaufen.{% else %}Dieser QR-Code ist ungültig oder wurde bereits verwendet.{% endif %}</div></main>{% endblock %}

@@ -1,0 +1,42 @@
+<style>
+    #sidebar,
+    .content-header,
+    #adminModeBanner,
+    #dbAdminModeBanner,
+    .mobile-application-branding {
+        display: none !important;
+    }
+
+    body > .d-flex > .flex-grow-1 {
+        padding: 1.5rem !important;
+    }
+
+    .mobile-intake-kiosk-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        max-width: 760px;
+        margin: 0 auto 1.25rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid var(--bs-border-color);
+    }
+
+    .mobile-intake-kiosk-header__icon {
+        font-size: 1.5rem;
+        color: var(--brand-red-base);
+    }
+
+    .mobile-intake-kiosk-header__title {
+        font-size: 1.1rem;
+        font-weight: 700;
+    }
+
+    .mobile-intake-kiosk-qr {
+        width: min(460px, 100%);
+        height: auto;
+    }
+</style>
+<div class="mobile-intake-kiosk-header">
+    <i class="bi bi-qr-code-scan mobile-intake-kiosk-header__icon" aria-hidden="true"></i>
+    <div class="mobile-intake-kiosk-header__title">MANIFEST OU - Mobile Personenerfassung</div>
+</div>

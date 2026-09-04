@@ -2,6 +2,7 @@
 
 {% block title %}Neue Person über Mobilgerät{% endblock %}
 {% block header %}Neue Person über Mobilgerät{% endblock %}
+{% block mobile_branding %}{% include "partials/mobile_application_branding.html" %}{% endblock %}
 
 {% block content %}
 <style>
@@ -30,10 +31,12 @@
         outline-offset: 2px;
     }
 </style>
+{% include "partials/mobile_person_intake_kiosk.html" %}
 <div class="container" style="max-width: 760px;">
+    {% include "partials/mobile_person_intake_window_notice.html" %}
     <div class="card shadow-sm">
         <div class="card-body">
-            <form method="post">
+            <form method="post" target="mobilePersonIntake">
                 <fieldset class="mb-4">
                     <legend class="fs-5 fw-bold mb-3">Erfassungsart</legend>
                     <div class="row g-3">

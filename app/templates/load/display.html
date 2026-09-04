@@ -265,68 +265,6 @@
 
 
 /* ============================================================
-   MOBILE: Logos korrigiert
-   - HU_Bleistift um ~2 Buchstaben nach links
-   - Zeile ~30 % flacher
-   - Desktop bleibt unverändert
-   ============================================================ */
-
-.mobile-logos-row{ 
-  display:none; 
-}
-
-@media (max-width:576px){
-
-  .mobile-logos-row{
-    --col-load: 96px;
-    --col-time: 44px;
-    display:flex;
-    align-items:center;
-    height:30px;              /* ~30 % flacher */
-    margin:3px 0 5px 0;
-    overflow:hidden;          /* verhindert Hochdrücken */
-  }
-
-  .mobile-logos-spacer{
-    flex:0 0 calc(var(--col-load) + var(--col-time));
-  }
-
-  .mobile-logos-content{
-    flex:1 1 auto;
-    display:inline-flex;
-    justify-content:flex-end;
-    align-items:center;
-    gap:6px;
-    opacity:0.55;
-    white-space:nowrap;
-    pointer-events:none;
-    padding-right:4px;
-  }
-
-  .mobile-logos-content img{
-    height:28px;              /* echte Verkleinerung */
-    width:auto;
-    object-fit:contain;
-    vertical-align:middle;
-    transform:none;           /* Skalierung entfernt → Zeile bleibt flach */
-  }
-
-  /* HU_Bleistift gezielt nach links verschieben */
-  .mobile-logos-content img.hu-logo{
-    margin-right:2ch;         /* ≈ zwei Buchstabenbreiten */
-  }
-
-  .mobile-logos-text{
-    font-size:0.7rem;
-    line-height:1.1;
-    white-space:nowrap;
-    margin-left:-3.4ch;
-  }
-}
-
-
-
-/* ============================================================
    ✅ MOBILE – OVERRIDES
    - Current/Next nur Spalten 1–2
    ============================================================ */
@@ -387,6 +325,8 @@
 </style>
 {% endblock %}
 
+{% block mobile_branding %}{% include "partials/mobile_application_branding.html" %}{% endblock %}
+
 {% block content %}
 <div class="display-topbar">
   <div class="display-now">
@@ -398,17 +338,6 @@
     Nächster Load in: –
   </div>
 </div>
-
-<!-- ✅ MOBILE: Logos eine Zeile tiefer (über der Tabelle / über Springer) -->
-<div class="mobile-logos-row" aria-hidden="true">
-  <div class="mobile-logos-spacer"></div>
-  <div class="mobile-logos-content">
-    <img src="{{ url_for('static', filename='img/HU_Bleistift.png') }}" class="hu-logo" alt="">
-    <span class="mobile-logos-text">MANIFEST OU · Vers. 7.7</span>
-    <img src="{{ url_for('static', filename='img/Logo_DZ.png') }}" alt="">
-  </div>
-</div>
-
 
 <div id="displayState"
      data-current="{{ current_load_id|default('') }}"

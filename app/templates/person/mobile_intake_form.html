@@ -3,6 +3,7 @@
 {% macro value(name) -%}{{ (form_data.get(name) if form_data else '') or '' }}{%- endmacro %}
 {% block title %}Personendaten erfassen{% endblock %}
 {% block header %}{{ 'Springer' if is_jumper else 'Tandemgast' }} erfassen{% endblock %}
+{% block mobile_branding %}{% include "partials/mobile_application_branding.html" %}{% endblock %}
 {% block extra_head %}<style>
   .mobile-intake { max-width: 760px; margin: 0 auto; }
   .mobile-intake .form-control, .mobile-intake .form-select { min-height: 48px; font-size: 1.05rem; }

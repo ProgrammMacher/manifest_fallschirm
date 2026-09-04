@@ -57,7 +57,9 @@
                     <i class="bi bi-plus-circle"></i> Neu
                 </a>
 
-                <a href="{{ url_for('person.mobile_intake_new') }}" class="btn btn-success">
+                     <a href="{{ url_for('person.mobile_intake_new') }}"
+                   class="btn btn-success"
+                         onclick="window.open(this.href, 'mobilePersonIntake', 'popup=yes,width=760,height=820,resizable=yes,scrollbars=yes'); document.getElementById('mobileIntakeWindowNotice').classList.remove('d-none'); return false;">
                     <i class="bi bi-phone"></i> Neue Person über Mobilgerät
                 </a>
 
@@ -98,6 +100,16 @@
                     </button>
                 </form>
 
+            </div>
+        </div>
+
+        <div class="alert alert-success border-success d-none mb-3" id="mobileIntakeWindowNotice" role="alert">
+            <div class="d-flex gap-3 align-items-start">
+                <i class="bi bi-check-circle-fill fs-4" aria-hidden="true"></i>
+                <div>
+                    <div class="fw-bold">QR-Code wurde in einem neuen Fenster geoeffnet.</div>
+                    <div>Bitte dieses Fenster auf den Tresenmonitor ziehen und die Person den QR-Code scannen lassen.</div>
+                </div>
             </div>
         </div>
 

@@ -535,7 +535,7 @@ def mobile_intake_new():
     draft = create_draft(
         mode=mode,
         submission_token_hash=token_hash,
-        expires_at=datetime.utcnow() + timedelta(minutes=60),
+        expires_at=datetime.utcnow() + timedelta(minutes=30),
     )
     qr_available, mobile_url = build_local_qr_url(
         f"persons/mobile-intake/{token}"
