@@ -126,7 +126,9 @@
 
 		<div class="d-flex gap-2 mt-3">
 			<button class="btn btn-success">✅ Rechnung speichern</button>
+			{% if invoice_can_full_manual_edit %}
 			<a href="{{ url_for('billing.manual_invoice_new', draft_invoice_id=invoice.id, person_id=invoice.person_id) }}" class="btn btn-outline-primary">✏️ Entwurf bearbeiten</a>
+			{% endif %}
 		</div>
 	</form>
 
@@ -636,6 +638,7 @@
 	{# -------------------------
 	   1b) Manuelle Positionen
 	   ------------------------- #}
+	{% set invoice_manual_items_editable = (invoice.stage == 'draft') and (not invoice.is_deleted) and (not is_pdf_render) %}
 	<div class="pdf-hide-zero-section{% if m.gross == 0 %} is-zero{% endif %}">
 	<h5 class="fw-bold mt-3">{{ (invoice.manual_title or 'Manuelle Positionen') }}</h5>
 	<div class="table-responsive mb-2">
@@ -649,6 +652,7 @@
 			<th class="text-end col-net">Netto €</th>
 			<th class="text-end col-vat">MwSt €</th>
 			<th class="text-end">Brutto €</th>
+			{% if invoice_manual_items_editable %}<th class="no-print"></th>{% endif %}
 		  </tr>
 		</thead>
 		<tbody>
@@ -675,13 +679,20 @@
 				<td class="text-end">
 				  {{ "{:,.2f}".format(item.amount or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
 				</td>
+				{% if invoice_manual_items_editable %}
+				<td class="text-end no-print">
+				  <form method="post" action="{{ url_for('billing.invoice_manual_item_delete', invoice_id=invoice.id, item_id=item.id) }}" onsubmit="return confirm('Manuelle Position entfernen?');">
+					<button type="submit" class="btn btn-outline-danger btn-sm" title="Position entfernen">✕</button>
+				  </form>
+				</td>
+				{% endif %}
 			  </tr>
 			{% endif %}
 		  {% endfor %}
 
 		  {% if not m.found %}
 			<tr>
-			  <td colspan="7" class="text-muted">Keine manuellen Positionen vorhanden.</td>
+			  <td colspan="{{ 8 if invoice_manual_items_editable else 7 }}" class="text-muted">Keine manuellen Positionen vorhanden.</td>
 			</tr>
 		  {% endif %}
 		</tbody>
@@ -691,10 +702,53 @@
 			<td class="text-end col-net col-netvat-foot">{{ "{:,.2f}".format(m.net).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
 			<td class="text-end col-vat col-netvat-foot">{{ "{:,.2f}".format(m.vat).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
 			<td class="text-end">{{ "{:,.2f}".format(m.gross).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+			{% if invoice_manual_items_editable %}<td class="no-print"></td>{% endif %}
 		  </tr>
 		</tfoot>
 	  </table>
 	</div>
+
+	{% if invoice_manual_items_editable %}
+	<div class="no-print mb-3">
+	  <button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#addManualItemForm" aria-expanded="false" aria-controls="addManualItemForm">
+		<i class="bi bi-plus-circle"></i> Manuelle Position hinzufügen
+	  </button>
+	  <div class="collapse mt-2" id="addManualItemForm">
+		<div class="card card-body">
+		  <form method="post" action="{{ url_for('billing.invoice_manual_item_add', invoice_id=invoice.id) }}">
+			<div class="row g-2 align-items-end">
+			  <div class="col-md-4">
+				<label class="form-label mb-1">Beschreibung</label>
+				<input type="text" class="form-control form-control-sm" name="manual_item_description" placeholder="z. B. Theoriekurs, Übernachtung, Essen" required>
+			  </div>
+			  <div class="col-md-2">
+				<label class="form-label mb-1">Menge</label>
+				<input type="text" class="form-control form-control-sm text-end" name="manual_item_quantity" inputmode="decimal" value="1,00" placeholder="1,00">
+			  </div>
+			  <div class="col-md-2">
+				<label class="form-label mb-1">Einheit</label>
+				<input type="text" class="form-control form-control-sm" name="manual_item_unit" placeholder="z. B. Stück">
+			  </div>
+			  <div class="col-md-2">
+				<label class="form-label mb-1">Einzelpreis (Brutto) €</label>
+				<input type="text" class="form-control form-control-sm text-end" name="manual_item_unit_price_gross" inputmode="decimal" value="0,00" placeholder="0,00">
+			  </div>
+			  <div class="col-md-1">
+				<label class="form-label mb-1">MwSt %</label>
+				<input type="text" class="form-control form-control-sm text-end" name="manual_item_vat_rate" inputmode="decimal" value="19,00" placeholder="19,00">
+			  </div>
+			  <div class="col-md-1">
+				<button type="submit" class="btn btn-success btn-sm w-100">
+				  <i class="bi bi-plus-lg"></i> Hinzufügen
+				</button>
+			  </div>
+			</div>
+			<div class="form-text mt-1">Zahlenformat: Komma für Dezimalstellen (z. B. 1.234,56). Fließt zusammen mit den Sprungpositionen in Netto, MwSt. und Gesamtsumme ein.</div>
+		  </form>
+		</div>
+	  </div>
+	</div>
+	{% endif %}
 	</div>
 
 	{# -------------------------

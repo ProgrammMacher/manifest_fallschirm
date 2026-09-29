@@ -1156,8 +1156,27 @@ def _format_decimal_de_for_input(value: Decimal | int | float | None, fallback: 
         return fallback
 
 
+def _invoice_has_load_items(invoice: Invoice | None) -> bool:
+    if not invoice:
+        return False
+    for item in list(getattr(invoice, "items", []) or []):
+        if getattr(item, "load_entry_id", None) is not None:
+            return True
+    return False
+
+
 def _is_manual_draft_invoice(invoice: Invoice | None) -> bool:
+    """
+    Prüft, ob ein Entwurf ausschließlich manuelle Positionen enthält (kein Sprung-Item).
+    Nur für solche "reinen" manuellen Entwürfe darf das volle Bearbeitungsformular
+    (manual_invoice_new) verwendet werden, da dieses beim Speichern ALLE bestehenden
+    Positionen ersetzt. Gemischte Entwürfe (Sprünge + manuelle Zusatzpositionen)
+    werden stattdessen über die kompakte "Position hinzufügen/entfernen"-Funktion
+    in invoice_detail gepflegt.
+    """
     if not invoice or getattr(invoice, "stage", None) != "draft":
+        return False
+    if _invoice_has_load_items(invoice):
         return False
     for item in list(getattr(invoice, "items", []) or []):
         if (getattr(item, "item_source", "") or "").strip().lower() == "manual":
@@ -2074,6 +2093,102 @@ def invoice_edit(invoice_id):
 
 
 # ---------------------------------------------------------
+# Manuelle Zusatzposition zu einem Rechnungsentwurf hinzufügen
+# (z. B. Theoriekurs, Übernachtung, Essen) - nutzt dieselbe Berechnungs-/
+# Speicherlogik wie /billing/manual/new (BillingService.split_gross_into_net_and_vat,
+# InvoiceItem mit item_source="manual", invoice.calculate_total()).
+# ---------------------------------------------------------
+@bp.route("/invoice/<int:invoice_id>/manual_item/add", methods=["POST"])
+def invoice_manual_item_add(invoice_id):
+    invoice = (
+        Invoice.query
+        .options(selectinload(Invoice.items))
+        .get_or_404(invoice_id)
+    )
+
+    if invoice.stage != "draft" or invoice.is_deleted:
+        flash("Manuelle Positionen können nur bei Rechnungsentwürfen hinzugefügt werden.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number_for_detail(invoice)))
+
+    description = (request.form.get("manual_item_description") or "").strip()
+    quantity_raw = (request.form.get("manual_item_quantity") or "").strip()
+    unit_label = (request.form.get("manual_item_unit") or "").strip()
+    unit_price_raw = (request.form.get("manual_item_unit_price_gross") or "").strip()
+    vat_rate_raw = (request.form.get("manual_item_vat_rate") or "").strip()
+
+    if not description:
+        flash("Bitte eine Beschreibung für die manuelle Position angeben.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number_for_detail(invoice)))
+
+    try:
+        quantity = _parse_decimal_de(quantity_raw, allow_negative=True) if quantity_raw else Decimal("1.00")
+        unit_price_gross = _parse_decimal_de(unit_price_raw, allow_negative=True) if unit_price_raw else Decimal("0.00")
+        vat_rate = _parse_decimal_de(vat_rate_raw) if vat_rate_raw else Decimal("0.00")
+    except Exception:
+        flash("Ungültige Zahlenwerte für die manuelle Position.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number_for_detail(invoice)))
+
+    if quantity == 0:
+        flash("Menge darf nicht 0 sein.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number_for_detail(invoice)))
+
+    gross = (quantity * unit_price_gross).quantize(Decimal("0.01"))
+    net, vat = BillingService.split_gross_into_net_and_vat(gross=gross, vat_rate=vat_rate)
+
+    db.session.add(
+        InvoiceItem(
+            invoice_id=invoice.id,
+            load_entry_id=None,
+            amount=gross,
+            vat_rate=vat_rate,
+            net_amount=net,
+            vat_amount=vat,
+            description=description[:200],
+            item_source="manual",
+            quantity=quantity,
+            manual_unit=unit_label[:50] or None,
+            unit_price_gross=unit_price_gross,
+            manual_position_code="manual",
+        )
+    )
+
+    invoice.calculate_total()
+    db.session.commit()
+
+    flash("Manuelle Position wurde hinzugefügt.", "success")
+    return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number_for_detail(invoice)))
+
+
+# ---------------------------------------------------------
+# Manuelle Zusatzposition wieder entfernen (nur im Entwurf, nur eigene manuelle Items)
+# ---------------------------------------------------------
+@bp.route("/invoice/<int:invoice_id>/manual_item/<int:item_id>/delete", methods=["POST"])
+def invoice_manual_item_delete(invoice_id, item_id):
+    invoice = (
+        Invoice.query
+        .options(selectinload(Invoice.items))
+        .get_or_404(invoice_id)
+    )
+
+    if invoice.stage != "draft" or invoice.is_deleted:
+        flash("Manuelle Positionen können nur bei Rechnungsentwürfen entfernt werden.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number_for_detail(invoice)))
+
+    item = next((it for it in invoice.items if it.id == item_id), None)
+    if not item or (getattr(item, "item_source", "") or "").strip().lower() != "manual":
+        flash("Diese Position kann nicht entfernt werden.", "warning")
+        return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number_for_detail(invoice)))
+
+    db.session.delete(item)
+    db.session.flush()
+    invoice.calculate_total()
+    db.session.commit()
+
+    flash("Manuelle Position wurde entfernt.", "success")
+    return redirect(url_for("billing.invoice_detail", invoice_id=_invoice_display_number_for_detail(invoice)))
+
+
+# ---------------------------------------------------------
 # Personenübersicht mit KORREKTEN Summen (Sprünge + Schirmmiete + Orga)
 # ---------------------------------------------------------
 @bp.route("/persons")
@@ -2968,6 +3083,7 @@ def invoice_detail(invoice_id):
             invoice_ku_regular_vat_rates=invoice_ku_regular_vat_rates,
             invoice_dynamic_fixed_net=invoice_dynamic_fixed_net,
             invoice_dynamic_fixed_vat=invoice_dynamic_fixed_vat,
+            invoice_can_full_manual_edit=_is_manual_draft_invoice(invoice),
         )
 
         # Partial-Reload (AJAX)
