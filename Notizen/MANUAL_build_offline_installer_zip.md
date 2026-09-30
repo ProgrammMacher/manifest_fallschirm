@@ -57,7 +57,7 @@ Dateien:
 5. manifest_launcher.py
 6. run_migrations.py
 7. requirements.txt
-8. MANUAL_setup_start_manifest.md
+8. Notizen/MANUAL_setup_start_manifest.md
 9. error_response.html
 
 ## Ausgeschlossene Inhalte (Exclude)

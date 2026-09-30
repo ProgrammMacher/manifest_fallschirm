@@ -1,6 +1,6 @@
 # Manual: setup_start_manifest.bat
 
-Dieses Dokument beschreibt die Funktionsweise von [setup_start_manifest.bat](setup_start_manifest.bat).
+Dieses Dokument beschreibt die Funktionsweise von [setup_start_manifest.bat](../setup_start_manifest.bat).
 
 ## Ziel
 
@@ -23,18 +23,18 @@ Ablauf des Skripts:
 ## Voraussetzungen
 
 1. Das Projekt liegt komplett in einem Ordner (z. B. C:\manifest_fallschirm).
-2. Die lokale Runtime ist vorhanden: [runtime/python/python.exe](runtime/python/python.exe).
-3. Die Datei [requirements.txt](requirements.txt) ist vorhanden.
-4. Der Ordner [packages](packages) mit allen passenden .whl-Dateien ist vorhanden.
+2. Die lokale Runtime ist vorhanden: [runtime/python/python.exe](../runtime/python/python.exe).
+3. Die Datei [requirements.txt](../requirements.txt) ist vorhanden.
+4. Der Ordner [packages](../packages) mit allen passenden .whl-Dateien ist vorhanden.
 5. Fuer PDF-Export sollte zusaetzlich eine GTK-Runtime lokal vorliegen:
-	- bevorzugt im Projekt unter [runtime/gtk](runtime/gtk) oder
-	- als Archiv [runtime/gtk-runtime-win64.zip](runtime/gtk-runtime-win64.zip)
+	- bevorzugt im Projekt unter [runtime/gtk](../runtime/gtk) oder
+	- als Archiv [runtime/gtk-runtime-win64.zip](../runtime/gtk-runtime-win64.zip)
 
 ## Bedienung
 
-1. Datei [setup_start_manifest.bat](setup_start_manifest.bat) per Doppelklick starten.
+1. Datei [setup_start_manifest.bat](../setup_start_manifest.bat) per Doppelklick starten.
 2. Beim ersten Start dauert es laenger, da eine vorhandene venv benutzt und Pakete bei Bedarf aktualisiert werden.
-3. Danach startet die App automatisch ueber [manifest_launcher.py](manifest_launcher.py).
+3. Danach startet die App automatisch ueber [manifest_launcher.py](../manifest_launcher.py).
 
 ## Interner Ablauf im Detail
 
@@ -45,18 +45,18 @@ Dadurch funktionieren alle relativen Pfade unabhaengig vom aktuellen Arbeitsverz
 
 ### 2) Lokale Python-Runtime
 
-Das Skript verwendet ausschliesslich [runtime/python/python.exe](runtime/python/python.exe).
+Das Skript verwendet ausschliesslich [runtime/python/python.exe](../runtime/python/python.exe).
 Wenn diese Datei fehlt, wird abgebrochen.
 
 ### 3) Virtuelle Umgebung
 
-Wenn [venv/Scripts/python.exe](venv/Scripts/python.exe) fehlt, bricht das Skript ab.
+Wenn [venv/Scripts/python.exe](../venv/Scripts/python.exe) fehlt, bricht das Skript ab.
 Die lokale Runtime kann in dieser Kopie keine neue venv erzeugen; fuer einen portablen Start muss die venv mitkopiert werden.
 Wenn die venv schon existiert, wird sie wiederverwendet.
 
 ### 4) Abhaengigkeiten
 
-Das Skript installiert alle Pakete aus [requirements.txt](requirements.txt) strikt offline:
+Das Skript installiert alle Pakete aus [requirements.txt](../requirements.txt) strikt offline:
 
 "venv\Scripts\python.exe" -m pip install --no-index --find-links packages -r requirements.txt
 
@@ -74,10 +74,10 @@ So wird verhindert, dass die App mit unklaren Importfehlern startet.
 ### 6) Start der App
 
 Vor dem Start versucht das Skript automatisch, eine fehlende PDF-Runtime offline bereitzustellen.
-Die Logik liegt in [app/helpers/pdf_runtime.py](app/helpers/pdf_runtime.py) und arbeitet in dieser Reihenfolge:
+Die Logik liegt in [app/helpers/pdf_runtime.py](../app/helpers/pdf_runtime.py) und arbeitet in dieser Reihenfolge:
 
-1. Vorhandene [runtime/gtk/bin](runtime/gtk/bin) verwenden
-2. Lokales ZIP-Archiv (z. B. [runtime/gtk-runtime-win64.zip](runtime/gtk-runtime-win64.zip)) nach runtime/gtk entpacken
+1. Vorhandene [runtime/gtk/bin](../runtime/gtk/bin) verwenden
+2. Lokales ZIP-Archiv (z. B. [runtime/gtk-runtime-win64.zip](../runtime/gtk-runtime-win64.zip)) nach runtime/gtk entpacken
 3. Falls vorhanden: lokale GTK-Installation vom Rechner in runtime/gtk kopieren
 
 Danach prueft setup_start_manifest.bat aktiv den PDF-Stack mit einem echten WeasyPrint-Test.
@@ -94,19 +94,19 @@ Das Skript wartet im gleichen Fenster, bis die App beendet wird, und zeigt danac
 
 Zum Erstellen eines portablen GTK-Bundles auf dem Entwicklungsrechner:
 
-1. [tools/build_offline_pdf_runtime.bat](tools/build_offline_pdf_runtime.bat) starten.
-2. Das Skript kopiert eine lokal installierte GTK3-Runtime nach [runtime/gtk](runtime/gtk).
-3. Zusaetzlich wird (falls moeglich) [runtime/gtk-runtime-win64.zip](runtime/gtk-runtime-win64.zip) erzeugt.
+1. [tools/build_offline_pdf_runtime.bat](../tools/build_offline_pdf_runtime.bat) starten.
+2. Das Skript kopiert eine lokal installierte GTK3-Runtime nach [runtime/gtk](../runtime/gtk).
+3. Zusaetzlich wird (falls moeglich) [runtime/gtk-runtime-win64.zip](../runtime/gtk-runtime-win64.zip) erzeugt.
 
 Beides kann anschliessend zusammen mit dem Projektordner auf den Zielrechner kopiert werden.
 
 ## PDF-Runtime Diagnose
 
 Fuer eine detaillierte Analyse auf Zielrechnern gibt es nun den separaten Starter
-[diagnose_pdf_runtime.bat](diagnose_pdf_runtime.bat).
+[diagnose_pdf_runtime.bat](../diagnose_pdf_runtime.bat).
 
 Der Starter schreibt den Status in
-[logs/pdf_runtime_diagnose.log](logs/pdf_runtime_diagnose.log) und prueft:
+[logs/pdf_runtime_diagnose.log](../logs/pdf_runtime_diagnose.log) und prueft:
 
 1. gefundene lokale GTK-Archive
 2. vorhandene lokale GTK-Verzeichnisse
@@ -120,10 +120,10 @@ Zusaetzlich wird vor dem finalen Test einmal die Offline-Selbstheilung
 ## Fehlerbehebung
 
 1. Meldung "Lokale Python-Runtime fehlt":
-Pruefen, ob [runtime/python/python.exe](runtime/python/python.exe) im Projektordner vorhanden ist.
+Pruefen, ob [runtime/python/python.exe](../runtime/python/python.exe) im Projektordner vorhanden ist.
 
 2. Fehler bei Paketinstallation:
-Pruefen, ob der Ordner [packages](packages) komplett ist und passende Wheels fuer die Zielplattform enthaelt.
+Pruefen, ob der Ordner [packages](../packages) komplett ist und passende Wheels fuer die Zielplattform enthaelt.
 
 3. App startet, aber Browser oeffnet nicht:
 Im Fenster auf Hinweise achten. Manuell im Browser aufrufen: http://localhost:5000/pwa
@@ -132,8 +132,8 @@ Im Fenster auf Hinweise achten. Manuell im Browser aufrufen: http://localhost:50
 
 1. Gesamten Projektordner kopieren.
 2. Die venv mitkopieren; ohne sie kann der Start in der reinen Kopie nicht bootstrappen.
-3. Den lokalen Wheel-Ordner [packages](packages) immer mitkopieren.
-4. Direkt [setup_start_manifest.bat](setup_start_manifest.bat) starten.
+3. Den lokalen Wheel-Ordner [packages](../packages) immer mitkopieren.
+4. Direkt [setup_start_manifest.bat](../setup_start_manifest.bat) starten.
 
 ## Hinweis zur Python-Laufzeit
 

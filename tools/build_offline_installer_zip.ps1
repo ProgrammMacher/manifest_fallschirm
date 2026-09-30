@@ -98,7 +98,7 @@ $includeFiles = @(
     'manifest_launcher.py',
     'run_migrations.py',
     'requirements.txt',
-    'MANUAL_setup_start_manifest.md',
+    'Notizen/MANUAL_setup_start_manifest.md',
     'error_response.html'
 )
 

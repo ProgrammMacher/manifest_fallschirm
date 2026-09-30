@@ -53,7 +53,7 @@ Dateien:
 5. manifest_launcher.py
 6. run_migrations.py
 7. requirements.txt
-8. MANUAL_setup_start_manifest.md
+8. Notizen/MANUAL_setup_start_manifest.md
 9. error_response.html
 
 Hinweis: `manifest_launcher.py` und `run_migrations.py` werden im Staging zu `.pyc` kompiliert und danach als `.py` entfernt.
