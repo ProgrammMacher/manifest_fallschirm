@@ -536,6 +536,15 @@ def split_view():
     # (erstes aktives)
     # -------------------------------
     default_aircraft_id = aircrafts[0].id if aircrafts else None
+    default_aircraft = next(
+        (ac for ac in aircrafts if ac.id == default_aircraft_id),
+        None,
+    )
+    default_aircraft_height = int(
+        getattr(default_aircraft, "default_height", 3000) or 3000
+    )
+    if default_aircraft_height not in VALID_HEIGHTS:
+        default_aircraft_height = 3000
 
     return render_template(
         "load/split.html",
@@ -545,6 +554,7 @@ def split_view():
         aircrafts=aircrafts,
         default_airfield_id=default_airfield_id,
         default_aircraft_id=default_aircraft_id,
+        default_aircraft_height=default_aircraft_height,
         show=show,
         archive_period=archive_period["period"],
         archive_from=archive_period["from"],

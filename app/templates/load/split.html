@@ -61,9 +61,9 @@
 
                 <div class="col-md-4">
                   <label class="form-label fw-bold">Load‑Höhe</label>
-                  <select name="height_m" class="form-select">
+                  <select name="height_m" class="form-select" id="nl_load_height">
                     {% for h in [1500, 3000, 4000] %}
-                      <option value="{{ h }}" {% if h == 3000 %}selected{% endif %}>
+                      <option value="{{ h }}" {% if h == default_aircraft_height %}selected{% endif %}>
                         {{ h }} m
                       </option>
                     {% endfor %}
@@ -91,9 +91,10 @@
 
                 <div class="col-md-6">
                   <label class="form-label fw-bold">Flugzeug</label>
-                  <select name="aircraft_id" class="form-select">
+                  <select name="aircraft_id" class="form-select" id="nl_aircraft">
                     {% for ac in aircrafts %}
                       <option value="{{ ac.id }}"
+                              data-default-height="{{ ac.default_height or 3000 }}"
                               {% if ac.id == default_aircraft_id %}selected{% endif %}>
                         {{ ac.registration }} – {{ ac.type }} ({{ ac.seats }} Sitze)
                       </option>
@@ -124,6 +125,9 @@
           (function () {
             const d = document.getElementById('nl_planned_date');
             const t = document.getElementById('nl_planned_time');
+            const aircraft = document.getElementById('nl_aircraft');
+            const height = document.getElementById('nl_load_height');
+            let heightChangedByUser = false;
             const now = new Date();
             if (d && !d.value) {
               const y = now.getFullYear();
@@ -132,6 +136,22 @@
               d.value = `${y}-${mo}-${da}`;
             }
             if (t && !t.value) t.value = now.toTimeString().slice(0, 5);
+
+            if (height) {
+              height.addEventListener('change', () => {
+                heightChangedByUser = true;
+              });
+            }
+            if (aircraft && height) {
+              aircraft.addEventListener('change', () => {
+                if (heightChangedByUser) return;
+                const option = aircraft.options[aircraft.selectedIndex];
+                const defaultHeight = option?.dataset.defaultHeight;
+                if (Array.from(height.options).some((item) => item.value === defaultHeight)) {
+                  height.value = defaultHeight;
+                }
+              });
+            }
           })();
 
           function submitNewLoadForm() {
