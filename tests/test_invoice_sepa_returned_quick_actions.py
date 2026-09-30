@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import date
 
 import pytest
 
@@ -37,7 +38,7 @@ def app_with_db(tmp_path):
             sepa_enabled=True,
             iban="DE89370400440532013000",
             account_holder="Test User",
-            sepa_mandate_date="2024-01-01",
+            sepa_mandate_date=date(2024, 1, 1),
         )
         db.session.add(person)
         db.session.flush()
@@ -66,20 +67,21 @@ def test_db_admin_can_mark_paid_sepa_invoice_as_returned(app_with_db):
     app = app_with_db
     with app.app_context():
         invoice = db.session.query(Invoice).first()
+        invoice_id = invoice.id
 
     with app.test_client() as client:
         with client.session_transaction() as session:
             session["is_db_admin"] = True
 
         response = client.post(
-            f"/billing/invoice/{invoice.id}/mark_sepa_returned",
+            f"/billing/invoice/{invoice_id}/mark_sepa_returned",
             follow_redirects=True,
         )
 
         assert response.status_code == 200
 
         with app.app_context():
-            refreshed = db.session.get(Invoice, invoice.id)
+            refreshed = db.session.get(Invoice, invoice_id)
             assert refreshed.payment_state == "sepa_returned"
             assert refreshed.payment_method == "sepa"
 
@@ -94,6 +96,7 @@ def test_db_admin_can_restore_returned_sepa_invoice_to_pending(app_with_db):
         invoice.payment_state = "sepa_returned"
         invoice.payment_method = "sepa"
         invoice.is_paid = False
+        invoice_id = invoice.id
         db.session.commit()
 
     with app.test_client() as client:
@@ -101,13 +104,13 @@ def test_db_admin_can_restore_returned_sepa_invoice_to_pending(app_with_db):
             session["is_db_admin"] = True
 
         response = client.post(
-            f"/billing/invoice/{invoice.id}/mark_sepa_pending",
+            f"/billing/invoice/{invoice_id}/mark_sepa_pending",
             follow_redirects=True,
         )
 
         assert response.status_code == 200
 
         with app.app_context():
-            refreshed = db.session.get(Invoice, invoice.id)
+            refreshed = db.session.get(Invoice, invoice_id)
             assert refreshed.payment_state == "sepa_pending"
             assert refreshed.payment_method == "sepa"

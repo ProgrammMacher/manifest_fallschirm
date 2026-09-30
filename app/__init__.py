@@ -183,6 +183,8 @@ def create_app():
         else:
             db_path = new_db_path
 
+    database_was_missing = not os.path.exists(db_path)
+
     # ---------------------------------------------------------
     # Netzwerk / Mobile-IP (aus Start-Skript)
     # ---------------------------------------------------------
@@ -360,21 +362,21 @@ def create_app():
     # STARTUP-DB-MIGRATIONEN
     # ---------------------------------------------------------
     with app.app_context():
-        # 1) Versuch: Alembic-Migrationen auf aktuelle Heads bringen.
-        #    Darf den App-Start niemals abbrechen.
-        if os.environ.get("MANIFEST_AUTO_DB_UPGRADE", "1").lower() in ("1", "true", "yes", "on"):
-            try:
-                from flask_migrate import Migrate, upgrade
+        if not database_was_missing:
+            # Bestehende Datenbanken bleiben im regulären Update-Pfad.
+            if os.environ.get("MANIFEST_AUTO_DB_UPGRADE", "1").lower() in ("1", "true", "yes", "on"):
+                try:
+                    from flask_migrate import Migrate, upgrade
 
-                if "migrate" not in app.extensions:
-                    Migrate(app, db)
-                upgrade(directory="migrations", revision="heads")
-            except Exception as e:
-                print("[WARNUNG] Alembic-Startup-Upgrade fehlgeschlagen:", e)
+                    if "migrate" not in app.extensions:
+                        Migrate(app, db)
+                    upgrade(directory="migrations", revision="heads")
+                except Exception as e:
+                    print("[WARNUNG] Alembic-Startup-Upgrade fehlgeschlagen:", e)
 
-        # 2) Fallback: idempotente SQL-Migrationen für Alt-Datenbanken.
-        from app.helpers.db_migrations import run_startup_migrations
-        run_startup_migrations()
+            # Fallback: idempotente SQL-Migrationen für Alt-Datenbanken.
+            from app.helpers.db_migrations import run_startup_migrations
+            run_startup_migrations()
 
     # ---------------------------------------------------------
     # Migrationen (optional)
@@ -398,16 +400,32 @@ def create_app():
     from app.models.billing_config import BillingPrice, BillingPricePeriod
     from app.models.email_config import EmailConfig
     from app.models.email_send_log import EmailSendLog
+    from app.models.invoice import Invoice
+    from app.models.invoice_item import InvoiceItem
     from app.models.mobile_person_intake_draft import MobilePersonIntakeDraft
+    from app.models.price_audit_log import PriceAuditLog
     from app.models.sepa_config import SepaConfig
     from app.models.sepa_export import SepaExport, SepaExportInvoice
 
     # ---------------------------------------------------------
     # Tabellen erzeugen (DEV)
     # ---------------------------------------------------------
-    if os.environ.get("MANIFEST_AUTO_CREATE_DB", "1").lower() not in ("0", "false", "no"):
+    auto_create_db = os.environ.get("MANIFEST_AUTO_CREATE_DB", "1").lower() not in ("0", "false", "no")
+    if auto_create_db or database_was_missing:
         with app.app_context():
             db.create_all()
+            if database_was_missing:
+                # The current models define the complete schema for a new DB.
+                # Stamp it so subsequent starts run only migrations newer than this release.
+                from flask_migrate import Migrate, stamp
+
+                if "migrate" not in app.extensions:
+                    Migrate(app, db)
+                stamp(directory="migrations", revision="heads")
+
+                from app.services.neutral_install_seed import seed_neutral_installation
+
+                seed_neutral_installation()
 
     # ---------------------------------------------------------
     # Blueprints importieren
