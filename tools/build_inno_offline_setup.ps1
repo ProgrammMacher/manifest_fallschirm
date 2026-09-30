@@ -109,6 +109,7 @@ function Assert-InstallerStageSafe {
     $requiredFiles = @(
         'app\__init__.pyc',
         'app\services\neutral_install_seed.pyc',
+        'app\security\license_public_key.pem',
         'migrations\env.pyc',
         'manifest_launcher.pyc',
         'run_migrations.pyc',
@@ -142,6 +143,13 @@ function Assert-InstallerStageSafe {
         '(^|/)session_data/',
         '(^|/)uploads/',
         '(^|/)noch_zu_loeschen/',
+        '(^|/)developer_tools/',
+        '(^|/)tools/license/(?!install_runtime_secrets\.py$)[^/]+$',
+        '(^|/)generate_license_(key|bundle)\.pyc?$',
+        '(^|/)initialize_signing_key\.pyc?$',
+        '(^|/)license_signing\.pyc?$',
+        '\.(dpapi|p12|pfx)$',
+        '(^|/)[^/]*private[^/]*\.(pem|key)$',
         '(^|/)app_settings\.json$',
         '(^|/)auth_config\.json$',
         '\.(db|sqlite|sqlite3)$',
@@ -154,6 +162,13 @@ function Assert-InstallerStageSafe {
         foreach ($pattern in $forbiddenPatterns) {
             if ($relativePath -match $pattern) {
                 throw "Forbidden local/runtime data in installer stage: $relativePath"
+            }
+        }
+
+        if ($file.Extension -ieq '.pem') {
+            $pemHeader = Get-Content -LiteralPath $file.FullName -TotalCount 1 -ErrorAction Stop
+            if ($pemHeader -match 'PRIVATE KEY') {
+                throw "Private key material in installer stage: $relativePath"
             }
         }
     }
@@ -257,13 +272,14 @@ try {
         }
     }
 
-    # Setup-Helfer fuer Lizenz/Passwort-Konfiguration muss im Stage enthalten sein.
+    # Nur der Runtime-Provisionierer wird ausgeliefert; Generator/Signer bleiben lokal.
     $licenseToolsTarget = Join-Path $stageDir 'tools\license'
     New-Item -ItemType Directory -Path $licenseToolsTarget -Force | Out-Null
-    Get-ChildItem -Path (Join-Path $ProjectRoot 'tools\license') -File -ErrorAction SilentlyContinue |
-        ForEach-Object {
-            Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $licenseToolsTarget $_.Name) -Force
-        }
+    $installSecretsSource = Join-Path $ProjectRoot 'tools\license\install_runtime_secrets.py'
+    if (-not (Test-Path -LiteralPath $installSecretsSource -PathType Leaf)) {
+        throw "Runtime-Secrets-Provisionierer fehlt: $installSecretsSource"
+    }
+    Copy-Item -LiteralPath $installSecretsSource -Destination (Join-Path $licenseToolsTarget 'install_runtime_secrets.py') -Force
 
     $taskbarPinScriptSrc = Join-Path $ProjectRoot 'tools\pin_taskbar.ps1'
     $taskbarPinScriptDst = Join-Path $stageDir 'tools\pin_taskbar.ps1'

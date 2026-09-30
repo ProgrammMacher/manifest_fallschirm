@@ -27,3 +27,14 @@ uploads/*
 /data/split_verify_temp.db
 /noch_zu_loeschen/
 /app/database.sqlite
+
+# Private signing material and local credentials; public PEM keys remain trackable.
+*.dpapi
+*.p12
+*.pfx
+*.private
+*private*.pem
+*private*.key
+*private-key*
+*private_key*
+auth_config.json

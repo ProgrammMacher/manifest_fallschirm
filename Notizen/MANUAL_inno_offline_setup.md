@@ -16,9 +16,9 @@ Dieses Handbuch beschreibt den kompletten Ablauf fuer eine echte Offline-Install
 2. [tools/build_inno_offline_setup.bat](tools/build_inno_offline_setup.bat)
 3. [installer/inno/manifest_offline_setup.iss](installer/inno/manifest_offline_setup.iss)
 4. [tools/license/install_runtime_secrets.py](tools/license/install_runtime_secrets.py)
-5. [tools/license/generate_license_key.py](tools/license/generate_license_key.py)
-6. [tools/license/get_machine_fingerprint.ps1](tools/license/get_machine_fingerprint.ps1)
-7. [tools/license/get_machine_fingerprint.bat](tools/license/get_machine_fingerprint.bat)
+5. [app/security/license_public_key.pem](app/security/license_public_key.pem) (öffentlicher MFS2-Prüfschlüssel)
+6. [developer_tools/lizenzgenerator/README.txt](../developer_tools/lizenzgenerator/README.txt) (Entwickler-only; nicht im Kunden-Installer)
+7. [developer_tools/fingerprint/Fingerprint ermitteln.bat](../developer_tools/fingerprint/Fingerprint%20ermitteln.bat) (separat weitergebbar)
 8. [tools/build_manifest_icon.py](tools/build_manifest_icon.py)
 9. [app/static/img/HU_Bleistift.png](app/static/img/HU_Bleistift.png)
 10. [app/static/img/manifest_ou.ico](app/static/img/manifest_ou.ico)
@@ -29,7 +29,7 @@ Dieses Handbuch beschreibt den kompletten Ablauf fuer eine echte Offline-Install
 2. Setup-Icon und Shortcut-Icon auf Basis des Bleistift-Logos mit Schriftzug `MANIFeST OU`
 3. Lizenzpruefung bei Installation und bei jedem App-Start
 4. Lizenzablauf (`exp`) wird erzwungen
-5. Maschinenbindung (`hwfp`) wird erzwungen
+5. Maschinenbindung (`hwfp`) wird durch MFS2/Ed25519 erzwungen
 6. Admin- und DB-Admin-Passwort werden als Hash gespeichert, nicht als Klartext
 7. Uninstall fragt, ob ProgramData-Daten behalten oder geloescht werden sollen
 
@@ -46,24 +46,21 @@ Maschinenbindung braucht den Fingerprint des Zielrechners.
 
 Auf Zielrechner ausfuehren:
 
-1. [tools/license/get_machine_fingerprint.bat](tools/license/get_machine_fingerprint.bat)
+1. [developer_tools/fingerprint/Fingerprint ermitteln.bat](../developer_tools/fingerprint/Fingerprint%20ermitteln.bat)
 2. Ausgabe kopieren (Hex-String)
 3. Fingerprint an den Entwickler senden
 
 Hinweis: Der Fingerprint ist ein SHA256-Hash aus stabilen Maschinenmerkmalen.
+Das Fingerprint-Werkzeug enthält weder Signierfunktion noch privaten Schlüssel.
 
 ## B) Lizenzschluessel mit Laufzeit und Maschinenbindung erzeugen
 
-Auf Entwicklerrechner in `C:\manifest_fallschirm` ausfuehren:
-
-```powershell
-runtime\python\python.exe tools\license\generate_license_key.py --customer "Kunde A" --valid-days 365 --fingerprint "<HWFP_VOM_ZIELRECHNER>"
-```
-
-Ergebnis:
-
-1. Lizenzschluessel (eine Zeile, fuer Setup-Eingabe)
-2. JSON-Payload mit `nbf`, `exp`, `hwfp`
+Auf dem Entwicklerrechner den Generator mit
+`developer_tools/lizenzgenerator/Lizenzgenerator starten.bat` starten und dort
+Kundenname, Fingerprint und Lizenzstufe eingeben. Die lokale Signierfunktion
+benötigt den DPAPI-geschützten privaten Schlüssel unter
+`%LOCALAPPDATA%\ManifestFallschirm\developer-signing\`. Dieser Schlüssel
+und die Generatorwerkzeuge werden nicht in den Kunden-Installer aufgenommen.
 
 ## C) Setup-Datei bauen (manifest_ou_1_2.exe)
 

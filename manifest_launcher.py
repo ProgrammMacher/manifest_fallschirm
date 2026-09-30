@@ -17,7 +17,7 @@ from contextlib import closing
 from waitress import serve
 from app.security.credentials import get_default_secrets_path, get_runtime_home_dir, random_secret_key
 from app.security.hardware_fingerprint import get_machine_fingerprint
-from app.security.license import get_signing_secret, validate_license_key
+from app.security.license import validate_license_key
 
 # ------------------------------------------------------------
 # Konfiguration
@@ -122,13 +122,16 @@ def _runtime_state_payload(secrets_cfg: dict) -> str:
     return json.dumps(state, separators=(",", ":"), sort_keys=True)
 
 
-def _runtime_state_signature(secrets_cfg: dict, signing_secret: str) -> str:
+def _runtime_state_signature(secrets_cfg: dict) -> str:
     payload = _runtime_state_payload(secrets_cfg).encode("utf-8")
-    return hmac.new(signing_secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+    state_key = str(secrets_cfg.get("runtime_state_key", "")).strip()
+    if not state_key:
+        raise RuntimeError("Runtime-State-Schlüssel fehlt in der Secrets-Datei")
+    return hmac.new(state_key.encode("utf-8"), payload, hashlib.sha256).hexdigest()
 
 
-def _persist_runtime_secrets(cfg_path: str, secrets_cfg: dict, signing_secret: str) -> None:
-    secrets_cfg["runtime_state_sig"] = _runtime_state_signature(secrets_cfg, signing_secret)
+def _persist_runtime_secrets(cfg_path: str, secrets_cfg: dict) -> None:
+    secrets_cfg["runtime_state_sig"] = _runtime_state_signature(secrets_cfg)
     try:
         with open(cfg_path, "w", encoding="utf-8") as f:
             json.dump(secrets_cfg, f, indent=2, ensure_ascii=False)
@@ -147,11 +150,13 @@ def _apply_runtime_secrets() -> None:
     loaded = _load_runtime_secrets()
     cfg_path = loaded["path"]
     secrets_cfg = loaded["data"]
-    signing_secret = get_signing_secret()
+    runtime_state_key = str(secrets_cfg.get("runtime_state_key", "")).strip()
+    if not runtime_state_key:
+        raise RuntimeError("Runtime-State-Schlüssel fehlt in der Secrets-Datei")
 
     existing_sig = str(secrets_cfg.get("runtime_state_sig", "")).strip()
     if existing_sig:
-        expected_sig = _runtime_state_signature(secrets_cfg, signing_secret)
+        expected_sig = _runtime_state_signature(secrets_cfg)
         if not hmac.compare_digest(existing_sig, expected_sig):
             raise RuntimeError("Secrets-Datei manipuliert (Signatur ungueltig)")
 
@@ -167,7 +172,6 @@ def _apply_runtime_secrets() -> None:
     machine_fingerprint = get_machine_fingerprint()
     ok, msg, payload = validate_license_key(
         license_key,
-        signing_secret,
         machine_fingerprint=machine_fingerprint,
     )
     if not ok:
@@ -190,7 +194,7 @@ def _apply_runtime_secrets() -> None:
         secrets_cfg["clock_tamper_locked"] = True
         secrets_cfg["clock_tamper_reason"] = "Systemzeit wurde zurueckgestellt"
         secrets_cfg["clock_tamper_detected_at_utc"] = now_utc.isoformat()
-        _persist_runtime_secrets(cfg_path, secrets_cfg, signing_secret)
+        _persist_runtime_secrets(cfg_path, secrets_cfg)
         raise RuntimeError("Start gesperrt: Systemzeit wurde zurueckgestellt")
 
     secrets_cfg["machine_fingerprint"] = machine_fingerprint
@@ -200,7 +204,7 @@ def _apply_runtime_secrets() -> None:
     secrets_cfg["last_validated_utc"] = now_utc.isoformat()
     secrets_cfg["clock_tamper_locked"] = False
     secrets_cfg["clock_tamper_reason"] = ""
-    _persist_runtime_secrets(cfg_path, secrets_cfg, signing_secret)
+    _persist_runtime_secrets(cfg_path, secrets_cfg)
 
     os.environ["MANIFEST_ADMIN_PASSWORD_HASH"] = admin_hash
     os.environ["MANIFEST_DB_ADMIN_PASSWORD_HASH"] = db_admin_hash

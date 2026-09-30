@@ -381,6 +381,9 @@ def test_offline_build_allowlists_neutral_seed_but_not_local_runtime_files():
     assert 'Copy-IfExists "data"' not in inno_builder
     assert "Assert-InstallerStageSafe -StageRoot $stageDir" in inno_builder
     assert "app\\services\\neutral_install_seed.pyc" in inno_builder
+    assert "app\\security\\license_public_key.pem" in inno_builder
+    assert "Get-ChildItem -Path $ProjectRoot 'tools\\license'" not in inno_builder
+    assert "install_runtime_secrets.py" in inno_builder
     assert "'(^|/)data/'" not in inno_builder
     assert "'^data/'" in inno_builder
     for forbidden in (
@@ -389,9 +392,16 @@ def test_offline_build_allowlists_neutral_seed_but_not_local_runtime_files():
         "app_settings",
         "auth_config",
         "noch_zu_loeschen",
+        "developer_tools",
+        "tools/license/(?!install_runtime_secrets",
+        "generate_license_(key|bundle)",
+        "license_signing",
+        "\\.(dpapi|p12|pfx)$",
+        "PRIVATE KEY",
         "runtime/gtk/var/cache",
     ):
         assert forbidden in inno_builder
+    assert "Get-ChildItem -Path (Join-Path $ProjectRoot 'tools\\license')" not in inno_builder
 
     workflow = (PROJECT_ROOT / ".github/workflows/build-installer.yml").read_text(
         encoding="utf-8"

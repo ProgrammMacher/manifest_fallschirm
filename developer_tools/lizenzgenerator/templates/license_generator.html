@@ -279,7 +279,7 @@
     <div class="container">
         <div class="header">
             <h1>🔐 Lizenzschlüssel Generator</h1>
-            <p>Manifest Fallschirm</p>
+            <p>Manifest Fallschirm · MFS2</p>
         </div>
 
         <div class="info-box">
@@ -353,8 +353,9 @@
 
             <div class="result-item">
                 <div class="result-label">🔑 Lizenzschlüssel</div>
-                <div class="result-value license-key" id="licenseKeyValue">
-                    <button class="copy-button" onclick="copyToClipboard('licenseKeyValue')">Kopieren</button>
+                <div class="result-value license-key">
+                    <span id="licenseKeyValue"></span>
+                    <button class="copy-button" type="button" onclick="copyToClipboard('licenseKeyValue')">Kopieren</button>
                 </div>
             </div>
 
@@ -479,7 +480,7 @@
             const text = element.textContent;
             
             navigator.clipboard.writeText(text).then(() => {
-                const button = event.target;
+                const button = element.parentElement.querySelector('.copy-button');
                 const originalText = button.textContent;
                 button.textContent = '✓ Kopiert!';
                 button.classList.add('copied');

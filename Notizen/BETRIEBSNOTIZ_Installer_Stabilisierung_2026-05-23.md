@@ -1,5 +1,7 @@
 # Betriebsnotiz: Installer-Stabilisierung und Runtime-Pfadfix (2026-05-23)
 
+> **Historisch:** Die Lizenzbeispiele und Generatorbefehle in dieser Notiz stammen aus der MFS1/HMAC-Phase. Sie sind nicht mehr ausführbar oder als Lizenzanweisung zu verwenden. Der aktuelle Ablauf ist in `developer_tools/lizenzgenerator/README.txt` beschrieben.
+
 ## Ausgangslage
 
 Wiederholte Startprobleme im installierten Modus (Program Files), trotz mehrfacher Rebuilds von manifest_ou_1_2.exe.

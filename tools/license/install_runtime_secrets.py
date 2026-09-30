@@ -5,19 +5,31 @@ import json
 import os
 import sys
 from pathlib import Path
+from secrets import token_urlsafe
+
+from werkzeug.security import generate_password_hash
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
+PROJECT_ROOT = SCRIPT_DIR.parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-from security_core import (  # type: ignore
-    get_default_secrets_path,
-    get_machine_fingerprint,
-    get_signing_secret,
-    hash_password,
-    random_secret_key,
-    validate_license_key,
-)
+from app.security.hardware_fingerprint import get_machine_fingerprint
+from app.security.license import validate_license_key
+
+
+def hash_password(password: str) -> str:
+    return generate_password_hash(password, method="pbkdf2:sha256:260000")
+
+
+def get_default_secrets_path() -> str:
+    configured_path = os.environ.get("MANIFEST_SECRETS_PATH", "").strip()
+    if configured_path:
+        return os.path.abspath(configured_path)
+    runtime_home = os.environ.get("MANIFEST_RUNTIME_HOME", "").strip()
+    if runtime_home:
+        return os.path.join(os.path.abspath(runtime_home), "secrets", "auth_config.json")
+    return os.path.join(PROJECT_ROOT, "data", "secrets", "auth_config.json")
 
 
 def main() -> int:
@@ -38,7 +50,6 @@ def main() -> int:
     machine_fingerprint = get_machine_fingerprint()
     ok, msg, payload = validate_license_key(
         args.license_key,
-        get_signing_secret(),
         machine_fingerprint=machine_fingerprint,
     )
     if not ok:
@@ -60,7 +71,8 @@ def main() -> int:
         "machine_fingerprint": machine_fingerprint,
         "admin_password_hash": hash_password(args.admin_password),
         "db_admin_password_hash": hash_password(args.db_admin_password),
-        "secret_key": random_secret_key(),
+        "secret_key": token_urlsafe(48),
+        "runtime_state_key": token_urlsafe(48),
     }
 
     with target_path.open("w", encoding="utf-8") as f:
