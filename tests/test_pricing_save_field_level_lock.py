@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -8,15 +7,17 @@ import pytest
 
 
 @pytest.fixture()
-def app_with_pricing_db(tmp_path):
+def app_with_pricing_db(tmp_path, monkeypatch):
     runtime_home = tmp_path / "runtime"
     db_file = runtime_home / "manifest_test.db"
     runtime_home.mkdir(parents=True, exist_ok=True)
 
-    os.environ["MANIFEST_RUNTIME_HOME"] = str(runtime_home)
-    os.environ["MANIFEST_DB_PATH"] = str(db_file)
-    os.environ["MANIFEST_ENV"] = "dev"
-    os.environ["MANIFEST_AUTO_CREATE_DB"] = "1"
+    monkeypatch.setenv("MANIFEST_RUNTIME_HOME", str(runtime_home))
+    monkeypatch.setenv("MANIFEST_DB_PATH", str(db_file))
+    monkeypatch.setenv("MANIFEST_SECRETS_PATH", str(runtime_home / "secrets" / "auth_config.json"))
+    monkeypatch.setenv("MANIFEST_ENV", "dev")
+    monkeypatch.setenv("MANIFEST_AUTO_DB_UPGRADE", "0")
+    monkeypatch.setenv("MANIFEST_AUTO_CREATE_DB", "1")
 
     from app import create_app, db
     from app.models.aircraft import Aircraft
@@ -34,6 +35,7 @@ def app_with_pricing_db(tmp_path):
 
     with app.app_context():
         db.session.remove()
+        db.engine.dispose(close=True)
         db.drop_all()
         db.create_all()
 
@@ -298,3 +300,53 @@ def test_pricing_save_persists_unlocked_status_in_same_submit(app_with_pricing_d
 
         assert Decimal(str(td_4000.price_eur)) == Decimal("70.00")
         assert Decimal(str(aff_4000.price_eur)) == Decimal("123.00")
+
+
+def test_new_load_uses_aircraft_default_height_and_keeps_manual_height(app_with_pricing_db):
+    from app.models.aircraft import Aircraft
+    from app.models.flugplatz import Flugplatz
+    from app.models.load import Load
+
+    app = app_with_pricing_db
+    client = app.test_client()
+
+    with app.app_context():
+        airfield = Flugplatz.query.first()
+        aircraft = Aircraft.query.first()
+        airfield_id = airfield.id
+        aircraft_id = aircraft.id
+        default_height = aircraft.default_height
+
+    response = client.get("/loads/split?new=1")
+    assert response.status_code == 200
+    assert f'data-default-height="{default_height}"' in response.get_data(as_text=True)
+    assert f'<option value="{default_height}" selected>' in response.get_data(as_text=True)
+
+    base_data = {
+        "airfield_id": str(airfield_id),
+        "aircraft_id": str(aircraft_id),
+        "return_to": "split",
+        "show": "active",
+        "planned_date": "2026-09-30",
+        "planned_start_time": "10:00",
+    }
+    default_response = client.post("/loads/new", data=base_data)
+    assert default_response.status_code == 302
+
+    manual_response = client.post(
+        "/loads/new",
+        data={**base_data, "height_m": "1500"},
+    )
+    assert manual_response.status_code == 302
+
+    with app.app_context():
+        created_loads = (
+            Load.query
+            .filter_by(aircraft_id=aircraft_id)
+            .order_by(Load.id.desc())
+            .limit(2)
+            .all()
+        )
+        assert len(created_loads) == 2
+        assert created_loads[0].height_m == 1500
+        assert created_loads[1].height_m == default_height
