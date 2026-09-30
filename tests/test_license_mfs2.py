@@ -12,7 +12,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from app.security import license as runtime_license
-from developer_tools.lizenzgenerator import license_signing
+from tools.lizenzgenerator import license_signing
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -130,7 +130,7 @@ def test_supported_tiers_validate(signing_test_key, tier, duration):
 
 
 def test_generator_form_uses_backend_parameter_names():
-    from developer_tools.lizenzgenerator import generator_app
+    from tools.lizenzgenerator import generator_app
 
     page = generator_app.app.test_client().get("/").get_data(as_text=True)
     assert 'name="customer"' in page
@@ -162,7 +162,7 @@ def test_batch_start_imports_signer_and_handles_browser_post(tmp_path):
                 def sign(self, _message):
                     return b"\\0" * 64
 
-            from developer_tools.lizenzgenerator import license_signing
+            from tools.lizenzgenerator import license_signing
             license_signing.load_private_key = lambda: TestOnlySigner()
 
             real_print = builtins.print
@@ -187,7 +187,7 @@ def test_batch_start_imports_signer_and_handles_browser_post(tmp_path):
                 generator_module = sys.modules["__main__"]
                 signing_function = generator_module.generate_license_key
                 signing_module = sys.modules[signing_function.__module__]
-                assert signing_function.__module__ == "developer_tools.lizenzgenerator.license_signing"
+                assert signing_function.__module__ == "tools.lizenzgenerator.license_signing"
                 assert "license_signing" not in sys.modules
                 real_print("Generator __file__:", generator_module.__file__)
                 real_print("Signer-Modul __file__:", signing_module.__file__)
@@ -234,7 +234,7 @@ def test_batch_start_imports_signer_and_handles_browser_post(tmp_path):
         for part in (str(tmp_path), str(PROJECT_ROOT), env.get("PYTHONPATH", ""))
         if part
     )
-    starter = PROJECT_ROOT / "developer_tools" / "lizenzgenerator" / "Lizenzgenerator starten.bat"
+    starter = PROJECT_ROOT / "tools" / "lizenzgenerator" / "Lizenzgenerator starten.bat"
     result = subprocess.run(
         f'call "{starter}"',
         shell=True,
@@ -250,8 +250,8 @@ def test_batch_start_imports_signer_and_handles_browser_post(tmp_path):
     assert result.returncode == 0, result.stderr or result.stdout
     diagnostics = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     assert len(diagnostics) == 3, result.stdout
-    assert str((PROJECT_ROOT / "developer_tools" / "lizenzgenerator" / "generator_app.py").resolve()) in diagnostics[0]
-    assert str((PROJECT_ROOT / "developer_tools" / "lizenzgenerator" / "license_signing.py").resolve()) in diagnostics[1]
+    assert str((PROJECT_ROOT / "tools" / "lizenzgenerator" / "generator_app.py").resolve()) in diagnostics[0]
+    assert str((PROJECT_ROOT / "tools" / "lizenzgenerator" / "license_signing.py").resolve()) in diagnostics[1]
     assert "customer" in diagnostics[2]
     print("\\n".join(diagnostics))
 
@@ -263,7 +263,7 @@ def test_batch_start_imports_signer_and_handles_browser_post(tmp_path):
 def test_developer_generator_signs_mfs2_for_public_runtime_verifier(
     monkeypatch, signing_test_key, ui_tier, expected_tier
 ):
-    from developer_tools.lizenzgenerator import generator_app
+    from tools.lizenzgenerator import generator_app
 
     monkeypatch.setattr(license_signing, "load_private_key", lambda: signing_test_key)
     monkeypatch.setattr(generator_app, "load_private_key", lambda: signing_test_key)
@@ -293,7 +293,7 @@ def test_developer_generator_signs_mfs2_for_public_runtime_verifier(
 
 
 def test_developer_generator_refuses_to_sign_without_private_key(monkeypatch):
-    from developer_tools.lizenzgenerator import generator_app
+    from tools.lizenzgenerator import generator_app
 
     def missing_key():
         raise RuntimeError("test key unavailable")
@@ -339,13 +339,13 @@ def test_runtime_verifier_contains_only_public_key_validation():
     builder = (PROJECT_ROOT / "tools/build_inno_offline_setup.ps1").read_text(encoding="utf-8")
     assert "Get-ChildItem -Path (Join-Path $ProjectRoot 'tools\\license')" not in builder
     assert "tools\\license\\install_runtime_secrets.py" in builder
-    assert "developer_tools" in builder
+    assert "tools/(lizenzgenerator|fingerprint|analyse|pdf-runtime)" in builder
     assert "license_signing" in builder
 
 
 def test_customer_fingerprint_script_has_hardware_only_inputs():
     fingerprint_script = (
-        PROJECT_ROOT / "developer_tools/fingerprint/Fingerprint ermitteln.ps1"
+        PROJECT_ROOT / "tools/fingerprint/Fingerprint ermitteln.ps1"
     ).read_text(encoding="utf-8")
     assert r"HKLM:\SOFTWARE\Microsoft\Cryptography" in fingerprint_script
     assert "GetVolumeInformation" in fingerprint_script

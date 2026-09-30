@@ -1,6 +1,6 @@
 # 📋 Anleitung: Maschinenbindung & Lizenzierung für Manifest Fallschirm
 
-> **Hinweis:** Diese ältere Anleitung beschreibt den früheren MFS1/HMAC-Ablauf und ist nicht mehr als Arbeitsanweisung zu verwenden. Der aktuelle MFS2-Entwicklerablauf steht in `developer_tools/lizenzgenerator/README.txt`; dem Kunden werden ausschließlich der freigegebene Installer und das separate Fingerprint-Paket gegeben.
+> **Hinweis:** Diese ältere Anleitung beschreibt den früheren MFS1/HMAC-Ablauf und ist nicht mehr als Arbeitsanweisung zu verwenden. Der aktuelle MFS2-Entwicklerablauf steht in `tools/lizenzgenerator/README.txt`; dem Kunden werden ausschließlich der freigegebene Installer und das separate Fingerprint-Paket gegeben.
 
 **Gesamtablauf:**
 

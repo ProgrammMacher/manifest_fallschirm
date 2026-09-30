@@ -94,7 +94,7 @@ Das Skript wartet im gleichen Fenster, bis die App beendet wird, und zeigt danac
 
 Zum Erstellen eines portablen GTK-Bundles auf dem Entwicklungsrechner:
 
-1. [tools/build_offline_pdf_runtime.bat](../tools/build_offline_pdf_runtime.bat) starten.
+1. [tools/pdf-runtime/build_offline_pdf_runtime.bat](../tools/pdf-runtime/build_offline_pdf_runtime.bat) starten.
 2. Das Skript kopiert eine lokal installierte GTK3-Runtime nach [runtime/gtk](../runtime/gtk).
 3. Zusaetzlich wird (falls moeglich) [runtime/gtk-runtime-win64.zip](../runtime/gtk-runtime-win64.zip) erzeugt.
 

@@ -1,6 +1,6 @@
 # ANLEITUNG_Lizenzierungssystem_Installation_2026-04-24
 
-> **Überholt:** Diese Anleitung dokumentiert den früheren MFS1/HMAC-Generator. Für den aktuellen MFS2-Ablauf siehe `developer_tools/lizenzgenerator/README.txt`; der private Ed25519-Schlüssel bleibt ausschließlich lokal unter `%LOCALAPPDATA%\ManifestFallschirm\developer-signing\`.
+> **Überholt:** Diese Anleitung dokumentiert den früheren MFS1/HMAC-Generator. Für den aktuellen MFS2-Ablauf siehe `tools/lizenzgenerator/README.txt`; der private Ed25519-Schlüssel bleibt ausschließlich lokal unter `%LOCALAPPDATA%\ManifestFallschirm\developer-signing\`.
 
 Stand: 24. April 2026
 

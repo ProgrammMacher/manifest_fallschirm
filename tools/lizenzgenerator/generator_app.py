@@ -16,7 +16,7 @@ GENERATOR_DIR = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from developer_tools.lizenzgenerator.license_signing import generate_license_key, load_private_key
+from tools.lizenzgenerator.license_signing import generate_license_key, load_private_key
 
 
 app = Flask(__name__, template_folder=str(Path(__file__).parent / "templates"))

@@ -16,11 +16,12 @@ Rahmenbedingungen:
 
 ## Schnellstart
 
-### Variante A: Doppelklick
+Dieses Skript ist kein eigenständiger manueller Einstieg mehr. Der einzige
+manuelle Installer-Starter ist [tools/Installer bauen.bat](tools/Installer%20bauen.bat),
+der `tools/build_inno_offline_setup.ps1` aufruft; dieses wiederum ruft
+`tools/build_offline_compiled_installer_zip.ps1` intern auf.
 
-Starte [tools/build_offline_compiled_installer_zip.bat](tools/build_offline_compiled_installer_zip.bat).
-
-### Variante B: PowerShell
+Direkter manueller Aufruf (z. B. zur Diagnose) weiterhin moeglich:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File "tools/build_offline_compiled_installer_zip.ps1"

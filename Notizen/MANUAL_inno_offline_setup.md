@@ -13,12 +13,12 @@ Dieses Handbuch beschreibt den kompletten Ablauf fuer eine echte Offline-Install
 ## Relevante Dateien im Projekt
 
 1. [tools/build_inno_offline_setup.ps1](tools/build_inno_offline_setup.ps1)
-2. [tools/build_inno_offline_setup.bat](tools/build_inno_offline_setup.bat)
+2. [tools/Installer bauen.bat](tools/Installer%20bauen.bat)
 3. [installer/inno/manifest_offline_setup.iss](installer/inno/manifest_offline_setup.iss)
 4. [tools/license/install_runtime_secrets.py](tools/license/install_runtime_secrets.py)
 5. [app/security/license_public_key.pem](app/security/license_public_key.pem) (öffentlicher MFS2-Prüfschlüssel)
-6. [developer_tools/lizenzgenerator/README.txt](../developer_tools/lizenzgenerator/README.txt) (Entwickler-only; nicht im Kunden-Installer)
-7. [developer_tools/fingerprint/Fingerprint ermitteln.bat](../developer_tools/fingerprint/Fingerprint%20ermitteln.bat) (separat weitergebbar)
+6. [tools/lizenzgenerator/README.txt](../tools/lizenzgenerator/README.txt) (Entwickler-only; nicht im Kunden-Installer)
+7. [tools/fingerprint/Fingerprint ermitteln.bat](../tools/fingerprint/Fingerprint%20ermitteln.bat) (separat weitergebbar)
 8. [tools/build_manifest_icon.py](tools/build_manifest_icon.py)
 9. [app/static/img/HU_Bleistift.png](app/static/img/HU_Bleistift.png)
 10. [app/static/img/manifest_ou.ico](app/static/img/manifest_ou.ico)
@@ -46,7 +46,7 @@ Maschinenbindung braucht den Fingerprint des Zielrechners.
 
 Auf Zielrechner ausfuehren:
 
-1. [developer_tools/fingerprint/Fingerprint ermitteln.bat](../developer_tools/fingerprint/Fingerprint%20ermitteln.bat)
+1. [tools/fingerprint/Fingerprint ermitteln.bat](../tools/fingerprint/Fingerprint%20ermitteln.bat)
 2. Ausgabe kopieren (Hex-String)
 3. Fingerprint an den Entwickler senden
 
@@ -56,7 +56,7 @@ Das Fingerprint-Werkzeug enthält weder Signierfunktion noch privaten Schlüssel
 ## B) Lizenzschluessel mit Laufzeit und Maschinenbindung erzeugen
 
 Auf dem Entwicklerrechner den Generator mit
-`developer_tools/lizenzgenerator/Lizenzgenerator starten.bat` starten und dort
+`tools/lizenzgenerator/Lizenzgenerator starten.bat` starten und dort
 Kundenname, Fingerprint und Lizenzstufe eingeben. Die lokale Signierfunktion
 benötigt den DPAPI-geschützten privaten Schlüssel unter
 `%LOCALAPPDATA%\ManifestFallschirm\developer-signing\`. Dieser Schlüssel
@@ -66,7 +66,7 @@ und die Generatorwerkzeuge werden nicht in den Kunden-Installer aufgenommen.
 
 Variante 1:
 
-1. [tools/build_inno_offline_setup.bat](tools/build_inno_offline_setup.bat) doppelklicken
+1. [tools/Installer bauen.bat](tools/Installer%20bauen.bat) doppelklicken
 
 Variante 2:
 

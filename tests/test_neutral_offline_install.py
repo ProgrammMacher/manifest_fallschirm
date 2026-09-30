@@ -348,7 +348,6 @@ def test_offline_build_allowlists_neutral_seed_but_not_local_runtime_files():
     required_runtime_dirs = {"runtime/python", "runtime/gtk"}
 
     for relative_path in (
-        "tools/build_offline_installer_zip.ps1",
         "tools/build_offline_compiled_installer_zip.ps1",
     ):
         text = (PROJECT_ROOT / relative_path).read_text(encoding="utf-8")
@@ -392,7 +391,7 @@ def test_offline_build_allowlists_neutral_seed_but_not_local_runtime_files():
         "app_settings",
         "auth_config",
         "noch_zu_loeschen",
-        "developer_tools",
+        "tools/(lizenzgenerator|fingerprint|analyse|pdf-runtime)",
         "tools/license/(?!install_runtime_secrets",
         "generate_license_(key|bundle)",
         "license_signing",

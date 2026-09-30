@@ -17,8 +17,8 @@ Einschränkungen:
 - Template-/Jinja-Nutzung von Python-Dateien zählt nicht als Import
 
 Benutzung:
-  python tools/find_unused_modules.py --root C:\\manifest_fallschirm --entry run.py
-  python tools/find_unused_modules.py --root . --entry run.py --entry app/__init__.py
+  python tools/analyse/find_unused_modules.py --root C:\\manifest_fallschirm --entry run.py
+  python tools/analyse/find_unused_modules.py --root . --entry run.py --entry app/__init__.py
 """
 
 import argparse

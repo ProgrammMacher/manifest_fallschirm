@@ -11,7 +11,7 @@ Einmalige Einrichtung auf dem Entwicklerrechner:
    Ohne diesen Schluessel koennen neue Lizenzen nicht mehr signiert werden.
 
 Kunden-Fingerprint:
-1. Nur die beiden Dateien aus developer_tools\fingerprint weitergeben.
+1. Nur die beiden Dateien aus tools\fingerprint weitergeben.
 2. Der Kunde startet "Fingerprint ermitteln.bat" und sendet den angezeigten
    64-stelligen Fingerprint zurueck.
 3. Das Fingerprint-Werkzeug erzeugt keine Lizenz und enthaelt keinen Signer.

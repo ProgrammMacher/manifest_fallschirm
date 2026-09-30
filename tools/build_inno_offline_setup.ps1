@@ -143,7 +143,7 @@ function Assert-InstallerStageSafe {
         '(^|/)session_data/',
         '(^|/)uploads/',
         '(^|/)noch_zu_loeschen/',
-        '(^|/)developer_tools/',
+        '(^|/)tools/(lizenzgenerator|fingerprint|analyse|pdf-runtime)/',
         '(^|/)tools/license/(?!install_runtime_secrets\.py$)[^/]+$',
         '(^|/)generate_license_(key|bundle)\.pyc?$',
         '(^|/)initialize_signing_key\.pyc?$',

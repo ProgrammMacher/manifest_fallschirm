@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions
 
-cd /d "%~dp0\.."
+cd /d "%~dp0\..\.."
 set "PROJECT_ROOT=%CD%"
 set "TARGET_GTK=%PROJECT_ROOT%\runtime\gtk"
 set "ARCHIVE=%PROJECT_ROOT%\runtime\gtk-runtime-win64.zip"

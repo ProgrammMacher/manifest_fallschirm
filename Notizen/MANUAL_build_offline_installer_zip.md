@@ -1,5 +1,7 @@
 # Manual: build_offline_installer_zip.ps1
 
+> **Überholt:** Dieser unkompilierte ZIP-Buildweg wurde entfernt (`tools/build_offline_installer_zip.ps1`/`.bat` existieren nicht mehr). Der aktuelle produktive Installer-Build läuft ausschließlich über `tools/Installer bauen.bat` (ruft `tools/build_inno_offline_setup.ps1` auf, das intern `tools/build_offline_compiled_installer_zip.ps1` nutzt). Dieses Dokument bleibt als historische Referenz erhalten.
+
 Dieses Handbuch beschreibt, wie du mit [tools/build_offline_installer_zip.ps1](tools/build_offline_installer_zip.ps1) ein sauberes Offline-Installer-ZIP aus dem Projektordner erzeugst.
 
 ## Ziel
