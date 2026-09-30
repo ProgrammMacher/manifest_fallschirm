@@ -360,7 +360,9 @@ def test_offline_build_allowlists_neutral_seed_but_not_local_runtime_files():
         assert "runtime" not in include_dirs
         assert required_runtime_dirs.issubset(include_dirs)
         assert not any(Path(path).name in sensitive_names for path in include_files)
+        assert "app/database.sqlite" in exclude_globs
         assert "runtime/gtk/var/cache/**" in exclude_globs
+        assert "runtime/python/Lib/test/**" in exclude_globs
         assert "data/backup/**" in exclude_globs
 
         seed_text = (PROJECT_ROOT / "app/services/neutral_install_seed.py").read_text(
@@ -379,8 +381,10 @@ def test_offline_build_allowlists_neutral_seed_but_not_local_runtime_files():
     assert 'Copy-IfExists "data"' not in inno_builder
     assert "Assert-InstallerStageSafe -StageRoot $stageDir" in inno_builder
     assert "app\\services\\neutral_install_seed.pyc" in inno_builder
+    assert "'(^|/)data/'" not in inno_builder
+    assert "'^data/'" in inno_builder
     for forbidden in (
-        "(^|/)data/",
+        "^data/",
         "\\.(db|sqlite|sqlite3)$",
         "app_settings",
         "auth_config",

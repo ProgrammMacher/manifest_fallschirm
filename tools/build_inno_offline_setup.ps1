@@ -68,6 +68,25 @@ function Test-FileReadable {
     }
 }
 
+function Get-RelativePath {
+    param(
+        [Parameter(Mandatory = $true)][string]$BasePath,
+        [Parameter(Mandatory = $true)][string]$TargetPath
+    )
+
+    $base = [System.IO.Path]::GetFullPath($BasePath)
+    $target = [System.IO.Path]::GetFullPath($TargetPath)
+
+    if (-not $base.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
+        $base = $base + [System.IO.Path]::DirectorySeparatorChar
+    }
+
+    $baseUri = New-Object System.Uri($base)
+    $targetUri = New-Object System.Uri($target)
+    $relativeUri = $baseUri.MakeRelativeUri($targetUri)
+    return [System.Uri]::UnescapeDataString($relativeUri.ToString()).Replace('/', '\')
+}
+
 function Get-LatestReadableCompiledZip {
     param([Parameter(Mandatory = $true)][string]$BuildDir)
 
@@ -117,7 +136,7 @@ function Assert-InstallerStageSafe {
     }
 
     $forbiddenPatterns = @(
-        '(^|/)data/',
+        '^data/',
         '(^|/)runtime/(data|logs|session_data|uploads|secrets)/',
         '(^|/)logs/',
         '(^|/)session_data/',

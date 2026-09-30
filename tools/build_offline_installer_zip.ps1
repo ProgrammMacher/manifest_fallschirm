@@ -104,12 +104,14 @@ $includeFiles = @(
 
 # Ausschluesse gelten nur innerhalb bereits inkludierter Ordner.
 $excludeGlobs = @(
+    'app/database.sqlite',
     'app/session_data/**',
     'app/uploads/**',
     'data/archive/**',
     'data/backup/**',
     'data/temp/**',
     'runtime/gtk/var/cache/**',
+    'runtime/python/Lib/test/**',
     'logs/**',
     '__pycache__/**',
     '*.pyc',

@@ -26,3 +26,4 @@ uploads/*
 /data/secrets/auth_config.json
 /data/split_verify_temp.db
 /noch_zu_loeschen/
+/app/database.sqlite
