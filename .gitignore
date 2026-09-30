@@ -20,3 +20,9 @@ session_data/*
 logs/*
 runtime/*
 uploads/*
+
+/data/app_settings.json
+/data/manifest.db
+/data/secrets/auth_config.json
+/data/split_verify_temp.db
+/noch_zu_loeschen/

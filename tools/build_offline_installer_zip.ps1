@@ -84,10 +84,10 @@ if (Test-Path -LiteralPath $zipPath) {
 
 $includeDirs = @(
     'app',
-    'runtime',
+    'runtime/python',
+    'runtime/gtk',
     'packages',
-    'migrations',
-    'data'
+    'migrations'
 )
 
 $includeFiles = @(
@@ -109,6 +109,7 @@ $excludeGlobs = @(
     'data/archive/**',
     'data/backup/**',
     'data/temp/**',
+    'runtime/gtk/var/cache/**',
     'logs/**',
     '__pycache__/**',
     '*.pyc',
