@@ -84,6 +84,62 @@ function Get-LatestReadableCompiledZip {
     return $null
 }
 
+function Assert-InstallerStageSafe {
+    param([Parameter(Mandatory = $true)][string]$StageRoot)
+
+    $requiredFiles = @(
+        'app\__init__.pyc',
+        'app\services\neutral_install_seed.pyc',
+        'migrations\env.pyc',
+        'manifest_launcher.pyc',
+        'run_migrations.pyc',
+        'runtime\python\python.exe',
+        'runtime\python\pythonw.exe',
+        'runtime\gtk\bin\libcairo-2.dll',
+        'setup_start_manifest.bat',
+        'start_manifest_prod.bat',
+        'start_manifest_prod.vbs',
+        'tools\license\install_runtime_secrets.py',
+        'requirements.txt'
+    )
+
+    foreach ($relativePath in $requiredFiles) {
+        $path = Join-Path $StageRoot $relativePath
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "Required installer stage file is missing: $relativePath"
+        }
+    }
+
+    $wheelhouse = Join-Path $StageRoot 'packages'
+    if (-not (Test-Path -LiteralPath $wheelhouse -PathType Container) -or
+        -not (Get-ChildItem -LiteralPath $wheelhouse -Filter '*.whl' -File -ErrorAction SilentlyContinue)) {
+        throw 'Installer stage has no offline wheels in packages/.'
+    }
+
+    $forbiddenPatterns = @(
+        '(^|/)data/',
+        '(^|/)runtime/(data|logs|session_data|uploads|secrets)/',
+        '(^|/)logs/',
+        '(^|/)session_data/',
+        '(^|/)uploads/',
+        '(^|/)noch_zu_loeschen/',
+        '(^|/)app_settings\.json$',
+        '(^|/)auth_config\.json$',
+        '\.(db|sqlite|sqlite3)$',
+        '\.log$',
+        '(^|/)runtime/gtk/var/cache/'
+    )
+
+    foreach ($file in Get-ChildItem -Path $StageRoot -Recurse -File -Force) {
+        $relativePath = (Get-RelativePath -BasePath $StageRoot -TargetPath $file.FullName).Replace('\', '/')
+        foreach ($pattern in $forbiddenPatterns) {
+            if ($relativePath -match $pattern) {
+                throw "Forbidden local/runtime data in installer stage: $relativePath"
+            }
+        }
+    }
+}
+
 if ([string]::IsNullOrWhiteSpace($ProjectRoot)) {
     $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 }
@@ -197,6 +253,8 @@ try {
         New-Item -ItemType Directory -Path $taskbarPinDir -Force | Out-Null
         Copy-Item -LiteralPath $taskbarPinScriptSrc -Destination $taskbarPinScriptDst -Force
     }
+
+    Assert-InstallerStageSafe -StageRoot $stageDir
 
     Write-Host "Kompiliere Inno Setup mit: $isccExe"
     Write-Host "Stage-Verzeichnis: $stageDir"

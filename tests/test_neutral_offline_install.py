@@ -377,6 +377,36 @@ def test_offline_build_allowlists_neutral_seed_but_not_local_runtime_files():
         encoding="utf-8"
     )
     assert 'Copy-IfExists "data"' not in inno_builder
+    assert "Assert-InstallerStageSafe -StageRoot $stageDir" in inno_builder
+    assert "app\\services\\neutral_install_seed.pyc" in inno_builder
+    for forbidden in (
+        "(^|/)data/",
+        "\\.(db|sqlite|sqlite3)$",
+        "app_settings",
+        "auth_config",
+        "noch_zu_loeschen",
+        "runtime/gtk/var/cache",
+    ):
+        assert forbidden in inno_builder
+
+    workflow = (PROJECT_ROOT / ".github/workflows/build-installer.yml").read_text(
+        encoding="utf-8"
+    )
+    normalized_workflow = workflow.replace("\\", "/")
+    assert workflow.startswith("name: Build Manifest Installer")
+    assert "workflow_dispatch:" in workflow
+    assert "actions/setup-python@v5" in workflow
+    assert 'python-version: "3.14.2"' in workflow
+    assert "tools/build_inno_offline_setup.ps1" in normalized_workflow
+    assert "runtime/python/python.exe" in normalized_workflow
+    assert "Lib/venv" in normalized_workflow
+    assert "manifest-venv-probe" in workflow
+    assert "manifest-installer-${{ github.run_number }}-${{ github.run_attempt }}" in workflow
+    assert "softprops/action-gh-release" not in workflow
+    assert "Create Release" not in workflow
+    assert "pyinstaller" not in workflow.lower()
+    assert "github.run_number" in workflow and "github.run_attempt" in workflow
+    assert "app/services/neutral_install_seed.pyc" in workflow
 
 
 _PS_ARRAY_PATTERN = re.compile(r"\$([A-Za-z]+)\s*=\s*@\((.*?)\)", re.DOTALL)

@@ -2,144 +2,145 @@ name: Build Manifest Installer
 
 on:
   workflow_dispatch:
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: windows-latest
 
-    permissions:
-      contents: write
-
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v4
+      - name: Set up matching CPython launcher
+        id: setup-python
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.14.2"
+          architecture: "x64"
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt pyinstaller
-
-      - name: Clean build
-        shell: powershell
+      - name: Provision portable runtime launcher files
+        shell: pwsh
+        env:
+          SETUP_PYTHON_PATH: ${{ steps.setup-python.outputs.python-path }}
         run: |
-          if (Test-Path build) { Remove-Item -Recurse -Force build }
-          if (Test-Path dist) { Remove-Item -Recurse -Force dist }
+          $sourcePython = $env:SETUP_PYTHON_PATH
+          if (-not (Test-Path -LiteralPath $sourcePython -PathType Leaf)) {
+            throw "setup-python did not provide python.exe: $sourcePython"
+          }
 
-      - name: Build EXE
-        run: pyinstaller --clean --onefile --noconfirm run.py
+          $sourceDir = Split-Path -Parent $sourcePython
+          $runtimeDir = Join-Path $env:GITHUB_WORKSPACE 'runtime\python'
+          $runtimeLib = Join-Path $runtimeDir 'Lib'
+          if (-not (Test-Path -LiteralPath $runtimeLib -PathType Container)) {
+            throw "Checked-in portable Python library tree is missing: $runtimeLib"
+          }
+
+          $pythonwSource = Join-Path $sourceDir 'pythonw.exe'
+          if (-not (Test-Path -LiteralPath $pythonwSource -PathType Leaf)) {
+            throw "setup-python did not provide pythonw.exe: $pythonwSource"
+          }
+
+          Copy-Item -LiteralPath $sourcePython -Destination (Join-Path $runtimeDir 'python.exe') -Force
+          Copy-Item -LiteralPath $pythonwSource -Destination (Join-Path $runtimeDir 'pythonw.exe') -Force
+
+          $venvSource = Join-Path $sourceDir 'Lib\venv'
+          if (-not (Test-Path -LiteralPath $venvSource -PathType Container)) {
+            throw "setup-python venv module is missing: $venvSource"
+          }
+          Copy-Item -LiteralPath $venvSource -Destination $runtimeLib -Recurse -Force
+
+          $portablePython = Join-Path $runtimeDir 'python.exe'
+          $version = (& $portablePython --version 2>&1 | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or $version -ne 'Python 3.14.2') {
+            throw "Portable runtime version mismatch: $version"
+          }
+          if (-not (Test-Path -LiteralPath (Join-Path $runtimeDir 'python314.dll') -PathType Leaf)) {
+            throw 'Matching python314.dll is missing from the checked-in runtime tree.'
+          }
+
+          $venvProbe = Join-Path $env:RUNNER_TEMP 'manifest-venv-probe'
+          & $portablePython -m venv $venvProbe
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $venvProbe 'Scripts\python.exe'))) {
+            throw 'The provisioned portable runtime cannot create the app venv.'
+          }
+          Remove-Item -LiteralPath $venvProbe -Recurse -Force
 
       - name: Install Inno Setup
-        run: choco install innosetup -y
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
 
-      - name: Prepare stage directory with full content
-        shell: powershell
+      - name: Build through the local offline installer wrapper
+        shell: pwsh
         run: |
-          $stage = "build\inno_stage"
-          New-Item -ItemType Directory -Force $stage | Out-Null
+          & "$env:GITHUB_WORKSPACE\tools\build_inno_offline_setup.ps1" -ProjectRoot $env:GITHUB_WORKSPACE
+          if ($LASTEXITCODE -ne 0) {
+            throw "Offline installer build failed with exit code $LASTEXITCODE."
+          }
+          if (-not (Test-Path -LiteralPath 'build\installer\manifest_ou_1_2.exe' -PathType Leaf)) {
+            throw 'Expected installer build\installer\manifest_ou_1_2.exe was not produced.'
+          }
 
-          function Copy-IfExists {
-            param(
-              [string]$Source,
-              [string]$Destination
+      - name: Verify packaged offline ZIP contents
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = Get-ChildItem -LiteralPath 'build' -Filter 'manifest_offline_compiled_installer_*.zip' -File |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if (-not $zip) { throw 'Compiled offline ZIP was not produced.' }
+
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($zip.FullName)
+          try {
+            $entries = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\\', '/') })
+            $required = @(
+              'app/__init__.pyc',
+              'app/services/neutral_install_seed.pyc',
+              'migrations/env.pyc',
+              'manifest_launcher.pyc',
+              'run_migrations.pyc',
+              'runtime/python/python.exe',
+              'runtime/python/pythonw.exe',
+              'runtime/gtk/bin/libcairo-2.dll',
+              'setup_start_manifest.bat',
+              'start_manifest_prod.bat',
+              'start_manifest_prod.vbs',
+              'requirements.txt'
             )
-            if (Test-Path $Source) {
-              Copy-Item $Source $Destination -Recurse -Force
+            foreach ($path in $required) {
+              if ($entries -notcontains $path) { throw "Required installer content missing: $path" }
+            }
+            if (-not ($entries | Where-Object { $_ -match '^packages/.+\.whl$' })) {
+              throw 'No offline wheels are present in the compiled ZIP.'
+            }
+
+            $forbidden = @(
+              '(^|/)data/',
+              '(^|/)runtime/(data|logs|session_data|uploads|secrets)/',
+              '(^|/)logs/',
+              '(^|/)session_data/',
+              '(^|/)uploads/',
+              '(^|/)noch_zu_loeschen/',
+              '(^|/)app_settings\.json$',
+              '(^|/)auth_config\.json$',
+              '\.(db|sqlite|sqlite3)$',
+              '\.log$',
+              '(^|/)runtime/gtk/var/cache/'
+            )
+            foreach ($entry in $entries) {
+              foreach ($pattern in $forbidden) {
+                if ($entry -match $pattern) { throw "Forbidden local/runtime data packaged: $entry" }
+              }
             }
           }
-
-          function Copy-FileIfExists {
-            param(
-              [string]$Source,
-              [string]$Destination
-            )
-            if (Test-Path $Source) {
-              Copy-Item $Source $Destination -Force
-            }
+          finally {
+            $archive.Dispose()
           }
 
-          # Haupt-EXE
-          Copy-FileIfExists "dist\run.exe" "$stage\run.exe"
-
-          # Root-Start- und Hilfsdateien
-          Copy-FileIfExists "start_manifest_prod.vbs" "$stage\start_manifest_prod.vbs"
-          Copy-FileIfExists "start_manifest_prod.bat" "$stage\start_manifest_prod.bat"
-          Copy-FileIfExists "setup_start_manifest.bat" "$stage\setup_start_manifest.bat"
-          Copy-FileIfExists "run.py" "$stage\run.py"
-          Copy-FileIfExists "requirements.txt" "$stage\requirements.txt"
-          Copy-FileIfExists "server_pid.txt" "$stage\server_pid.txt"
-
-          # Wichtige Ordner für Offline-/Vollinstallation
-          Copy-IfExists "app" "$stage\app"
-          Copy-IfExists "tools" "$stage\tools"
-          Copy-IfExists "runtime" "$stage\runtime"
-          Copy-IfExists "templates" "$stage\templates"
-          Copy-IfExists "uploads" "$stage\uploads"
-          Copy-IfExists "session_data" "$stage\session_data"
-
-          # venv explizit mitnehmen, falls vorhanden
-          Copy-IfExists "venv" "$stage\venv"
-          Copy-IfExists ".venv" "$stage\.venv"
-
-          # Optional weitere Projektordner, falls vorhanden
-          Copy-IfExists "static" "$stage\static"
-          Copy-IfExists "tests" "$stage\tests"
-          Copy-IfExists "installer" "$stage\installer"
-
-          # Stage-Inhalt zur Kontrolle ausgeben
-          Write-Host "Stage-Verzeichnis vorbereitet:"
-          Get-ChildItem $stage -Force
-
-      - name: Build Installer
-        shell: powershell
-        run: |
-          $issPath = "installer/inno/manifest_offline_setup.iss"
-
-          if (Test-Path $issPath) {
-            & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" $issPath
-          } else {
-            Write-Error "ISS-Datei nicht gefunden: $issPath"
-            exit 1
-          }
-
-      - name: Extract version
-        id: version
-        shell: powershell
-        run: |
-          $files = Get-ChildItem build\installer\*.exe
-
-          if (-not $files) {
-            Write-Error "Kein Installer erzeugt!"
-            exit 1
-          }
-
-          $file = $files | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          $name = $file.BaseName
-          $numbers = $name -split '_' | Where-Object { $_ -match '^\d+$' }
-
-          if ($numbers.Count -lt 2) {
-            Write-Error "Version nicht erkannt"
-            exit 1
-          }
-
-          $version = "$($numbers[-2]).$($numbers[-1]).0"
-          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-          Write-Host "Installer: $($file.Name)"
-          Write-Host "Version: $version"
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ env.VERSION }}
-          name: Release v${{ env.VERSION }}
-          files: build\installer\*.exe
-          fail_on_unmatched_files: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload installer
+      - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: manifest_installer
-          path: build\installer\*.exe
+          name: manifest-installer-${{ github.run_number }}-${{ github.run_attempt }}
+          path: build/installer/manifest_ou_1_2.exe
+          if-no-files-found: error
+          retention-days: 30
