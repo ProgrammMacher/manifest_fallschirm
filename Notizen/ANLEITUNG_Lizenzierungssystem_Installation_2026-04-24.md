@@ -27,7 +27,7 @@ Das Lizenzierungssystem wurde vollständig implementiert und dokumentiert. Diese
 - **PowerShell:** `C:\manifest_fallschirm\start_license_generator.ps1`
 
 ### Dokumentation
-- **Komplette Anleitung:** `C:\manifest_fallschirm\ANLEITUNG_LIZENZIERUNG_KUNDEN.md`
+- **Komplette Anleitung:** `C:\manifest_fallschirm\Notizen\ANLEITUNG_LIZENZIERUNG_KUNDEN.md`
 - **README:** `C:\manifest_fallschirm\README_LICENSE_GENERATOR.md`
 
 ---
@@ -51,7 +51,7 @@ C:\manifest_fallschirm\
 ├── start_license_generator.ps1         ✅
 ├── templates\license_generator.html    ✅
 ├── tools\license\generate_license_key.py
-└── ANLEITUNG_LIZENZIERUNG_KUNDEN.md    ✅
+└── Notizen\ANLEITUNG_LIZENZIERUNG_KUNDEN.md    ✅
 ```
 
 Überprüfe diese mit:
@@ -195,7 +195,7 @@ python.exe tools\license\generate_license_key.py `
 | **Starter (PS)** | `C:\manifest_fallschirm\start_license_generator.ps1` | Ps1 |
 | **Backend** | `C:\manifest_fallschirm\admin_license_generator.py` | Python |
 | **Frontend** | `C:\manifest_fallschirm\templates\license_generator.html` | HTML |
-| **Anleitung** | `C:\manifest_fallschirm\ANLEITUNG_LIZENZIERUNG_KUNDEN.md` | Markdown |
+| **Anleitung** | `C:\manifest_fallschirm\Notizen\ANLEITUNG_LIZENZIERUNG_KUNDEN.md` | Markdown |
 | **Browser** | http://localhost:5555 | URL |
 
 ---
@@ -227,7 +227,7 @@ python.exe tools\license\generate_license_key.py `
 ## 📞 Support
 
 ### Bei Fragen zum Workflow
-Siehe: `C:\manifest_fallschirm\ANLEITUNG_LIZENZIERUNG_KUNDEN.md`
+Siehe: `C:\manifest_fallschirm\Notizen\ANLEITUNG_LIZENZIERUNG_KUNDEN.md`
 
 ### Bei Fragen zur Web-UI
 Siehe: `C:\manifest_fallschirm\README_LICENSE_GENERATOR.md`
@@ -245,7 +245,7 @@ Siehe: `C:\manifest_fallschirm\README_LICENSE_GENERATOR.md`
 Die Installation ist **abgeschlossen**. Die Anwendung ist **produktionsreif**:
 
 1. **Sofort einsatzbereit:** `start_license_generator.bat` ausführen
-2. **Referenzen:** Dokumentation unter `C:\manifest_fallschirm\ANLEITUNG_LIZENZIERUNG_KUNDEN.md`
+2. **Referenzen:** Dokumentation unter `C:\manifest_fallschirm\Notizen\ANLEITUNG_LIZENZIERUNG_KUNDEN.md`
 3. **Support:** README unter `C:\manifest_fallschirm\README_LICENSE_GENERATOR.md`
 
 ---
