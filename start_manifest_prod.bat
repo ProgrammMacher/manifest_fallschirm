@@ -20,7 +20,6 @@ if /i "%1"=="--dev" (
 
 set "PROJECT_ROOT=%CD%"
 set "LOCAL_PYTHON=%PROJECT_ROOT%\runtime\python\python.exe"
-set "PROJECT_VENV_DIR=%PROJECT_ROOT%\venv"
 set "PROGRAMDATA_ROOT=%ProgramData%"
 if "%PROGRAMDATA_ROOT%"=="" set "PROGRAMDATA_ROOT=C:\ProgramData"
 set "INSTALLED_RUNTIME_HOME=%PROGRAMDATA_ROOT%\ManifestFallschirm"
@@ -34,53 +33,36 @@ if exist "%INSTALLED_SECRETS_PATH%" (
     if not defined MANIFEST_SECRETS_PATH set "MANIFEST_SECRETS_PATH=%PROJECT_ROOT%\data\secrets\auth_config.json"
 )
 
-set "VENV_DIR=%MANIFEST_RUNTIME_HOME%\venv"
-if /I "%MANIFEST_RUNTIME_HOME%"=="%PROJECT_ROOT%" set "VENV_DIR=%PROJECT_ROOT%\venv"
-set "REQUIREMENTS_FILE=%PROJECT_ROOT%\requirements.txt"
-set "WHEELHOUSE_DIR=%PROJECT_ROOT%\packages"
 set "INSTALL_SECRETS_SCRIPT=%PROJECT_ROOT%\tools\license\install_runtime_secrets.py"
-set "SECRETS_PATH="
+set "SECRETS_PATH=%MANIFEST_SECRETS_PATH%"
 set "LICENSE_KEY_INPUT="
 set "ADMIN_PASSWORD_INPUT="
+set "ADMIN_PASSWORD_CONFIRM_INPUT="
 set "DB_ADMIN_PASSWORD_INPUT="
-set "VENV_REBUILT=0"
-set "VENV_PYTHON=%VENV_DIR%\Scripts\python.exe"
-if exist "%VENV_DIR%\Scripts\python.exe" (
-    set "VENV_PYTHON=%VENV_DIR%\Scripts\python.exe"
-)
-set "SECRETS_PATH=%MANIFEST_SECRETS_PATH%"
+set "DB_ADMIN_PASSWORD_CONFIRM_INPUT="
 
 if not exist "%MANIFEST_RUNTIME_HOME%" (
     mkdir "%MANIFEST_RUNTIME_HOME%" >nul 2>&1
 )
 
 REM --------------------------------------------------
-REM Virtuelle Umgebung prüfen
+REM Lokale Python-Runtime pruefen (enthaelt bereits alle Abhaengigkeiten,
+REM kein separater venv-Schritt unter Program Files noetig/erlaubt)
 REM --------------------------------------------------
-call :ensure_venv
-if errorlevel 1 (
+if not exist "%LOCAL_PYTHON%" (
+    echo [FEHLER] Lokale Python-Runtime fehlt:
+    echo         %LOCAL_PYTHON%
+    echo [HINWEIS] Erwartet wird runtime\python\python.exe im Projektordner.
     pause
-    exit /b
+    exit /b 1
 )
 
-if "%VENV_REBUILT%"=="1" (
-    echo [INFO] Installiere Offline-Abhaengigkeiten aus packages ...
-    if not exist "%REQUIREMENTS_FILE%" (
-        echo [FEHLER] requirements.txt nicht gefunden: %REQUIREMENTS_FILE%
-        pause
-        exit /b 1
-    )
-    if not exist "%WHEELHOUSE_DIR%" (
-        echo [FEHLER] packages-Ordner fehlt: %WHEELHOUSE_DIR%
-        pause
-        exit /b 1
-    )
-    "%VENV_PYTHON%" -m pip install --no-index --find-links "%WHEELHOUSE_DIR%" -r "%REQUIREMENTS_FILE%"
-    if errorlevel 1 (
-        echo [FEHLER] Offline-Abhaengigkeiten konnten nicht installiert werden.
-        pause
-        exit /b 1
-    )
+"%LOCAL_PYTHON%" -c "import flask, sqlalchemy, requests, waitress, cryptography, werkzeug" >nul 2>&1
+if errorlevel 1 (
+    echo [FEHLER] Mindestens ein Kernmodul fehlt in der mitgelieferten Runtime.
+    echo [HINWEIS] Die Installation ist unvollstaendig. Bitte MANIFeST OU neu installieren.
+    pause
+    exit /b 1
 )
 
 REM --------------------------------------------------
@@ -100,8 +82,8 @@ if /I not "%MANIFEST_ENV%"=="dev" (
 REM --------------------------------------------------
 REM Klare Ausgabe: welches Python wird genutzt
 REM --------------------------------------------------
-echo Verwende Python aus virtueller Umgebung:
-"%VENV_PYTHON%" --version
+echo Verwende Python aus der mitgelieferten Runtime:
+"%LOCAL_PYTHON%" --version
 echo.
 
 REM --------------------------------------------------
@@ -150,7 +132,7 @@ if exist "manifest_launcher.pyc" (
     set "APP_ENTRY=manifest_launcher.pyc"
 )
 
-"%VENV_PYTHON%" "%APP_ENTRY%"
+"%LOCAL_PYTHON%" "%APP_ENTRY%"
 set "EXITCODE=%ERRORLEVEL%"
 
 echo.
@@ -183,22 +165,50 @@ if "%LICENSE_KEY_INPUT%"=="" (
 
 set "ADMIN_PASSWORD_INPUT="
 set /p "ADMIN_PASSWORD_INPUT=Admin-Passwort: "
+set "ADMIN_PASSWORD_CONFIRM_INPUT="
+set /p "ADMIN_PASSWORD_CONFIRM_INPUT=Admin-Passwort wiederholen: "
 if "%ADMIN_PASSWORD_INPUT%"=="" (
     echo [FEHLER] Admin-Passwort darf nicht leer sein.
+    exit /b 1
+)
+if not "%ADMIN_PASSWORD_INPUT%"=="%ADMIN_PASSWORD_CONFIRM_INPUT%" (
+    echo [FEHLER] Die beiden Eingaben fuer das Admin-Passwort stimmen nicht ueberein.
     exit /b 1
 )
 
 set "DB_ADMIN_PASSWORD_INPUT="
 set /p "DB_ADMIN_PASSWORD_INPUT=DB-Admin-Passwort: "
+set "DB_ADMIN_PASSWORD_CONFIRM_INPUT="
+set /p "DB_ADMIN_PASSWORD_CONFIRM_INPUT=DB-Admin-Passwort wiederholen: "
 if "%DB_ADMIN_PASSWORD_INPUT%"=="" (
     echo [FEHLER] DB-Admin-Passwort darf nicht leer sein.
+    exit /b 1
+)
+if not "%DB_ADMIN_PASSWORD_INPUT%"=="%DB_ADMIN_PASSWORD_CONFIRM_INPUT%" (
+    echo [FEHLER] Die beiden Eingaben fuer das DB-Admin-Passwort stimmen nicht ueberein.
     exit /b 1
 )
 
 echo.
 echo [INFO] Erzeuge Runtime-Secrets ...
-"%VENV_PYTHON%" "%INSTALL_SECRETS_SCRIPT%" --license-key "%LICENSE_KEY_INPUT%" --admin-password "%ADMIN_PASSWORD_INPUT%" --db-admin-password "%DB_ADMIN_PASSWORD_INPUT%"
-if errorlevel 1 (
+set "MANIFEST_INSTALL_LICENSE_KEY=%LICENSE_KEY_INPUT%"
+set "MANIFEST_INSTALL_ADMIN_PASSWORD=%ADMIN_PASSWORD_INPUT%"
+set "MANIFEST_INSTALL_ADMIN_PASSWORD_CONFIRM=%ADMIN_PASSWORD_CONFIRM_INPUT%"
+set "MANIFEST_INSTALL_DB_ADMIN_PASSWORD=%DB_ADMIN_PASSWORD_INPUT%"
+set "MANIFEST_INSTALL_DB_ADMIN_PASSWORD_CONFIRM=%DB_ADMIN_PASSWORD_CONFIRM_INPUT%"
+"%LOCAL_PYTHON%" "%INSTALL_SECRETS_SCRIPT%" --secrets-path "%SECRETS_PATH%"
+set "SECRETS_EXITCODE=%ERRORLEVEL%"
+set "MANIFEST_INSTALL_LICENSE_KEY="
+set "MANIFEST_INSTALL_ADMIN_PASSWORD="
+set "MANIFEST_INSTALL_ADMIN_PASSWORD_CONFIRM="
+set "MANIFEST_INSTALL_DB_ADMIN_PASSWORD="
+set "MANIFEST_INSTALL_DB_ADMIN_PASSWORD_CONFIRM="
+set "LICENSE_KEY_INPUT="
+set "ADMIN_PASSWORD_INPUT="
+set "ADMIN_PASSWORD_CONFIRM_INPUT="
+set "DB_ADMIN_PASSWORD_INPUT="
+set "DB_ADMIN_PASSWORD_CONFIRM_INPUT="
+if not "%SECRETS_EXITCODE%"=="0" (
     echo [FEHLER] Runtime-Secrets konnten nicht erzeugt werden.
     exit /b 1
 )
@@ -210,39 +220,4 @@ if not exist "%SECRETS_PATH%" (
 
 echo [OK] Runtime-Secrets erstellt: %SECRETS_PATH%
 echo.
-exit /b 0
-
-:ensure_venv
-if exist "%VENV_PYTHON%" (
-    "%VENV_PYTHON%" --version >nul 2>&1
-    if not errorlevel 1 exit /b 0
-    echo [WARNUNG] Vorhandene venv ist ungueltig. Erzeuge venv neu ...
-) else (
-    echo [WARNUNG] Virtuelle Umgebung nicht gefunden. Erzeuge venv neu ...
-)
-
-if not exist "%LOCAL_PYTHON%" (
-    echo [FEHLER] Lokale Python-Runtime fehlt:
-    echo         %LOCAL_PYTHON%
-    echo [HINWEIS] Erwartet wird runtime\python\python.exe im Projektordner.
-    exit /b 1
-)
-
-if exist "%VENV_DIR%" (
-    rmdir /s /q "%VENV_DIR%"
-)
-
-"%LOCAL_PYTHON%" -m venv "%VENV_DIR%"
-    if errorlevel 1 (
-        echo [FEHLER] venv konnte nicht erstellt werden: "%VENV_DIR%"
-        echo [HINWEIS] Bitte Schreibrechte auf den Zielordner pruefen.
-        exit /b 1
-    )
-set "VENV_REBUILT=1"
-
-"%VENV_PYTHON%" --version >nul 2>&1
-if errorlevel 1 (
-    echo [FEHLER] Python in der venv ist nicht funktionsfaehig.
-    exit /b 1
-)
 exit /b 0

@@ -371,7 +371,13 @@ def create_app():
                     if "migrate" not in app.extensions:
                         Migrate(app, db)
                     upgrade(directory="migrations", revision="heads")
-                except Exception as e:
+                except BaseException as e:
+                    # flask_migrate wraps alembic CommandError via its
+                    # @catch_errors decorator, which calls sys.exit(1)
+                    # (SystemExit is not an Exception subclass) -- without
+                    # catching BaseException here, a failed upgrade would
+                    # silently kill the entire application instead of just
+                    # degrading to "schema not auto-upgraded this run".
                     print("[WARNUNG] Alembic-Startup-Upgrade fehlgeschlagen:", e)
 
             # Fallback: idempotente SQL-Migrationen für Alt-Datenbanken.

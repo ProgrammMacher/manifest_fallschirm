@@ -13,9 +13,17 @@ _shutdown_reason = ""
 
 
 def touch_activity() -> None:
-    global _last_activity_monotonic
+    global _last_activity_monotonic, _last_disconnect_monotonic
     with _LOCK:
         _last_activity_monotonic = time.monotonic()
+        # Jede weitere Anfrage (Navigation, Heartbeat, ...) nach einem
+        # beforeunload/sendBeacon-Signal beweist, dass der Browser weiterhin
+        # verbunden ist (beforeunload feuert z.B. bei JEDER normalen
+        # Seitennavigation, nicht nur beim echten Schliessen des Tabs).
+        # Ohne dieses Zuruecksetzen kann ein zufaelliges Zeitfenster dazu
+        # fuehren, dass der Produktivserver waehrend normaler Nutzung
+        # faelschlich beendet wird.
+        _last_disconnect_monotonic = None
 
 
 def report_browser_disconnect() -> None:
@@ -46,11 +54,11 @@ def should_shutdown(
             return True, f"watchdog inactivity timeout ({int(inactivity)}s)"
 
         if _last_disconnect_monotonic is not None:
+            # touch_activity() clears _last_disconnect_monotonic on every
+            # request, so reaching here already means no further request
+            # (navigation/heartbeat) has arrived since the disconnect beacon.
             disconnect_age = now - _last_disconnect_monotonic
-            if (
-                disconnect_age >= disconnect_grace_seconds
-                and _last_activity_monotonic <= _last_disconnect_monotonic
-            ):
+            if disconnect_age >= disconnect_grace_seconds:
                 return True, "browser disconnect beacon without reconnect"
 
     return False, ""

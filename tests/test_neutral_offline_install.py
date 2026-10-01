@@ -412,14 +412,142 @@ def test_offline_build_allowlists_neutral_seed_but_not_local_runtime_files():
     assert 'python-version: "3.14.2"' in workflow
     assert "tools/build_inno_offline_setup.ps1" in normalized_workflow
     assert "runtime/python/python.exe" in normalized_workflow
-    assert "Lib/venv" in normalized_workflow
-    assert "manifest-venv-probe" in workflow
+    assert "Lib/venv" not in normalized_workflow
+    assert "manifest-venv-probe" not in workflow
+    assert "runtime/python/Lib/site-packages/cryptography" in normalized_workflow
     assert "manifest-installer-${{ github.run_number }}-${{ github.run_attempt }}" in workflow
     assert "softprops/action-gh-release" not in workflow
     assert "Create Release" not in workflow
     assert "pyinstaller" not in workflow.lower()
     assert "github.run_number" in workflow and "github.run_attempt" in workflow
     assert "app/services/neutral_install_seed.pyc" in workflow
+
+
+def test_bundled_runtime_is_self_contained_no_venv_at_first_start():
+    """A normal customer install must never need to create a venv under Program Files
+    (WinError 5 root cause); the bundled runtime python must already contain all
+    offline dependencies, baked in during the build."""
+    zip_builder = (PROJECT_ROOT / "tools/build_offline_compiled_installer_zip.ps1").read_text(
+        encoding="utf-8"
+    )
+    assert "pip install --no-index --find-links $stagingPackages -r $stagingRequirements" in zip_builder
+    assert "import flask, sqlalchemy, requests, waitress, cryptography, werkzeug, weasyprint" in zip_builder
+
+    for script_name in (
+        "setup_start_manifest.bat",
+        "start_manifest_prod.bat",
+    ):
+        script_text = (PROJECT_ROOT / script_name).read_text(encoding="utf-8")
+        assert "-m venv" not in script_text
+        assert "VENV_DIR" not in script_text
+        assert "VENV_PYTHON" not in script_text
+
+    vbs_text = (PROJECT_ROOT / "start_manifest_prod.vbs").read_text(encoding="utf-8")
+    assert "activeVenvDir" not in vbs_text
+    assert "IsVenvHealthy" not in vbs_text
+    assert "\\venv\\Scripts" not in vbs_text
+
+    iss_text = (
+        PROJECT_ROOT / "installer/inno/manifest_offline_setup.iss"
+    ).read_text(encoding="utf-8")
+    assert "ManifestFallschirm\\venv" not in iss_text
+
+
+def test_installer_aborts_on_failed_runtime_provisioning():
+    """ZIEL 2: Setup must not reach the success/finish page if license/password
+    provisioning (install_runtime_secrets.py) fails; it must check the exit code
+    and Abort instead of silently continuing (old plain [Run] line never checked it)."""
+    iss_text = (
+        PROJECT_ROOT / "installer/inno/manifest_offline_setup.iss"
+    ).read_text(encoding="utf-8")
+    assert "procedure CurStepChanged(CurStep: TSetupStep);" in iss_text
+    assert "ssPostInstall" in iss_text
+    assert "ResultCode <> 0" in iss_text
+    assert "Abort;" in iss_text
+    # Secrets must not be passed as plain [Run] command-line arguments anymore.
+    assert "--admin-password \"\"{code:GetAdminPassword}\"\"" not in iss_text
+    assert "MANIFEST_INSTALL_ADMIN_PASSWORD" in iss_text
+
+
+def test_password_page_requires_confirmation_fields():
+    """ZIEL 3/4: Admin- and DB-Admin password each need a confirmation field plus
+    a visible retention hint on the same wizard page."""
+    iss_text = (
+        PROJECT_ROOT / "installer/inno/manifest_offline_setup.iss"
+    ).read_text(encoding="utf-8")
+    assert "PasswordPage.Add('Admin-Passwort wiederholen:', False);" in iss_text
+    assert "PasswordPage.Add('DB-Admin-Passwort wiederholen:', False);" in iss_text
+    assert "stimmen nicht ueberein" in iss_text
+    assert "Bitte beide Passwoerter sicher aufbewahren" in iss_text
+    assert "HintHeaderLabel.Font.Style := [fsBold];" in iss_text
+    assert "Surface.Height - HintBodyLabel.Top" in iss_text
+
+
+def test_server_binds_all_interfaces_for_intended_lan_mobile_access():
+    """Fehler 2: Waitress binds 0.0.0.0 (not just loopback) on purpose -- the
+    PWA has a dedicated 'Mobiler Zugriff' QR-code feature
+    (app/templates/pwa/connectivity.html) for other devices on the same WLAN
+    to reach the server. The one-time Windows Firewall prompt is the expected
+    cost of that intended feature, not a bug to be removed."""
+    launcher_text = (PROJECT_ROOT / "manifest_launcher.py").read_text(encoding="utf-8")
+    assert 'HOST = "0.0.0.0"' in launcher_text
+    connectivity_text = (
+        PROJECT_ROOT / "app/templates/pwa/connectivity.html"
+    ).read_text(encoding="utf-8")
+    assert "Mobiler Zugriff" in connectivity_text
+
+
+def test_postinstall_launch_survives_setup_exit():
+    """Real-world bug: 'MANIFeST OU starten' on the finish page did nothing
+    visible. Root cause (confirmed via Inno Setup docs): runasoriginaluser is
+    ALREADY the default for postinstall entries, so it changed nothing. The
+    actual issue was that launching wscript.exe directly as Filename makes it
+    (and its pythonw.exe/Waitress child) a child process of Setup.exe's job
+    object, which Windows kills the instant Setup.exe exits after "Fertigstellen"
+    -- regardless of nowait. Fix: shellexec hands the launch off to the Windows
+    shell broker (like a normal desktop double-click), escaping that job object."""
+    iss_text = (
+        PROJECT_ROOT / "installer/inno/manifest_offline_setup.iss"
+    ).read_text(encoding="utf-8")
+    for line in iss_text.splitlines():
+        if "Description: \"MANIFeST OU starten\"" in line:
+            assert "shellexec" in line
+            assert "postinstall" in line
+            assert "wscript.exe" not in line
+            assert "start_manifest_prod.vbs" in line
+        if "pin_taskbar.ps1" in line and "Filename:" in line:
+            assert "runasoriginaluser" in line
+
+
+def test_uninstall_stops_running_server_before_removing_files():
+    """ZIEL 7: a still-running production server keeps native DLL/PYD handles
+    open (python314.dll, extension modules), which blocks the Windows
+    uninstaller from removing hundreds of runtime files. [UninstallRun] must
+    request a graceful shutdown (and wait briefly for the port to free) before
+    Inno starts deleting files."""
+    iss_text = (
+        PROJECT_ROOT / "installer/inno/manifest_offline_setup.iss"
+    ).read_text(encoding="utf-8")
+    assert "[UninstallRun]" in iss_text
+    uninstall_run_section = iss_text.split("[UninstallRun]", 1)[1]
+    assert "pwa/runtime/shutdown" in uninstall_run_section
+    assert "127.0.0.1" in uninstall_run_section
+
+
+def test_manifest_launcher_uses_readiness_polling_not_fixed_sleep():
+    """ZIEL 3: the browser must only open once the server is actually
+    reachable, using a bounded, real readiness check instead of a fixed
+    threading.Timer(1.5, ...) guess, and startup failures must be surfaced
+    (native message, log file hint) instead of failing silently under
+    pythonw.exe (no console)."""
+    launcher_text = (PROJECT_ROOT / "manifest_launcher.py").read_text(encoding="utf-8")
+    assert "threading.Timer(1.5, open_browser)" not in launcher_text
+    assert "def wait_for_ready_and_open_browser" in launcher_text
+    assert "STARTUP_READY_TIMEOUT_SECONDS" in launcher_text
+    assert "_show_native_notice" in launcher_text
+    assert "_show_native_error" in launcher_text
+    assert "LOG_FILE" in launcher_text
+
 
 
 _PS_ARRAY_PATTERN = re.compile(r"\$([A-Za-z]+)\s*=\s*@\((.*?)\)", re.DOTALL)

@@ -58,11 +58,13 @@ bp_pricing = Blueprint("pricing", __name__, url_prefix="/pricing")
 @bp_pricing.before_request
 def _pricing_admin_only():
     if not session.get("is_admin"):
+        session["after_login_redirect"] = request.path
         flash(
-            "Zugriff verweigert: Die Preismatrix ist ein Administrationsbereich.",
-            "danger",
+            "Die Preismatrix ist nur im Admin-Modus verfügbar. "
+            "Bitte melden Sie sich als Administrator an.",
+            "warning",
         )
-        return redirect(url_for("load.list_loads"))
+        return redirect(url_for("admin_auth.admin_login"))
 
 
 # =========================================================

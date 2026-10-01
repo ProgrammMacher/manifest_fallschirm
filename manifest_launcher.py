@@ -1,9 +1,51 @@
 # manifest_launcher.py
 import os
 import sys
+import threading
+
+
+def _show_native_notice(message: str, title: str = "MANIFeST OU", timeout_ms: int = 3500) -> None:
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        MB_ICONINFORMATION = 0x40
+        # MessageBoxTimeoutW ist eine inoffizielle, aber seit Windows 2000
+        # stabil vorhandene user32-Funktion mit automatischem Schliessen.
+        ctypes.windll.user32.MessageBoxTimeoutW(
+            0, message, title, MB_ICONINFORMATION, 0, timeout_ms
+        )
+    except Exception:
+        pass
+
+
+def _show_native_error(message: str, title: str = "MANIFeST OU") -> None:
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        MB_ICONERROR = 0x10
+        ctypes.windll.user32.MessageBoxW(0, message, title, MB_ICONERROR)
+    except Exception:
+        pass
+
+
+if __name__ == "__main__" and os.name == "nt":
+    # Muss VOR allen schweren Imports (Flask/SQLAlchemy/App-Erstellung)
+    # erfolgen: beim allerersten Start nach der Installation (kalter
+    # Datei-/Virenscan-Cache) koennen diese Imports mehrere Sekunden dauern,
+    # bevor ueberhaupt Code danach erreicht wird. Ohne diese fruehe Meldung
+    # wirkt die App in genau diesem Moment wie "es passiert nichts".
+    threading.Thread(
+        target=_show_native_notice,
+        args=("MANIFeST OU wird gestartet ...",),
+        daemon=True,
+    ).start()
+
 import socket
 import logging
-import threading
 import webbrowser
 import signal
 import time
@@ -39,7 +81,10 @@ def _read_positive_int_env(name: str, default: int) -> int:
 
 
 WATCHDOG_INACTIVITY_SECONDS = _read_positive_int_env("MANIFEST_WATCHDOG_INACTIVITY_SECONDS", 0)
-DISCONNECT_GRACE_SECONDS = 20
+# Muss deutlich groesser sein als das 20s-Heartbeat-Intervall des Frontends
+# (app/templates/base.html), sonst kann normale Netzwerk-/Serverlatenz die
+# Grace-Periode knapp verfehlen und den Produktivserver faelschlich beenden.
+DISCONNECT_GRACE_SECONDS = 45
 CLOCK_SKEW_TOLERANCE_SECONDS = 300
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -265,6 +310,34 @@ def open_browser():
         except Exception:
             log.exception("Browser konnte nicht geöffnet werden")
 
+
+# ------------------------------------------------------------
+# Serverbereitschaft abwarten (kein fester sleep, echter Readiness-Check)
+# ------------------------------------------------------------
+STARTUP_READY_TIMEOUT_SECONDS = _read_positive_int_env("MANIFEST_STARTUP_TIMEOUT_SECONDS", 30)
+STARTUP_POLL_INTERVAL_SECONDS = 0.15
+
+
+def wait_for_ready_and_open_browser() -> None:
+    deadline = time.monotonic() + STARTUP_READY_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        if port_in_use(PORT):
+            log.info("Server bereit nach Readiness-Check, öffne Browser")
+            open_browser()
+            return
+        time.sleep(STARTUP_POLL_INTERVAL_SECONDS)
+
+    log.error(
+        "Server war nach %ss nicht erreichbar (Readiness-Timeout). Logdatei: %s",
+        STARTUP_READY_TIMEOUT_SECONDS,
+        LOG_FILE,
+    )
+    _show_native_error(
+        "MANIFeST OU konnte nicht rechtzeitig gestartet werden.\n\n"
+        f"Details in der Logdatei:\n{LOG_FILE}"
+    )
+
+
 # ------------------------------------------------------------
 # Sauberer Shutdown
 # ------------------------------------------------------------
@@ -306,7 +379,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     threading.Thread(target=watchdog_loop, daemon=True).start()
-    threading.Timer(1.5, open_browser).start()
+    threading.Thread(target=wait_for_ready_and_open_browser, daemon=True).start()
 
     log.info("Starte Waitress auf %s:%s", HOST, PORT)
     serve(app, host=HOST, port=PORT, threads=THREADS)

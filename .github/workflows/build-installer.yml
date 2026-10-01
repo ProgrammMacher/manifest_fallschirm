@@ -44,12 +44,6 @@ jobs:
           Copy-Item -LiteralPath $sourcePython -Destination (Join-Path $runtimeDir 'python.exe') -Force
           Copy-Item -LiteralPath $pythonwSource -Destination (Join-Path $runtimeDir 'pythonw.exe') -Force
 
-          $venvSource = Join-Path $sourceDir 'Lib\venv'
-          if (-not (Test-Path -LiteralPath $venvSource -PathType Container)) {
-            throw "setup-python venv module is missing: $venvSource"
-          }
-          Copy-Item -LiteralPath $venvSource -Destination $runtimeLib -Recurse -Force
-
           $portablePython = Join-Path $runtimeDir 'python.exe'
           $version = (& $portablePython --version 2>&1 | Out-String).Trim()
           if ($LASTEXITCODE -ne 0 -or $version -ne 'Python 3.14.2') {
@@ -59,12 +53,13 @@ jobs:
             throw 'Matching python314.dll is missing from the checked-in runtime tree.'
           }
 
-          $venvProbe = Join-Path $env:RUNNER_TEMP 'manifest-venv-probe'
-          & $portablePython -m venv $venvProbe
-          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $venvProbe 'Scripts\python.exe'))) {
-            throw 'The provisioned portable runtime cannot create the app venv.'
+          # No venv probe here: the bundled runtime must be fully self-contained
+          # (all offline wheels installed directly into its site-packages by
+          # tools/build_offline_compiled_installer_zip.ps1), so pip must be usable.
+          & $portablePython -m pip --version
+          if ($LASTEXITCODE -ne 0) {
+            throw 'The provisioned portable runtime cannot run pip (required to bake offline dependencies into the runtime).'
           }
-          Remove-Item -LiteralPath $venvProbe -Recurse -Force
 
       - name: Install Inno Setup
         shell: pwsh
@@ -112,6 +107,12 @@ jobs:
             }
             if (-not ($entries | Where-Object { $_ -match '^packages/.+\.whl$' })) {
               throw 'No offline wheels are present in the compiled ZIP.'
+            }
+            if (-not ($entries | Where-Object { $_ -match '^runtime/python/Lib/site-packages/cryptography(-|/)' })) {
+              throw 'cryptography was not baked into the bundled runtime (required for license/secrets provisioning without a venv).'
+            }
+            if (-not ($entries | Where-Object { $_ -match '^runtime/python/Lib/site-packages/flask(-|/)' })) {
+              throw 'flask was not baked into the bundled runtime.'
             }
 
             $forbidden = @(

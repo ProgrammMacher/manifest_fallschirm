@@ -119,8 +119,10 @@
 
     {# ============================================================
        ADMIN-AKTIONEN: ARCHIV / RESTORE / HARDDELETE
+       (nur fuer bereits gespeicherte Flugplaetze – ein neuer, noch nicht
+       angelegter Flugplatz hat keine id und kein Archiv-/Delete-Ziel)
        ============================================================ #}
-    {% if session.is_admin %}
+    {% if session.is_admin and platz.id %}
       <div class="mt-4 text-end">
 
         {% if platz.is_archived %}

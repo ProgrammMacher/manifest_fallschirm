@@ -171,6 +171,22 @@ if (-not (Test-Path -LiteralPath $stagingPython -PathType Leaf)) {
     throw "Lokale Runtime-Python fehlt im Staging: $stagingPython"
 }
 
+# Die gebuendelte Runtime muss alle Abhaengigkeiten bereits enthalten, damit zur
+# Laufzeit (und fuer die Installer-eigene Secrets-Provisionierung) kein separater
+# venv-Schritt unter Program Files noetig ist.
+$stagingPackages = Join-Path $stagingRoot 'packages'
+$stagingRequirements = Join-Path $stagingRoot 'requirements.txt'
+Write-Host 'Installiere Offline-Abhaengigkeiten direkt in die gebuendelte Python-Runtime...'
+& $stagingPython -m pip install --no-index --find-links $stagingPackages -r $stagingRequirements --disable-pip-version-check
+if ($LASTEXITCODE -ne 0) {
+    throw 'Offline-Abhaengigkeiten konnten nicht in die Runtime installiert werden.'
+}
+
+& $stagingPython -c 'import flask, sqlalchemy, requests, waitress, cryptography, werkzeug, weasyprint'
+if ($LASTEXITCODE -ne 0) {
+    throw 'Runtime-Selbsttest fehlgeschlagen: Kernmodule fehlen nach der Offline-Installation.'
+}
+
 $compileTargets = @(
     (Join-Path $stagingRoot 'app'),
     (Join-Path $stagingRoot 'migrations'),
