@@ -1,0 +1,7 @@
+- billing.py > 5.000 Zeilen
+- load.py > 4.000 Zeilen
+- mehrere is_admin()-Implementierungen
+- Default SECRET_KEY vorhanden
+- smtp_password im Klartext gespeichert
+- zwei parallele Migrationsmechanismen
+- Altdateien im Repository
