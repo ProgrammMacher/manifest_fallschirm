@@ -21,6 +21,7 @@ from app.models.billing_config import (
 from app.models.status_definition import StatusDefinition
 from app.services.price_seed_service import PriceSeedService
 from app.helpers.status_code import is_ku_credit_payout_applicable_status, normalize_status_code
+from app.security.admin import admin_denied_message, redirect_to_admin_login
 
 # Für Safety-Guard „Matrix darf nicht geändert werden, wenn Rechnungen existieren“
 from app.models.invoice import Invoice
@@ -58,13 +59,13 @@ bp_pricing = Blueprint("pricing", __name__, url_prefix="/pricing")
 @bp_pricing.before_request
 def _pricing_admin_only():
     if not session.get("is_admin"):
-        session["after_login_redirect"] = request.path
-        flash(
-            "Die Preismatrix ist nur im Admin-Modus verfügbar. "
-            "Bitte melden Sie sich als Administrator an.",
-            "warning",
+        return redirect_to_admin_login(
+            admin_denied_message(
+                "Die Preismatrix",
+                as_db_admin=bool(session.get("is_db_admin")),
+            ),
+            fallback_url=url_for("pricing.pricing_matrix"),
         )
-        return redirect(url_for("admin_auth.admin_login"))
 
 
 # =========================================================

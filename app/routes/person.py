@@ -19,7 +19,12 @@ from app.models.mobile_person_intake_draft import (
     MobilePersonIntakeDraft,
 )
 from app.models.billing_config import BillingConfig
-from app.security.admin import admin_required, is_admin
+from app.security.admin import (
+    admin_required,
+    db_admin_denied_message,
+    is_admin,
+    redirect_to_admin_login,
+)
 from app.services.billing_service import _image_to_data_uri
 from app.services.display_service import build_local_qr_url, generate_qr_png_buffer
 from app.services.mobile_person_intake_service import (
@@ -820,8 +825,10 @@ def edit_person(id):
 def reset_newsletter_optout(id):
     from flask import session as fsession
     if not (fsession.get("is_admin") or fsession.get("is_db_admin")):
-        flash("Zugriff verweigert.", "danger")
-        return redirect(url_for("person.detail", id=id))
+        return redirect_to_admin_login(
+            db_admin_denied_message("Das Zurücksetzen der Newsletter-Abmeldung"),
+            fallback_url=url_for("person.detail", id=id),
+        )
     person = Person.query.get_or_404(id)
     person.newsletter_opt_out = False
     person.newsletter_unsubscribe_token = None

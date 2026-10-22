@@ -7,6 +7,7 @@ from flask import (
 from functools import wraps
 from app import db
 from app.models.flugplatz import Flugplatz
+from app.security.admin import admin_denied_message, redirect_to_admin_login
 
 bp = Blueprint("flugplatz", __name__, url_prefix="/flugplatz")
 
@@ -18,8 +19,13 @@ def admin_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
         if not session.get("is_admin"):
-            flash("Diese Aktion ist nur für Administratoren erlaubt.", "danger")
-            return redirect(url_for("flugplatz.list_flugplaetze"))
+            return redirect_to_admin_login(
+                admin_denied_message(
+                    "Die Flugplatzverwaltung",
+                    as_db_admin=bool(session.get("is_db_admin")),
+                ),
+                fallback_url=url_for("flugplatz.list_flugplaetze"),
+            )
         return fn(*args, **kwargs)
     return wrapper
 
@@ -84,8 +90,13 @@ def edit_flugplatz(id):
 
     if request.method == "POST":
         if not session.get("is_admin"):
-            flash("Keine Berechtigung zum Speichern.", "danger")
-            return redirect(url_for("flugplatz.edit_flugplatz", id=id))
+            return redirect_to_admin_login(
+                admin_denied_message(
+                    "Das Speichern von Flugplatzdaten",
+                    as_db_admin=bool(session.get("is_db_admin")),
+                ),
+                fallback_url=url_for("flugplatz.edit_flugplatz", id=id),
+            )
 
         platz.name = request.form.get("name", platz.name).strip()
         platz.is_home_airfield = bool(request.form.get("is_home"))

@@ -22,6 +22,7 @@ from app.helpers.app_settings import (
     get_last_archive,
     get_last_import,
 )
+from app.security.admin import db_admin_denied_message, redirect_to_admin_login
 
 # ✅ Blueprint-Name MUSS exakt so heißen
 bp = Blueprint(
@@ -52,15 +53,12 @@ def _database_admin_required():
     if session.get("is_admin") or session.get("is_db_admin"):
         return None  # ✅ Zugriff erlaubt
 
-    # ✅ HIER: Zielseite merken, damit nach Login zurück zur Datenbank geleitet wird
-    session["after_login_redirect"] = request.path
-
-    flash(
-        "Für den Zugriff auf die Datenbank ist ein Admin- oder "
-        "Datenbank-Admin-Passwort erforderlich.",
-        "warning",
+    # Zielseite wird zentral gemerkt (GET: aktuelle Seite, POST: Ursprungsseite
+    # bzw. Datenbank-Übersicht), damit nach dem Login zurückgeleitet wird.
+    return redirect_to_admin_login(
+        db_admin_denied_message("Die Datenbankverwaltung"),
+        fallback_url=url_for("admin_database.index"),
     )
-    return redirect(url_for("admin_auth.admin_login"))
 
 
 # -------------------------------------------------

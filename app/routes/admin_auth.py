@@ -13,6 +13,11 @@ from flask import (
     current_app,
     render_template,
 )
+from app.security.admin import (
+    admin_denied_message,
+    db_admin_denied_message,
+    redirect_to_admin_login,
+)
 from app.security.credentials import verify_password
 
 bp_admin_auth = Blueprint("admin_auth", __name__, url_prefix="/admin")
@@ -38,14 +43,9 @@ def require_admin(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         if not is_admin():
-            if is_db_admin():
-                flash(
-                    "Voll-Admin-Rechte erforderlich. Aktuell sind Sie als Datenbank-Admin angemeldet.",
-                    "warning",
-                )
-            else:
-                flash("Voll-Admin-Rechte erforderlich. Bitte mit dem Admin-Passwort anmelden.", "danger")
-            return redirect(url_for("admin_auth.admin_login"))
+            return redirect_to_admin_login(
+                admin_denied_message(as_db_admin=is_db_admin())
+            )
         return f(*args, **kwargs)
     return wrapper
 
@@ -58,8 +58,7 @@ def require_database_admin(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         if not (is_admin() or is_db_admin()):
-            flash("Datenbank-Admin oder Admin-Rechte erforderlich.", "danger")
-            return redirect(url_for("admin_auth.admin_login"))
+            return redirect_to_admin_login(db_admin_denied_message())
         return f(*args, **kwargs)
     return wrapper
 
@@ -95,7 +94,9 @@ def admin_login():
         #    – ausgeschlossen: Login-Seite selbst
         # 3. Fallback: Startseite /pwa/
         # ---------------------------------------------
-        target = session.pop("after_login_redirect", None)
+        # Das Ziel bleibt bei falschem Passwort erhalten und wird erst nach
+        # erfolgreichem Login entfernt (siehe unten).
+        target = session.get("after_login_redirect")
         if not target:
             last = session.get("last_page", "")
             _excluded = ("/admin/login", "/admin/logout")
@@ -115,6 +116,7 @@ def admin_login():
         if admin_ok:
             session["is_admin"] = True
             session["is_db_admin"] = False
+            session.pop("after_login_redirect", None)
             session.modified = True
             flash("Admin-Modus aktiviert.", "success")
             current_app.logger.info("Admin-Login erfolgreich: Voll-Admin")
@@ -127,6 +129,7 @@ def admin_login():
         if db_admin_ok:
             session["is_db_admin"] = True
             session["is_admin"] = False
+            session.pop("after_login_redirect", None)
             session.modified = True
             flash("Datenbank-Admin-Modus aktiviert.", "success")
             current_app.logger.info("Admin-Login erfolgreich: Datenbank-Admin")

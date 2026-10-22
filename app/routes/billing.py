@@ -48,6 +48,11 @@ from app.services.mailer_service import MailerService
 from app.services.pdf_service import generate_pdf_from_html
 from app.models.billing_config import BillingOrgaRule
 from app.helpers.status_code import normalize_status_code
+from app.security.admin import (
+    admin_denied_message,
+    db_admin_denied_message,
+    redirect_to_admin_login,
+)
 from app.security.credentials import get_runtime_home_dir
 from app.constants import (
     TANDEM_GUEST_STATUSES,
@@ -122,26 +127,35 @@ def _billing_person_secondary_statuses(raw_statuses: set[str], main_status: str)
 
 
 def _full_admin_required(redirect_endpoint: str, **redirect_values):
+    """
+    Voll-Admin-Prüfung (unverändert). Bei fehlenden Rechten: verständlicher
+    Hinweis + Weiterleitung zum zentralen Admin-Login mit Rückkehrziel.
+    redirect_endpoint/-values dienen als Rückkehr-Fallback bei POST-Aktionen.
+    """
     if session.get("is_admin"):
         return None
 
-    if session.get("is_db_admin"):
-        flash(
-            "Voll-Admin-Rechte erforderlich. Aktuell sind Sie als Datenbank-Admin angemeldet.",
-            "warning",
-        )
-    else:
-        flash("Voll-Admin-Rechte erforderlich. Bitte mit dem Admin-Passwort anmelden.", "danger")
-
-    return redirect(url_for(redirect_endpoint, **redirect_values))
+    return redirect_to_admin_login(
+        admin_denied_message(
+            "Diese Rechnungsfunktion",
+            as_db_admin=bool(session.get("is_db_admin")),
+        ),
+        fallback_url=url_for(redirect_endpoint, **redirect_values),
+    )
 
 
 def _admin_or_db_admin_required(redirect_endpoint: str, **redirect_values):
+    """
+    Admin-oder-DB-Admin-Prüfung (unverändert). Bei fehlenden Rechten:
+    verständlicher Hinweis + Weiterleitung zum zentralen Admin-Login.
+    """
     if session.get("is_admin") or session.get("is_db_admin"):
         return None
 
-    flash("Admin- oder Datenbank-Admin-Rechte erforderlich.", "warning")
-    return redirect(url_for(redirect_endpoint, **redirect_values))
+    return redirect_to_admin_login(
+        db_admin_denied_message("Diese Rechnungsfunktion"),
+        fallback_url=url_for(redirect_endpoint, **redirect_values),
+    )
 
 
 def _can_manage_sepa_exports() -> bool:

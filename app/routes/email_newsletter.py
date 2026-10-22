@@ -27,6 +27,7 @@ from app import db, now_local
 from app.models.email_config import EmailConfig
 from app.models.email_send_log import EmailSendLog
 from app.models.person import Person
+from app.security.admin import db_admin_denied_message, redirect_to_admin_login
 from app.services.mailer_service import MailerService
 
 bp = Blueprint("email_nl", __name__, url_prefix="/email")
@@ -45,8 +46,10 @@ def _require_admin():
     """Gibt Redirect zurück, falls kein Admin-Zugang besteht."""
     if session.get("is_admin") or session.get("is_db_admin"):
         return None
-    flash("Zugriff verweigert. Nur für Admins und DB-Admins.", "danger")
-    return redirect(url_for("pwa.home"))
+    return redirect_to_admin_login(
+        db_admin_denied_message("Der E-Mail- und Newsletter-Bereich"),
+        fallback_url=url_for("email_nl.history"),
+    )
 
 
 def _is_dev_mode() -> bool:
