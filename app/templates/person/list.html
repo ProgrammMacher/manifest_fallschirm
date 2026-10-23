@@ -30,6 +30,8 @@
 <div class="card shadow-sm">
     <div class="card-body">
 
+        {% include "partials/view_only_hint.html" %}
+
         <!-- SEARCH + ACTIONS -->
         <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
 
@@ -72,6 +74,7 @@
                     <i class="bi bi-file-earmark-spreadsheet"></i> Export
                 </a>
 
+                {% if session.is_admin %}
                 <a href="{{ url_for('export_person.export_import_template') }}"
                    class="btn btn-outline-secondary">
                     <i class="bi bi-filetype-xlsx"></i> Vorlage
@@ -99,6 +102,7 @@
                         <i class="bi bi-lightning-charge-fill"></i> Vertikal-Import direkt
                     </button>
                 </form>
+                {% endif %}
 
             </div>
         </div>
@@ -120,6 +124,7 @@
             <span class="fw-semibold">Mobile Entwürfe (<span id="mobileDraftCount">{{ mobile_draft_count }}</span>)</span>
         </a>
 
+        {% if session.is_admin %}
         <div class="alert alert-light border small mb-3">
             <div class="d-flex flex-wrap align-items-center gap-2">
                 <span class="badge bg-primary">Export</span>
@@ -130,6 +135,7 @@
                 <span>für manuelle Erfassung weiterhin Import VERTIKAL nutzen.</span>
             </div>
         </div>
+        {% endif %}
 
         <!-- FILTERS -->
         <div class="mb-3">
@@ -511,6 +517,7 @@
                         <!-- AKTIONEN -->
                         <td class="text-end d-flex justify-content-end gap-1">
 
+                            {% if session.is_admin %}
                             <!-- EDIT -->
                             <a href="{{ url_for('person.edit_person', id=p.id) }}"
                                class="btn btn-sm btn-outline-primary"
@@ -560,6 +567,14 @@
                                       title="Harddelete nicht möglich: Person war in Loads oder hat Rechnungen.">
                                     <i class="bi bi-info-circle"></i>
                                 </span>
+                            {% endif %}
+                            {% else %}
+                            <!-- NUR ANSICHT -->
+                            <a href="{{ url_for('person.detail', id=p.id) }}"
+                               class="btn btn-sm btn-outline-secondary"
+                               title="Nur Ansicht">
+                                <i class="bi bi-eye"></i>
+                            </a>
                             {% endif %}
 
                         </td>

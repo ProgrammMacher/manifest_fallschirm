@@ -13,12 +13,7 @@
       {% if readonly %}Flugplatz ansehen{% else %}Flugplatz bearbeiten{% endif %}
     </h4>
 
-    {% if readonly %}
-      <div class="alert alert-secondary">
-        <i class="bi bi-eye"></i>
-        Nur Ansicht – Änderungen sind nur für Administratoren möglich.
-      </div>
-    {% endif %}
+    {% include "partials/view_only_hint.html" %}
 
     {# ============================================================
        ARCHIV-HINWEIS

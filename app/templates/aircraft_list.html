@@ -33,10 +33,14 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h3 class="fw-bold m-0">Flugzeuge</h3>
+    {% if session.is_admin %}
     <a href="{{ url_for('aircraft.new_aircraft') }}" class="btn btn-primary">
         <i class="bi bi-plus-circle"></i> Neues Flugzeug
     </a>
+    {% endif %}
 </div>
+
+{% include "partials/view_only_hint.html" %}
 
 {% macro aircraft_stats(a) %}
     {% set loads = a.loads %}
@@ -96,7 +100,7 @@
 <div class="table-responsive mb-4">
 <table class="table table-hover table-sm align-middle shadow-sm aircraft-table">
     <colgroup>
-        <col><col><col><col><col><col>
+        <col><col><col><col><col>{% if session.is_admin %}<col>{% endif %}
     </colgroup>
 
     <thead class="table-light">
@@ -106,7 +110,7 @@
             <th>Sitze</th>
             <th>Standardhöhe</th>
             <th>Nutzung</th>
-            <th class="text-end">Aktionen</th>
+            {% if session.is_admin %}<th class="text-end">Aktionen</th>{% endif %}
         </tr>
     </thead>
     <tbody>
@@ -117,6 +121,7 @@
             <td>{{ a.seats }}</td>
             <td>{{ a.default_height }} m</td>
             <td>{{ aircraft_stats(a) }}</td>
+            {% if session.is_admin %}
             <td class="text-end">
                 <div class="btn-group" role="group">
                     <a href="{{ url_for('aircraft.edit_aircraft', aircraft_id=a.id) }}"
@@ -132,6 +137,7 @@
                     </form>
                 </div>
             </td>
+            {% endif %}
         </tr>
         {% endfor %}
     </tbody>
@@ -152,7 +158,7 @@
 <div class="table-responsive mb-4">
 <table class="table table-hover table-sm align-middle shadow-sm aircraft-table">
     <colgroup>
-        <col><col><col><col><col><col>
+        <col><col><col><col><col>{% if session.is_admin %}<col>{% endif %}
     </colgroup>
 
     <thead class="table-light">
@@ -162,7 +168,7 @@
             <th>Sitze</th>
             <th>Standardhöhe</th>
             <th>Nutzung</th>
-            <th class="text-end">Aktionen</th>
+            {% if session.is_admin %}<th class="text-end">Aktionen</th>{% endif %}
         </tr>
     </thead>
     <tbody>
@@ -173,6 +179,7 @@
             <td>{{ a.seats }}</td>
             <td>{{ a.default_height }} m</td>
             <td>{{ aircraft_stats(a) }}</td>
+            {% if session.is_admin %}
             <td class="text-end">
                 <div class="btn-group" role="group">
                     <a href="{{ url_for('aircraft.edit_aircraft', aircraft_id=a.id) }}"
@@ -188,6 +195,7 @@
                     </form>
                 </div>
             </td>
+            {% endif %}
         </tr>
         {% endfor %}
     </tbody>
@@ -208,7 +216,7 @@
 <div class="table-responsive">
 <table class="table table-hover table-sm align-middle shadow-sm aircraft-table">
     <colgroup>
-        <col><col><col><col><col><col>
+        <col><col><col><col><col>{% if session.is_admin %}<col>{% endif %}
     </colgroup>
 
     <thead class="table-light">
@@ -218,7 +226,7 @@
             <th>Sitze</th>
             <th>Standardhöhe</th>
             <th>Nutzung</th>
-            <th class="text-end">Aktionen</th>
+            {% if session.is_admin %}<th class="text-end">Aktionen</th>{% endif %}
         </tr>
     </thead>
     <tbody>
@@ -229,6 +237,7 @@
             <td>{{ a.seats }}</td>
             <td>{{ a.default_height }} m</td>
             <td>{{ aircraft_stats(a) }}</td>
+            {% if session.is_admin %}
             <td class="text-end">
                 <div class="btn-group" role="group">
                     <form action="{{ url_for('aircraft.restore_aircraft', aircraft_id=a.id) }}"
@@ -254,6 +263,7 @@
                     {% endif %}
                 </div>
             </td>
+            {% endif %}
         </tr>
         {% endfor %}
     </tbody>
