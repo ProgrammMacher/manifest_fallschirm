@@ -19,6 +19,18 @@ jobs:
           python-version: "3.14.2"
           architecture: "x64"
 
+      # Reine Leseprüfung (kein pip install/download, keine Änderungen):
+      # requirements.txt ist die Quelle der Wahrheit. Bei kritischer Drift
+      # zwischen requirements.txt, packages/ und runtime/python schlägt der
+      # Build fehl. Reparatur erfolgt manuell, siehe ENTWICKLUNG.md (5.3).
+      - name: Check runtime consistency (read-only)
+        shell: pwsh
+        run: |
+          python tools/check_runtime_consistency.py
+          if ($LASTEXITCODE -ne 0) {
+            throw "Runtime-Drift erkannt (requirements.txt / packages / runtime/python). Manuelle Reparatur: runtime\python\python.exe -m pip install --no-index --find-links=packages -r requirements.txt"
+          }
+
       - name: Provision portable runtime launcher files
         shell: pwsh
         env:

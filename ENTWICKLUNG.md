@@ -233,6 +233,50 @@ monkeypatch.setenv("MANIFEST_AUTO_CREATE_DB", "1")
 
 ⚠️ **Folge für Entwickler:** Alle Dateien werden als `.pyc` ausgeliefert - müssen kompilierbar sein
 
+### 5.3 Runtime-Konsistenzprüfung (`tools/check_runtime_consistency.py`)
+
+✅ **Quelle der Wahrheit:** `requirements.txt`. `packages/` (Offline-Wheels) und `runtime/python/` (portable Runtime) müssen exakt dazu passen.
+
+✅ **Zweck:** Erkennt Drift zwischen `requirements.txt`, `packages/` und `runtime/python/`, bevor Produktiv- oder Waitress-Starts (`start_manifest_prod.bat`, `start_manifest_waitress_dev.bat`) daran scheitern.
+
+✅ **Aufruf (lokal, aus dem Projektordner):**
+```
+python tools\check_runtime_consistency.py
+```
+Optional: `--project-root <Pfad>`. Es genügt jeder Python-Interpreter, die Runtime selbst wird nicht gestartet.
+
+✅ **Das Skript arbeitet ausschließlich lesend:**
+- kein `pip install`, kein `pip download`, keine Netzwerkzugriffe
+- keine Dateien werden geschrieben, geändert oder gelöscht
+- `runtime/python/` und `packages/` bleiben unverändert
+- keine automatische Reparatur
+
+Gelesen werden nur Namen: `requirements.txt` (Format `name==version`), die Dateinamen in `packages/*.whl` und die Ordner `runtime/python/Lib/site-packages/*.dist-info`. Paketnamen werden nach PEP 503 normalisiert (`Flask-SQLAlchemy` = `flask_sqlalchemy`).
+
+| Befund | Wirkung |
+|--------|---------|
+| Paket aus `requirements.txt` fehlt in `runtime/python` | **Fehler** (Exit-Code 1) |
+| Paket in `runtime/python` hat andere Version | **Fehler** (Exit-Code 1) |
+| Wheel `name==version` fehlt in `packages/` | **Fehler** (Exit-Code 1) |
+| `requirements.txt`, `packages/` oder `site-packages` fehlt, oder Zeile ist kein `name==version`-Pin | **Fehler** (Exit-Code 1) |
+| Zusätzliches Paket in `runtime/python` (nicht in `requirements.txt`) | Warnung, Exit-Code 0 |
+| Zusätzliches Wheel in `packages/` (nicht in `requirements.txt`) | Warnung, Exit-Code 0 |
+
+`pip`, `setuptools` und `wheel` in der Runtime lösen keine Warnung aus. Transitive Abhängigkeiten müssen wie bisher selbst in `requirements.txt` gepinnt stehen (aktuelle Praxis, z. B. `six`, `idna`, `cffi`).
+
+✅ **GitHub Actions:** Der Schritt „Check runtime consistency (read-only)“ in `.github/workflows/build-installer.yml` läuft direkt nach `setup-python`, vor der Runtime-Bereitstellung. Bei Exit-Code 1 schlägt der Build fehl. Warnungen blockieren nicht.
+
+✅ **Manuelle Reparatur** (wird vom Skript nur ausgegeben, nie ausgeführt):
+```
+runtime\python\python.exe -m pip install --no-index --find-links=packages -r requirements.txt
+```
+Fehlt ein Wheel in `packages/`, muss es zuerst ergänzt werden. Die Reparatur ändert `runtime/python/Lib/site-packages`. Da `runtime/*` in `.gitignore` steht, müssen neu hinzugekommene Dateien mit `git add -f` aufgenommen und entfernte Dateien mitcommittet werden, sonst weicht die eingecheckte Runtime weiter ab.
+
+✅ **Pflegeregel:** Änderungen an Paketen immer in dieser Reihenfolge: (1) `requirements.txt` anpassen, (2) Wheels in `packages/` ergänzen/entfernen, (3) Reparaturbefehl ausführen, (4) Prüfskript ausführen, (5) alles gemeinsam committen.
+
+✅ **Tests:** `tests/test_check_runtime_consistency.py` (u. a. Nachweis, dass das Skript nichts verändert).
+
+
 ---
 
 ## 6. Git
