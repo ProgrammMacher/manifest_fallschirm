@@ -45,6 +45,27 @@ def b64encode(value: bytes) -> str:
     return base64.b64encode(value).decode("ascii")
 
 
+def mask_bank_value(value, visible_prefix: int = 2, visible_suffix: int = 3) -> str:
+    """
+    Maskiert Kontodaten (IBAN/BIC) fuer Nicht-Admins.
+
+    Es bleiben nur die ersten `visible_prefix` und die letzten `visible_suffix`
+    Zeichen sichtbar; dazwischen steht eine feste Maske aus 5 Bindestrichen
+    (die tatsaechliche Laenge wird nicht preisgegeben).
+    Beispiel: DE12345678901234567890 -> DE-----890
+    Leere Werte -> "–". Zu kurze Werte werden vollstaendig maskiert.
+    """
+    text = "".join(str(value or "").split())
+    if not text:
+        return "–"
+    if len(text) <= visible_prefix + visible_suffix:
+        return "-----"
+    return text[:visible_prefix] + "-----" + text[-visible_suffix:]
+
+
+bp_person.add_app_template_filter(mask_bank_value, "mask_bank_value")
+
+
 # ---------------------------------------------------------
 # Hilfsfunktionen
 # ---------------------------------------------------------

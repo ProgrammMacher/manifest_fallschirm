@@ -104,6 +104,8 @@ def test_restore_person_requires_admin(app_ctx):
         ("post", "/import/preview"),
         ("post", "/import/execute"),
         ("get", "/export/persons/import-template"),
+        # Personenexport enthaelt Kontodaten (IBAN/BIC/Kontoinhaber) -> nur Admin
+        ("get", "/export/persons/excel"),
     ],
 )
 def test_import_routes_require_admin(app_ctx, method, path):
@@ -154,6 +156,7 @@ def test_admin_can_open_edit_form_and_import_pages(app_ctx):
     assert client.get("/import/").status_code == 200
     assert client.get("/import/vorlage").status_code == 200
     assert client.get("/export/persons/import-template").status_code == 200
+    assert client.get("/export/persons/excel").status_code == 200
 
 
 def test_admin_can_archive_and_restore(app_ctx):
@@ -176,7 +179,7 @@ def test_admin_can_archive_and_restore(app_ctx):
 # ---------------------------------------------------------
 @pytest.mark.parametrize(
     "path",
-    ["/persons/", "/persons/new", "/persons/mobile-intake", "/export/persons/excel"],
+    ["/persons/", "/persons/new", "/persons/mobile-intake"],
 )
 def test_general_person_functions_remain_open(app_ctx, path):
     app, _ = app_ctx

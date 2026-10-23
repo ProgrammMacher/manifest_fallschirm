@@ -161,7 +161,8 @@ def test_person_list_general_actions_visible_without_admin(app_ctx):
 
     assert "/persons/new" in body
     assert "/persons/mobile-intake" in body
-    assert "/export/persons/excel" in body
+    # Personenexport enthaelt Kontodaten -> nur fuer Admins sichtbar/erreichbar
+    assert "/export/persons/excel" not in body
 
 
 def test_person_list_all_actions_visible_for_admin(app_ctx):

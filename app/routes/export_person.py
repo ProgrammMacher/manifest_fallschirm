@@ -28,9 +28,10 @@ def export_import_template():
 # 2) Personenliste als Excel exportieren
 # ---------------------------------------------------------
 @bp_export_person.route("/excel")
+@admin_required
 def export_persons_excel():
     """
-    Exportiert Personen als Excel-Datei.
+    Exportiert Personen als Excel-Datei (nur Admin, enthaelt Kontodaten).
     Berücksichtigt Suche, Filter und Sortierung wie die Personenliste.
     """
 

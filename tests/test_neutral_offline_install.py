@@ -549,6 +549,109 @@ def test_manifest_launcher_uses_readiness_polling_not_fixed_sleep():
     assert "LOG_FILE" in launcher_text
 
 
+def _launcher_text() -> str:
+    return (PROJECT_ROOT / "manifest_launcher.py").read_text(encoding="utf-8")
+
+
+def test_manifest_launcher_startup_notice_has_no_short_fixed_timeout():
+    """Das Startfenster darf nicht mehr nach 3,5 s verschwinden, sondern nur
+    ueber ein deutlich laengeres Sicherheitsnetz (>= 40 s)."""
+    launcher_text = _launcher_text()
+    assert "3500" not in launcher_text
+    match = re.search(r"^STARTUP_NOTICE_TIMEOUT_MS\s*=\s*(\d+)", launcher_text, re.MULTILINE)
+    assert match, "STARTUP_NOTICE_TIMEOUT_MS fehlt"
+    assert int(match.group(1)) >= 40000
+
+
+def test_manifest_launcher_closes_startup_notice_on_readiness_before_browser():
+    """Readiness -> Startfenster schliessen -> erst dann Browser oeffnen;
+    auch im Timeout-Fall muss das Startfenster vor der Fehlermeldung
+    geschlossen werden."""
+    launcher_text = _launcher_text()
+    body = launcher_text.split("def wait_for_ready_and_open_browser", 1)[1]
+    body = body.split("# Sauberer Shutdown", 1)[0]
+
+    ready_branch, timeout_branch = body.split("log.error(", 1)
+    assert "port_in_use(PORT)" in ready_branch
+    assert "_close_startup_notice()" in ready_branch
+    assert ready_branch.index("_close_startup_notice()") < ready_branch.index("open_browser()")
+
+    assert "_close_startup_notice()" in timeout_branch
+    assert timeout_branch.index("_close_startup_notice()") < timeout_branch.index("_show_native_error(")
+
+
+def test_manifest_launcher_closes_startup_notice_when_server_already_running():
+    launcher_text = _launcher_text()
+    main_block = launcher_text.split('if __name__ == "__main__":\n    log.info', 1)[1]
+    already_running = main_block.split("sys.exit(0)", 1)[0]
+    assert "_close_startup_notice()" in already_running
+    assert already_running.index("_close_startup_notice()") < already_running.index("open_browser()")
+
+
+def _load_launcher_notice_helpers() -> dict:
+    """Fuehrt nur den Kopfteil von manifest_launcher.py (Startfenster-Helfer)
+    aus; der Rest des Launchers (Secrets, Lizenz, create_app) wird nicht
+    importiert."""
+    source = _launcher_text()
+    head = source.split('if __name__ == "__main__" and os.name == "nt":', 1)[0]
+    namespace: dict = {"__name__": "launcher_head"}
+    exec(compile(head, "manifest_launcher_head", "exec"), namespace)
+    return namespace
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Native Windows-MessageBox")
+def test_startup_notice_stays_open_until_closed_programmatically():
+    import threading
+    import time
+
+    ns = _load_launcher_notice_helpers()
+    assert ns["STARTUP_NOTICE_TIMEOUT_MS"] >= 40000
+
+    thread = threading.Thread(
+        target=ns["_show_native_notice"],
+        args=("MANIFeST OU Test-Startfenster",),
+        daemon=True,
+    )
+    thread.start()
+
+    # Muss deutlich laenger als die frueheren 3,5 s offen bleiben koennen:
+    # hier nur 4,5 s warten (Fenster darf nicht von selbst verschwinden).
+    time.sleep(4.5)
+    still_open = thread.is_alive()
+
+    started = time.monotonic()
+    ns["_close_startup_notice"]()
+    thread.join(timeout=5)
+    close_duration = time.monotonic() - started
+
+    try:
+        assert still_open, "Startfenster ist von selbst verschwunden (alter Fix-Timeout?)"
+        assert not thread.is_alive(), "Startfenster wurde nicht programmatisch geschlossen"
+        assert close_duration < 3.0
+    finally:
+        # Sicherheitsnetz, falls ein Assert fehlschlaegt und das Fenster offen blieb.
+        ns["_close_startup_notice"]()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Native Windows-MessageBox")
+def test_close_startup_notice_before_window_exists_is_safe_and_prevents_window():
+    import threading
+
+    ns = _load_launcher_notice_helpers()
+
+    # Server ist "bereits bereit", bevor das Fenster erscheint.
+    ns["_close_startup_notice"]()
+
+    thread = threading.Thread(
+        target=ns["_show_native_notice"],
+        args=("MANIFeST OU Test-Startfenster",),
+        daemon=True,
+    )
+    thread.start()
+    thread.join(timeout=3)
+    assert not thread.is_alive(), "Fenster darf nach 'bereit' nicht mehr erscheinen"
+
+
 
 _PS_ARRAY_PATTERN = re.compile(r"\$([A-Za-z]+)\s*=\s*@\((.*?)\)", re.DOTALL)
 

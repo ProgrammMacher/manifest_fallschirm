@@ -2,20 +2,73 @@
 import os
 import sys
 import threading
+import time
+
+# Sicherheitsnetz fuer das Startfenster: Es wird normalerweise aktiv per
+# _close_startup_notice() geschlossen, sobald der Server erreichbar ist.
+# Der Timeout greift nur, falls das aktive Schliessen nie erfolgt.
+STARTUP_NOTICE_TIMEOUT_MS = 40000
+
+_startup_notice_thread_id = None
+_startup_notice_closed = threading.Event()
 
 
-def _show_native_notice(message: str, title: str = "MANIFeST OU", timeout_ms: int = 3500) -> None:
+def _show_native_notice(
+    message: str,
+    title: str = "MANIFeST OU",
+    timeout_ms: int = STARTUP_NOTICE_TIMEOUT_MS,
+) -> None:
+    global _startup_notice_thread_id
     if os.name != "nt":
         return
     try:
         import ctypes
 
         MB_ICONINFORMATION = 0x40
+        # Thread-ID merken: Die MessageBox gehoert diesem Thread, so kann
+        # _close_startup_notice() genau dieses Fenster schliessen.
+        # Reihenfolge ist wichtig (race-frei): erst Thread-ID setzen, dann
+        # das Closed-Flag pruefen.
+        _startup_notice_thread_id = ctypes.windll.kernel32.GetCurrentThreadId()
+        if _startup_notice_closed.is_set():
+            # Server war bereits bereit, bevor das Fenster erscheinen konnte.
+            return
         # MessageBoxTimeoutW ist eine inoffizielle, aber seit Windows 2000
         # stabil vorhandene user32-Funktion mit automatischem Schliessen.
         ctypes.windll.user32.MessageBoxTimeoutW(
             0, message, title, MB_ICONINFORMATION, 0, timeout_ms
         )
+    except Exception:
+        pass
+    finally:
+        _startup_notice_thread_id = None
+
+
+def _close_startup_notice() -> None:
+    """Schliesst das Startfenster ('MANIFeST OU wird gestartet ...') ohne
+    Benutzereingriff. Blockiert nie laenger als ca. 1 Sekunde."""
+    _startup_notice_closed.set()
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        WM_CLOSE = 0x0010
+        user32 = ctypes.windll.user32
+        enum_proc_type = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p)
+
+        def _post_close(hwnd, _lparam):
+            user32.PostMessageW(ctypes.c_void_p(hwnd), WM_CLOSE, 0, 0)
+            return True
+
+        enum_proc = enum_proc_type(_post_close)
+        # Wiederholen, falls das Fenster gerade erst erzeugt wird (Race).
+        for _ in range(20):
+            thread_id = _startup_notice_thread_id
+            if thread_id is None:
+                return
+            user32.EnumThreadWindows(thread_id, enum_proc, 0)
+            time.sleep(0.05)
     except Exception:
         pass
 
@@ -322,7 +375,8 @@ def wait_for_ready_and_open_browser() -> None:
     deadline = time.monotonic() + STARTUP_READY_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
         if port_in_use(PORT):
-            log.info("Server bereit nach Readiness-Check, öffne Browser")
+            log.info("Server bereit nach Readiness-Check, schliesse Startfenster, öffne Browser")
+            _close_startup_notice()
             open_browser()
             return
         time.sleep(STARTUP_POLL_INTERVAL_SECONDS)
@@ -332,6 +386,9 @@ def wait_for_ready_and_open_browser() -> None:
         STARTUP_READY_TIMEOUT_SECONDS,
         LOG_FILE,
     )
+    # Startfenster zuerst schliessen, damit die Fehlermeldung nicht dahinter
+    # oder neben einem scheinbar "noch startenden" Fenster erscheint.
+    _close_startup_notice()
     _show_native_error(
         "MANIFeST OU konnte nicht rechtzeitig gestartet werden.\n\n"
         f"Details in der Logdatei:\n{LOG_FILE}"
@@ -375,6 +432,7 @@ if __name__ == "__main__":
 
     if port_in_use(PORT):
         log.info("Server läuft bereits – öffne Browser")
+        _close_startup_notice()
         open_browser()
         sys.exit(0)
 

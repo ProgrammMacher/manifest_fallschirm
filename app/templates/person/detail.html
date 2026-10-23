@@ -307,9 +307,16 @@
                     <i class="bi bi-bank"></i> Bank & Sonstiges
                 </h5>
 
+                {# Kontodaten: Admin sieht alles, Nicht-Admins nur maskierte IBAN/BIC; Kontoinhaber wird ausgeblendet #}
+                {% if is_admin() %}
                 <p><strong>IBAN:</strong> {{ person.iban or "–" }}</p>
                 <p><strong>BIC:</strong> {{ person.bic or "–" }}</p>
                 <p><strong>Kontoinhaber:</strong> {{ person.account_holder or "–" }}</p>
+                {% else %}
+                <p><strong>IBAN:</strong> {{ person.iban|mask_bank_value }}</p>
+                <p><strong>BIC:</strong> {{ person.bic|mask_bank_value }}</p>
+                <p><strong>Kontoinhaber:</strong> <span class="text-muted">Nicht sichtbar</span></p>
+                {% endif %}
 
                 <p><strong>Kommentar:</strong><br>
                     {% if person.comment %}
