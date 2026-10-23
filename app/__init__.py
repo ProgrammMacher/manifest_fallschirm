@@ -258,6 +258,11 @@ def create_app():
         os.path.join(RUNTIME_HOME_ROOT, "session_data"),
         os.path.join(BASE_DIR, "session_data"),
     )
+    # Logout-Fix: Session nur speichern, wenn sie tatsaechlich geaendert wurde.
+    # Mit True schreibt JEDER Request (auch /pwa/runtime/heartbeat und
+    # /pwa/runtime/disconnect) die beim Request-Start geladene Session zurueck
+    # und kann so eine parallel geleerte Admin-Session wiederherstellen.
+    app.config["SESSION_REFRESH_EACH_REQUEST"] = False
     Session(app)
 
     @app.before_request
@@ -293,13 +298,18 @@ def create_app():
         ):
             return
 
-        if path.startswith("/load/") and "/api/" in path:
+        # Blueprint-Prefix der Loads ist "/loads" (nicht "/load").
+        if path.startswith("/loads/") and "/api/" in path:
             return
 
         if path.startswith("/pwa/api/"):
             return
 
-        session["last_page"] = path
+        # Nur schreiben, wenn sich der Wert geaendert hat: ein unnoetiger
+        # Schreibzugriff markiert die Session als modified und wuerde
+        # parallel zum Logout die alte Session erneut speichern.
+        if session.get("last_page") != path:
+            session["last_page"] = path
 
     @app.before_request
     def runtime_touch_activity():
