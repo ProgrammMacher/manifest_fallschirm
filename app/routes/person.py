@@ -771,6 +771,7 @@ def detail(id):
 # CRUD – Person bearbeiten
 # ---------------------------------------------------------
 @bp_person.route("/edit/<int:id>", methods=["GET", "POST"])
+@admin_required
 def edit_person(id):
     person = Person.query.get_or_404(id)
 
@@ -842,6 +843,7 @@ def reset_newsletter_optout(id):
 # (explizite Route, für UI-Buttons)
 # ---------------------------------------------------------
 @bp_person.route("/archive/<int:id>", methods=["POST"])
+@admin_required
 def archive_person(id):
     person = Person.query.get_or_404(id)
 
@@ -864,6 +866,7 @@ def archive_person(id):
 # Restore aus dem Archiv
 # ---------------------------------------------------------
 @bp_person.route("/restore/<int:id>", methods=["POST"])
+@admin_required
 def restore_person(id):
     person = Person.query.get_or_404(id)
 
@@ -909,6 +912,7 @@ def hard_delete_person(id):
 # ALT: /delete – abwärtskompatibel, jetzt nur noch Softdelete
 # ---------------------------------------------------------
 @bp_person.route("/delete/<int:id>", methods=["POST"])
+@admin_required
 def delete_person(id):
     """
     Alte Route: wird aus Kompatibilitätsgründen beibehalten,

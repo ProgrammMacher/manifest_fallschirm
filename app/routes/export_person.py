@@ -3,6 +3,7 @@
 from flask import Blueprint, request, flash, redirect, url_for
 from sqlalchemy import or_
 from datetime import date
+from app.security.admin import admin_required
 from app.services.person_export_service import PersonExportService
 from app.models.person import Person
 
@@ -13,6 +14,7 @@ bp_export_person = Blueprint("export_person", __name__, url_prefix="/export/pers
 # 1) Vertikale Import-Vorlage erzeugen & herunterladen
 # ---------------------------------------------------------
 @bp_export_person.route("/import-template")
+@admin_required
 def export_import_template():
     """
     Exportiert die vertikale Import-Vorlage.

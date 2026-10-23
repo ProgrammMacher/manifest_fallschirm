@@ -15,6 +15,7 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 
+from app.security.admin import admin_required
 from app.services.person_import_service import PersonImportService
 from app.services.person_export_service import PersonExportService
 
@@ -89,6 +90,7 @@ def load_session_data(sid: str) -> list:
 # 0) DOWNLOAD DER VORLAGE
 # ---------------------------------------------------------
 @bp.route("/vorlage")
+@admin_required
 def download_template():
     """
     Liefert die vertikale Import-Vorlage.
@@ -100,6 +102,7 @@ def download_template():
 # 1) UPLOAD-SEITE
 # ---------------------------------------------------------
 @bp.route("/", methods=["GET"])
+@admin_required
 def index():
     return render_template("import/index.html")
 
@@ -108,6 +111,7 @@ def index():
 # 2) VORSCHAU-SEITE
 # ---------------------------------------------------------
 @bp.route("/preview", methods=["GET", "POST"])
+@admin_required
 def preview():
 
     # -----------------------------------------------------

@@ -6,6 +6,7 @@ from datetime import datetime, date
 from flask import Blueprint, render_template, request, session, redirect, url_for, flash, current_app
 from app.models.person import Person
 from app import db
+from app.security.admin import admin_required
 from app.services.person_import_service import PersonImportService
 
 bp = Blueprint("import_execute", __name__, url_prefix="/import")
@@ -70,6 +71,7 @@ def parse_date_from_string(value):
 
 
 @bp.route("/execute", methods=["POST"])
+@admin_required
 def execute():
     """
     Führt den finalen Import aus.
