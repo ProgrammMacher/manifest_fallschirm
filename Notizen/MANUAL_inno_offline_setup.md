@@ -18,7 +18,7 @@ Dieses Handbuch beschreibt den kompletten Ablauf fuer eine echte Offline-Install
 4. [tools/license/install_runtime_secrets.py](tools/license/install_runtime_secrets.py)
 5. [app/security/license_public_key.pem](app/security/license_public_key.pem) (öffentlicher MFS2-Prüfschlüssel)
 6. [tools/lizenzgenerator/README.txt](../tools/lizenzgenerator/README.txt) (Entwickler-only; nicht im Kunden-Installer)
-7. [tools/fingerprint/Fingerprint ermitteln.bat](../tools/fingerprint/Fingerprint%20ermitteln.bat) (separat weitergebbar)
+7. [tools/fingerprint/README.txt](../tools/fingerprint/README.txt) (Endanwender-EXE `MANIFeST_Rechnerkennung.exe`, separat per Download-Link weitergebbar; `Fingerprint ermitteln.bat/.ps1` bleiben interne Entwickler-Rückfallebene)
 8. [tools/build_manifest_icon.py](tools/build_manifest_icon.py)
 9. [app/static/img/HU_Bleistift.png](app/static/img/HU_Bleistift.png)
 10. [app/static/img/manifest_ou.ico](app/static/img/manifest_ou.ico)
@@ -44,7 +44,25 @@ Dieses Handbuch beschreibt den kompletten Ablauf fuer eine echte Offline-Install
 
 Maschinenbindung braucht den Fingerprint des Zielrechners.
 
-Auf Zielrechner ausfuehren:
+Empfohlener Weg (Endanwender-EXE, siehe [tools/fingerprint/README.txt](../tools/fingerprint/README.txt)):
+
+1. Auf dem Entwicklerrechner `tools\fingerprint\Fingerprint EXE bauen.bat` ausfuehren
+   (baut `build\fingerprint\dist\MANIFeST_Rechnerkennung.exe`, nur 64-Bit-Python,
+   eigene Build-Umgebung unter `build\fingerprint\venv`).
+2. EXE nur per HTTPS-Download-Link an den Kunden senden, nie als Mail-Anhang
+   (.exe und ZIPs mit .exe werden von Mailservern blockiert).
+3. Kunde oeffnet den Link, laedt die Datei herunter und startet sie per Doppelklick
+   (ggf. SmartScreen: "Weitere Informationen" -> "Trotzdem ausfuehren").
+4. Die EXE ermittelt die Kennung automatisch ueber `app\security\hardware_fingerprint.py`,
+   kopiert sie in die Zwischenablage und zeigt sie an mit dem Hinweis, auf die
+   Entwickler-E-Mail zu antworten und die Kennung mit Strg+V einzufuegen.
+5. Der Kunde antwortet auf die E-Mail des Entwicklers - fertig.
+
+Vor der Weitergabe manuell pruefen: Angezeigte Kennung der EXE muss identisch sein mit
+`python -c "from app.security.hardware_fingerprint import get_machine_fingerprint; print(get_machine_fingerprint())"`
+auf demselben Rechner.
+
+Rueckfallebene (intern, Entwickler-only):
 
 1. [tools/fingerprint/Fingerprint ermitteln.bat](../tools/fingerprint/Fingerprint%20ermitteln.bat)
 2. Ausgabe kopieren (Hex-String)
@@ -52,6 +70,7 @@ Auf Zielrechner ausfuehren:
 
 Hinweis: Der Fingerprint ist ein SHA256-Hash aus stabilen Maschinenmerkmalen.
 Das Fingerprint-Werkzeug enthält weder Signierfunktion noch privaten Schlüssel.
+Aenderungen an `app\security\hardware_fingerprint.py` erfordern einen erneuten EXE-Build.
 
 ## B) Lizenzschluessel mit Laufzeit und Maschinenbindung erzeugen
 
