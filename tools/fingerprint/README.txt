@@ -35,8 +35,10 @@ Die EXE enthaelt weder Signierfunktion noch privaten Schluessel.
 5. Das Skript gibt SHA256-Prüfsummen der EXE und der verwendeten
    Quelle hardware_fingerprint.py aus - im Ticket/Change-Vermerk notieren.
 
-Wichtig: Nach jeder Aenderung an app\security\hardware_fingerprint.py
-muss die EXE neu gebaut werden (die Logik wird beim Build eingefroren).
+Wichtig: Die Fingerprint-EXE muss nur neu erstellt werden, wenn sich
+app\security\hardware_fingerprint.py aendert (die Logik wird beim Build
+eingefroren). Aenderungen an MANIFeST OU selbst (Billing, Personen,
+Flugzeuge, Preise usw.) erfordern keinen Neubau der Fingerprint-EXE.
 
 Manuelle Pruefung vor jeder Weitergabe:
 1. EXE auf einem Testrechner per Doppelklick starten.

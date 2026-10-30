@@ -70,7 +70,8 @@ Rueckfallebene (intern, Entwickler-only):
 
 Hinweis: Der Fingerprint ist ein SHA256-Hash aus stabilen Maschinenmerkmalen.
 Das Fingerprint-Werkzeug enthält weder Signierfunktion noch privaten Schlüssel.
-Aenderungen an `app\security\hardware_fingerprint.py` erfordern einen erneuten EXE-Build.
+Die Fingerprint-EXE muss nur neu erstellt werden, wenn sich `app\security\hardware_fingerprint.py` ändert.
+Änderungen an MANIFeST OU selbst (Billing, Personen, Flugzeuge, Preise usw.) erfordern keinen Neubau der Fingerprint-EXE.
 
 ## B) Lizenzschluessel mit Laufzeit und Maschinenbindung erzeugen
 
