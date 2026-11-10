@@ -1,36 +1,10 @@
-- billing.py > 5.000 Zeilen
-- load.py > 4.000 Zeilen
-- mehrere is_admin()-Implementierungen
-- Default SECRET_KEY vorhanden
-- smtp_password im Klartext gespeichert
-- zwei parallele Migrationsmechanismen
-- Altdateien im Repository
-
-Portable Runtime kann von requirements.txt abweichen
-Problem
-Die mitgelieferte Runtime unter runtime/python/ kann vom dokumentierten Paketstand in requirements.txt und den Offline-Paketen unter packages/ abweichen.
-
-Dadurch können Produktivstarts über Waitress fehlschlagen, obwohl Flask-Starts noch funktionieren.
-
-Bekannter Reparaturbefehl
-runtime\python\python.exe -m pip install --no-index --find-links=packages -r requirements.txt
-
-Ziel
-Klare Pflege- und Aktualisierungsstrategie für:
-
-requirements.txt
-packages/
-runtime/python/
-festlegen.
-
-
 # Priorisierte Übersicht
 
 Stand: Oktober 2026
 
 # Hoch
 
-## Portable Runtime kann von requirements.txt abweichen
+## Portable Runtime / Runtime-Versionierung unklar
 
 Problem:
 
@@ -38,17 +12,24 @@ Die mitgelieferte Runtime unter
 
 runtime/python/
 
-kann vom dokumentierten Paketstand in
+wird aktuell von Build- und Prüfprozessen verwendet.
 
-requirements.txt
+Gleichzeitig ist runtime/ laut .gitignore grundsätzlich ausgeschlossen.
 
-und den Offline-Paketen unter
+Dadurch ist langfristig unklar, ob die Runtime:
 
-packages/
+- vollständig versioniert werden soll
+- vollständig durch den Build-Prozess erzeugt werden soll
 
-abweichen.
+Aktueller Stand:
 
-Dadurch können Produktivstarts über Waitress fehlschlagen, obwohl Flask-Starts noch funktionieren.
+- requirements.txt verwendet Alembic 1.18.4
+- packages/ enthält Alembic 1.18.4
+- runtime/python enthält Alembic 1.18.4
+
+Die Runtime ist derzeit konsistent.
+
+Die langfristige Pflege- und Versionierungsstrategie ist jedoch nicht abschließend geklärt.
 
 Bekannter Reparaturbefehl:
 
@@ -188,19 +169,28 @@ Klare Trennung zwischen
 
 ## Altdateien im Repository
 
-Problem:
+Status:
 
-Historische und temporäre Dateien befinden sich im Repository.
+Teilweise erledigt.
 
-Beispiele:
+Mit Commit
 
-- app/session_data/*
+aa285d58
+
+wurden historische Flask-Session-Dateien aus
+
+app/session_data/*
+
+erfolgreich aus dem Repository entfernt.
+
+Offene Beispiele:
+
 - Runtime-Artefakte
 - temporäre Arbeitsdateien
 
 Ziel:
 
-.gitignore prüfen und Repository bereinigen.
+.gitignore regelmäßig prüfen und Repository weiter bereinigen.
 
 ---
 
@@ -208,7 +198,9 @@ Ziel:
 
 Status:
 
-Teilweise behoben in Commit:
+Für den bekannten Fehlerfall behoben.
+
+Commit:
 
 1ccd29a1
 
@@ -224,6 +216,6 @@ Umgesetzte Maßnahmen:
 
 Bekanntes Restrisiko:
 
-Parallele GET-Requests aus anderen Tabs können theoretisch weiterhin alte Session-Zustände zurückschreiben.
+Parallele GET-Requests aus anderen Browser-Tabs können theoretisch weiterhin alte Session-Zustände zurückschreiben.
 
 Eine vollständige Lösung würde eine Session-Regeneration beim Logout erfordern.

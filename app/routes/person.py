@@ -26,6 +26,7 @@ from app.security.admin import (
     redirect_to_admin_login,
 )
 from app.services.billing_service import _image_to_data_uri
+from app.services.birthday_service import birthdays_around_today
 from app.services.display_service import build_local_qr_url, generate_qr_png_buffer
 from app.services.mobile_person_intake_service import (
     accept_draft,
@@ -515,6 +516,8 @@ def list_persons():
         primary = primary.desc()
 
     persons = query.order_by(primary, Person.last_name.asc(), Person.first_name.asc()).all()
+    birthdays = birthdays_around_today(persons, date.today())
+    birthday_start = max(0, sum(birthday["past"] for birthday in birthdays) - 2)
     mobile_draft_count = MobilePersonIntakeDraft.query.filter_by(
         status=MOBILE_PERSON_INTAKE_STATUS_SUBMITTED
     ).count()
@@ -522,6 +525,8 @@ def list_persons():
     return render_template(
         "person/list.html",
         persons=persons,
+        birthdays=birthdays,
+        birthday_start=birthday_start,
         search=search,
         filters_str=filters_str,
         filters_list=filters_list,

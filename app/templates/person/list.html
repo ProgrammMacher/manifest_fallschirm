@@ -25,6 +25,25 @@
     th.resizing {
         border-right: 2px solid var(--brand-red-base);
     }
+
+    .birthdays-horizontal {
+        overflow-x: auto;
+    }
+
+    .birthdays-scroll {
+        width: max-content;
+        min-width: 100%;
+        height: 15rem;
+        overflow-y: auto;
+    }
+
+    .birthday-row {
+        box-sizing: border-box;
+        height: 3rem;
+        display: flex;
+        align-items: center;
+        white-space: nowrap;
+    }
 </style>
 
 <div class="card shadow-sm">
@@ -43,7 +62,7 @@
                        class="form-control"
                        placeholder="Suche nach Name, Telefon, E-Mail…">
 
-                {% if filter %}<input type="hidden" name="filter" value="{{ filter }}">{% endif %}
+                {% if filters_str %}<input type="hidden" name="filters" value="{{ filters_str }}">{% endif %}
                 {% if sort %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
                 {% if direction %}<input type="hidden" name="direction" value="{{ direction }}">{% endif %}
 
@@ -271,6 +290,38 @@
             }
             
             document.addEventListener('DOMContentLoaded', rebuildFilters);
+        </script>
+
+        <section class="mb-4" aria-labelledby="birthdays-heading">
+            <h2 id="birthdays-heading" class="h5">Geburtstage</h2>
+            <div class="birthdays-horizontal">
+                <div class="birthdays-scroll" id="birthdaysScroll" tabindex="0" role="region" aria-labelledby="birthdays-heading">
+                    {% if birthdays %}
+                        <ul class="list-group">
+                        {% for birthday in birthdays %}
+                        <li class="list-group-item birthday-row{% if birthday.near_today %} list-group-item-warning fw-bold{% endif %}"
+                            {% if loop.index0 == birthday_start %}data-birthday-anchor{% endif %}>
+                            {{ birthday.date.strftime('%d.%m.%Y') }} ({{ birthday.weekday }}) -
+                            {{ birthday.person.first_name }} {{ birthday.person.last_name }} -
+                            {{ birthday.age }}. Geburtstag
+                        </li>
+                        {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="text-muted">Keine Geburtstage innerhalb von 8 Wochen vor oder nach heute.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+
+        <script>
+            document.addEventListener('DOMContentLoaded', () => {
+                const container = document.getElementById('birthdaysScroll');
+                if (!container) return;
+                const first = container.querySelector('.birthday-row');
+                const anchor = container.querySelector('[data-birthday-anchor]');
+                if (first && anchor) container.scrollTop = anchor.offsetTop - first.offsetTop;
+            });
         </script>
 
         <!-- TABLE -->

@@ -3,8 +3,8 @@
 MANIFeST OU: Entwicklungs-, Test- und Migrationsleitfaden
 
 **Stand:** Oktober 2026  
-**Git-HEAD:** 3bb67bdb  
-**Letzte Änderungen:** TECHNISCHE_SCHULDEN.md, ARCHITEKTUR.md, REGELN.md hinzugefügt
+
+
 
 ---
 
@@ -161,17 +161,19 @@ MANIFeST OU: Entwicklungs-, Test- und Migrationsleitfaden
 
 🔍 **Vermuteter Befehl:** `python -m pytest tests`
 
-✅ **Testabdeckung** (22 Dateien + 1 MD):
+✅ Umfangreiche Testabdeckung mit derzeit rund 30 Testdateien
+in den Bereichen:
 
-| Bereich | Dateien |
-|---------|---------|
-| Abrechnung/Rechnung | 9 Dateien (inkl. `test_ku_tandemmaster_regressions.py` - 43KB) |
-| SEPA | 3 Dateien |
-| Preise | 3 Dateien |
-| Migrationen | 1 Datei |
-| Lizenz/Installer | 6 Dateien |
+- Abrechnung
+- SEPA
+- Preise
+- Migrationen
+- Runtime
+- Installer
+- Lizenzierung
+- Sicherheit
+- Berechtigungen
 
-❓ **Offen:** Vollständiger grüner Teststand? Fehleranfällige Tests?
 
 ### 4.2 Testmuster
 
@@ -271,7 +273,10 @@ Gelesen werden nur Namen: `requirements.txt` (Format `name==version`), die Datei
 runtime\python\python.exe -m pip install --no-index --find-links=packages -r requirements.txt
 ```
 Fehlt ein Wheel in `packages/`, muss es zuerst ergänzt werden. Die Reparatur ändert `runtime/python/Lib/site-packages`. Da `runtime/*` in `.gitignore` steht, müssen neu hinzugekommene Dateien mit `git add -f` aufgenommen und entfernte Dateien mitcommittet werden, sonst weicht die eingecheckte Runtime weiter ab.
-
+Hinweis:
+Die langfristige Versionierungsstrategie für runtime/python
+ist derzeit noch nicht abschließend geklärt
+(siehe TECHNISCHE_SCHULDEN.md).
 ✅ **Pflegeregel:** Änderungen an Paketen immer in dieser Reihenfolge: (1) `requirements.txt` anpassen, (2) Wheels in `packages/` ergänzen/entfernen, (3) Reparaturbefehl ausführen, (4) Prüfskript ausführen, (5) alles gemeinsam committen.
 
 ✅ **Tests:** `tests/test_check_runtime_consistency.py` (u. a. Nachweis, dass das Skript nichts verändert).
@@ -293,21 +298,14 @@ Fehlt ein Wheel in `packages/`, muss es zuerst ergänzt werden. Die Reparatur ä
 
 1. **Migrations-Strategie:** Sollen neue Spalten zusätzlich in `db_migrations.py`?
 2. **System C-Skripte:** Dürfen nicht-versions Skripte archiviert werden?
-3. **Testabdeckung:** Welche Tests sind kritisch/fehleranfällig?
-4. **Schema-Stände:** Welche DB-Versionen laufen bei Kunden?
-5. **Runtime in Git:** Wie wird der Konflikt mit `.gitignore` gelöst?
-6. **Smoketest:** Wann ist der manuelle Test Pflicht?
-7. **Linting:** Soll ein Linter/Formatter eingeführt werden?
-8. **Test-Daten:** Gibt es eine Test-Datenbankvorlage mit Altdaten?
+3. **Schema-Stände:** Welche DB-Versionen laufen bei Kunden?
+4. **Runtime in Git:** Wie wird der Konflikt mit `.gitignore` gelöst?
+5. **Smoketest:** Wann ist der manuelle Test Pflicht?
+6. **Linting:** Soll ein Linter/Formatter eingeführt werden?
+7. **Test-Daten:** Gibt es eine Test-Datenbankvorlage mit Altdaten?
 
 ---
 
-## 📞 Support
-
-Bei Fragen zu Migrationen, Tests oder Build-Prozessen:
-1. ARCHITEKTUR.md konsultieren
-2. REGELN.md für Projektregeln beachten  
-3. TECHNISCHE_SCHULDEN.md für bekannte Issues
 
 **Hinweis:** Diese Datei basiert auf Code-Analyse vom Oktober 2026. Bei Änderungen an der Architektur bitte aktualisieren.
 

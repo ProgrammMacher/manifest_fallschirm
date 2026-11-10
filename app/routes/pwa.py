@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 from flask import (
     Blueprint,
     render_template,
@@ -26,6 +28,8 @@ from app.helpers.app_settings import (
 
 # ✅ NEU: zentrale Navigation (Sidebar = Kacheln)
 from app.routes.navigation import NAV_ITEMS
+from app.models.person import Person
+from app.services.birthday_service import birthdays_around_today
 
 
 bp = Blueprint(
@@ -247,7 +251,22 @@ def pwa_index():
         if not item.get("admin_only") or session.get("is_admin")
     ]
 
-    return render_template("pwa/home.html", tiles=tiles)
+    today = date.today()
+    members = Person.query.filter(
+        Person.is_member.is_(True),
+        Person.deleted_at.is_(None),
+        Person.birthdate.isnot(None),
+    ).all()
+    birthdays = birthdays_around_today(members, today)
+    past = [birthday for birthday in birthdays if birthday["date"] < today]
+    present = [birthday for birthday in birthdays if birthday["date"] == today]
+    future = [birthday for birthday in birthdays if birthday["date"] > today]
+
+    return render_template(
+        "pwa/home.html",
+        tiles=tiles,
+        birthdays=past[-2:] + present + future[:3],
+    )
 
 
 # -------------------------------------------------

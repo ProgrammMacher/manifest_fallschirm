@@ -21,6 +21,7 @@
           <div class="pwa-parachute-icon">
             {% include "icons/parachute.svg" %}
           </div>
+
         </div>
         <div class="app-label mt-2">Loads</div>
       </a>
@@ -179,6 +180,24 @@
     </div>
 
   </div>
+
+  <section class="card shadow-sm mt-4" style="max-width: 42rem;" aria-labelledby="dashboard-birthdays-heading">
+    <div class="card-body py-3">
+      <h2 id="dashboard-birthdays-heading" class="h6 mb-2">Geburtstage</h2>
+      {% if birthdays %}
+      <ul class="list-group list-group-flush small">
+        {% for birthday in birthdays %}
+        <li class="list-group-item px-2 py-1{% if birthday.near_today %} list-group-item-warning fw-bold{% endif %}">
+          <span class="d-inline-block me-2">{{ birthday.date.strftime('%d.%m.%Y') }}</span>
+          {{ birthday.person.first_name }} {{ birthday.person.last_name }} &ndash; {{ birthday.age }}. Geburtstag
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="text-muted small mb-0">Keine Geburtstage innerhalb von 8 Wochen vor oder nach heute.</p>
+      {% endif %}
+    </div>
+  </section>
 </div>
 
 <script>
